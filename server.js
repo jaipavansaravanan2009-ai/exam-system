@@ -37,6 +37,10 @@ app.post("/api/exams", (req, res) => {
   });
 });
 
+app.get("/api/exams", (req, res) => {
+  res.json(exams);
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
