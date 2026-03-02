@@ -26,7 +26,7 @@ app.get("/", (req, res) => {
 let exams = [];
 
 // CREATE EXAM
-app.post("/api/exams", async (req, res) => {
+app.post("/api/exams", verifyAdmin, async (req, res) => {
   const { title, questions } = req.body;
 
   if (!title || !questions) {
@@ -65,7 +65,7 @@ app.get("/api/exams", async (req, res) => {
 });
 
 // DELETE EXAM (Firebase)
-app.delete("/api/exams/:id", async (req, res) => {
+app.delete("/api/exams/:id", verifyAdmin, async (req, res) => {
   const examId = req.params.id;
 
   try {
@@ -89,7 +89,7 @@ app.delete("/api/exams/:id", async (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 // UPDATE EXAM
-app.put("/api/exams/:id", async (req, res) => {
+app.put("/api/exams/:id", verifyAdmin, async (req, res) => {
   const examId = req.params.id;
   const { title, questions } = req.body;
 
@@ -115,4 +115,43 @@ app.put("/api/exams/:id", async (req, res) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+
+// ADMIN LOGIN
+app.post("/api/admin/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const snapshot = await db
+      .collection("admins")
+      .where("email", "==", email)
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(401).json({ message: "Invalid email ❌" });
+    }
+
+    const adminDoc = snapshot.docs[0];
+    const admin = adminDoc.data();
+
+    const isMatch = await bcrypt.compare(password, admin.password);
+
+    if (!isMatch) {
+      return res.status(401).json({ message: "Wrong password ❌" });
+    }
+
+    const token = jwt.sign(
+      { id: adminDoc.id, email: admin.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.json({ message: "Login successful ✅", token });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
