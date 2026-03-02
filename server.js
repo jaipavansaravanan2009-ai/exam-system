@@ -81,6 +81,31 @@ app.delete("/api/exams/:id", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
+// UPDATE EXAM
+app.put("/api/exams/:id", async (req, res) => {
+  const examId = req.params.id;
+  const { title, questions } = req.body;
+
+  if (!title && !questions) {
+    return res.status(400).json({ message: "Nothing to update ❌" });
+  }
+
+  try {
+    const examRef = db.collection("exams").doc(examId);
+
+    await examRef.update({
+      ...(title && { title }),
+      ...(questions && { questions }),
+      updatedAt: new Date()
+    });
+
+    res.json({ message: "Exam updated successfully 🔄" });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
