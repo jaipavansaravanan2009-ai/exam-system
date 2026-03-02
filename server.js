@@ -18,6 +18,41 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const express = require("express");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const admin = require("firebase-admin");
+
+require("dotenv").config();
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+/* ==============================
+   🔐 ADD verifyAdmin RIGHT HERE
+   ============================== */
+
+function verifyAdmin(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({ message: "Access denied 🚫" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    req.admin = verified;
+    next();
+  } catch (err) {
+    return res.status(400).json({ message: "Invalid token ❌" });
+  }
+}
+
 app.get("/", (req, res) => {
   res.send("Exam System API Running 🚀");
 });
