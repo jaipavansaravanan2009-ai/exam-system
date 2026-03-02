@@ -1,5 +1,12 @@
+require("dotenv").config();
+
+const express = require("express");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 const admin = require("firebase-admin");
 
+// Firebase setup
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
 admin.initializeApp({
@@ -8,28 +15,12 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
 console.log("Server file is running...");
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-
-const express = require("express");
-const cors = require("cors");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
-const admin = require("firebase-admin");
-
-require("dotenv").config();
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
 
 /* ==============================
    🔐 ADD verifyAdmin RIGHT HERE
@@ -151,9 +142,6 @@ app.put("/api/exams/:id", verifyAdmin, async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
 
 // ADMIN LOGIN
 app.post("/api/admin/login", async (req, res) => {
