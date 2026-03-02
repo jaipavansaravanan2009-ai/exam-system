@@ -41,6 +41,21 @@ app.get("/api/exams", (req, res) => {
   res.json(exams);
 });
 
+// DELETE EXAM
+app.delete("/api/exams/:id", (req, res) => {
+  const examId = parseInt(req.params.id);
+
+  const examIndex = exams.findIndex(exam => exam.id === examId);
+
+  if (examIndex === -1) {
+    return res.status(404).json({ message: "Exam not found ❌" });
+  }
+
+  exams.splice(examIndex, 1);
+
+  res.json({ message: "Exam deleted successfully 🗑️" });
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
