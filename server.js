@@ -1,3 +1,13 @@
+const admin = require("firebase-admin");
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+const db = admin.firestore();
+
 console.log("Server file is running...");
 require("dotenv").config();
 const express = require("express");
@@ -16,29 +26,42 @@ app.get("/", (req, res) => {
 let exams = [];
 
 // CREATE EXAM
-app.post("/api/exams", (req, res) => {
+app.post("/api/exams", async (req, res) => {
   const { title, questions } = req.body;
 
   if (!title || !questions) {
     return res.status(400).json({ message: "Title and questions required" });
   }
 
-  const newExam = {
-    id: Date.now(),
-    title,
-    questions
-  };
+  try {
+    const docRef = await db.collection("exams").add({
+      title,
+      questions,
+      createdAt: new Date()
+    });
 
-  exams.push(newExam);
-
-  res.status(201).json({
-    message: "Exam created successfully ✅",
-    exam: newExam
-  });
+    res.status(201).json({
+      message: "Exam saved to Firebase ✅",
+      id: docRef.id
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.get("/api/exams", (req, res) => {
-  res.json(exams);
+app.get("/api/exams", async (req, res) => {
+  try {
+    const snapshot = await db.collection("exams").get();
+
+    const exams = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    res.json(exams);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // DELETE EXAM
