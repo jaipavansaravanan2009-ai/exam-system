@@ -64,19 +64,26 @@ app.get("/api/exams", async (req, res) => {
   }
 });
 
-// DELETE EXAM
-app.delete("/api/exams/:id", (req, res) => {
-  const examId = parseInt(req.params.id);
+// DELETE EXAM (Firebase)
+app.delete("/api/exams/:id", async (req, res) => {
+  const examId = req.params.id;
 
-  const examIndex = exams.findIndex(exam => exam.id === examId);
+  try {
+    const examRef = db.collection("exams").doc(examId);
 
-  if (examIndex === -1) {
-    return res.status(404).json({ message: "Exam not found ❌" });
+    const doc = await examRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ message: "Exam not found ❌" });
+    }
+
+    await examRef.delete();
+
+    res.json({ message: "Exam deleted successfully 🗑️" });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-
-  exams.splice(examIndex, 1);
-
-  res.json({ message: "Exam deleted successfully 🗑️" });
 });
 
 const PORT = process.env.PORT || 5000;
