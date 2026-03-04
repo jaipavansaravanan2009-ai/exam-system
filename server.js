@@ -177,4 +177,36 @@ app.post("/api/admin/login", async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+
+  // ADD QUESTION TO EXAM
+app.post("/api/exams/:id/questions", verifyAdmin, async (req, res) => {
+  const examId = req.params.id;
+  const { question, options, correctAnswer } = req.body;
+
+  try {
+    const examRef = db.collection("exams").doc(examId);
+    const doc = await examRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ message: "Exam not found ❌" });
+    }
+
+    const examData = doc.data();
+
+    const updatedQuestions = [
+      ...(examData.questions || []),
+      { question, options, correctAnswer }
+    ];
+
+    await examRef.update({
+      questions: updatedQuestions
+    });
+
+    res.json({ message: "Question added successfully ✅" });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 });
