@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Portal - JEE Mock</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f6f9; padding: 20px; }
+        .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .btn { padding: 10px 15px; background: #2e86c1; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;}
+        .btn:hover { background: #1a5276; }
+        .question-box { margin-bottom: 20px; padding: 15px; background: #eaf2f8; border-left: 4px solid #2e86c1; }
+    </style>
+</head>
+<body>
+    <h2>🎓 Student Exam Portal</h2>
+    <hr>
+
+    <div id="examSelection">
+        <h3>Available Exams</h3>
+        <div id="studentExamList">Loading exams...</div>
+    </div>
+
+    <div id="examTaking" style="display: none;">
+        <h3 id="examTitle"></h3>
+        <div id="questionContainer"></div>
+        <br>
+        <button class="btn" id="submitBtn" onclick="submitExam()">Submit Exam ✅</button>
+        <h3 id="resultText" style="color: #1e8449; margin-top: 20px;"></h3>
+    </div>
+
+    <script>
+        // ⚠️ REPLACE WITH YOUR REAL RAILWAY URL
+        const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
+        let currentExam = null;
+
+        // Fetch all exams when page loads
+        async function loadExams() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/public/exams`);
+                const exams = await res.json();
+                const list = document.getElementById("studentExamList");
+                list.innerHTML = "";
+
+                if (exams.length === 0) {
+                    list.innerHTML = "<p>No exams available right now.</p>";
+                    return;
+                }
+
+                exams.forEach(exam => {
+                    list.innerHTML += `
+                    <div class="card">
+                        <h4>${exam.title}</h4>
+                        <p>Total Questions: ${exam.questionCount}</p>
+                        <button class="btn" onclick="startExam('${exam.id}')">Start Exam 🚀</button>
+                    </div>
+                    `;
+                });
+            } catch (error) {
+                console.error("Error loading exams:", error);
+            }
+        }
+
+        // Start Exam and load questions
+        async function startExam(id) {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/${id}`);
+            currentExam = await res.json();
+
+            // Hide list, show exam
+            document.getElementById("examSelection").style.display = "none";
+            document.getElementById("examTaking").style.display = "block";
+            document.getElementById("examTitle").innerText = currentExam.title;
+
+            const qContainer = document.getElementById("questionContainer");
+            qContainer.innerHTML = "";
+
+            currentExam.questions.forEach((q, index) => {
+                let optionsHTML = "";
+                q.options.forEach(opt => {
+                    optionsHTML += `
+                    <label style="display: block; margin: 8px 0; cursor: pointer;">
+                        <input type="radio" name="q${index}" value="${opt}"> ${opt}
+                    </label>
+                    `;
+                });
+
+                qContainer.innerHTML += `
+                <div class="question-box">
+                    <p><b>Question ${index + 1}:</b> ${q.question}</p>
+                    ${optionsHTML}
+                </div>
+                `;
+            });
+        }
+
+        // Calculate Score (+4 / -1 Logic)
+        function submitExam() {
+            if (!confirm("Are you sure you want to submit your exam?")) return;
+
+            let score = 0;
+            let correct = 0;
+            let wrong = 0;
+            let unattempted = 0;
+
+            currentExam.questions.forEach((q, index) => {
+                const selectedOption = document.querySelector(`input[name="q${index}"]:checked`);
+                
+                if (selectedOption) {
+                    if (selectedOption.value === q.correctAnswer) {
+                        score += 4;  // +4 for correct
+                        correct++;
+                    } else {
+                        score -= 1;  // -1 for wrong
+                        wrong++;
+                    }
+                } else {
+                    unattempted++;   // 0 for unattempted
+                }
+            });
+
+            // Show results
+            document.getElementById("resultText").innerHTML = `
+                🎉 Exam Completed!<br>
+                <b>Total Score:</b> ${score} Marks<br>
+                ✅ Correct: ${correct} | ❌ Wrong: ${wrong} | ⚪ Unattempted: ${unattempted}
+            `;
+            
+            // Disable submit button so they can't click it twice
+            document.getElementById("submitBtn").disabled = true;
+            document.getElementById("submitBtn").style.background = "grey";
+        }
+
+        // Initialize
+        loadExams();
+    </script>
+</body>
+</html>

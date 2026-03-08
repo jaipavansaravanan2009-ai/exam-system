@@ -112,6 +112,38 @@ app.delete("/api/exams/:id", verifyAdmin, async (req, res) => {
   }
 });
 
+// ==========================================
+// 🎓 PUBLIC ROUTES FOR STUDENTS
+// ==========================================
+
+// 1. Get all exams (without answers)
+app.get("/api/public/exams", async (req, res) => {
+  try {
+    const snapshot = await db.collection("exams").get();
+    const exams = snapshot.docs.map(doc => ({
+      id: doc.id,
+      title: doc.data().title,
+      questionCount: doc.data().questions ? doc.data().questions.length : 0
+    }));
+    res.json(exams);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Get a specific exam to attempt
+app.get("/api/public/exams/:id", async (req, res) => {
+  try {
+    const doc = await db.collection("exams").doc(req.params.id).get();
+    if (!doc.exists) {
+      return res.status(404).json({ message: "Exam not found ❌" });
+    }
+    res.json({ id: doc.id, ...doc.data() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 
 // UPDATE EXAM
