@@ -8,7 +8,19 @@
         .result-card { background: #eaf2f8; padding: 15px; margin: 10px 0; border-left: 5px solid #2e86c1; border-radius: 5px; }
         button { padding: 8px 12px; background: #c0392b; color: white; border: none; cursor: pointer; border-radius: 4px; margin-right: 5px;}
         .btn-green { background: #1e8449; }
-        input { padding: 8px; margin-right: 10px; width: 250px; }
+        .btn-blue { background: #2e86c1; }
+        input { padding: 8px; margin-right: 10px; margin-bottom: 10px; width: 250px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        /* New Modal Styling for Editor */
+        #editorModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; 
+            justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-content {
+            background: white; padding: 30px; border-radius: 10px; width: 80%; max-width: 800px;
+            max-height: 80vh; overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -16,8 +28,8 @@
     <button onclick="logout()">Logout</button>
     <hr>
     
-    <h3>📝 Create Exam</h3>
-    <input type="text" id="title" placeholder="Exam Title">
+    <h3>📝 Create New Exam</h3>
+    <input type="text" id="title" placeholder="Exam Title (e.g., JEE Mains Mock 1)">
     <button class="btn-green" onclick="createExam()">Create Exam</button>
     
     <hr>
@@ -35,99 +47,154 @@
         </div>
     </div>
 
+    <div id="editorModal">
+        <div class="modal-content">
+            <button onclick="closeEditor()" style="background:black; float:right;">✖ Close</button>
+            <h2 id="modalExamTitle">Manage Questions</h2>
+            
+            <div style="background:#f0f0f0; padding:15px; border-radius:8px; margin-bottom:20px;">
+                <h4>➕ Add New Question</h4>
+                <input type="text" id="newQ" placeholder="Question Text" style="width:90%;"><br>
+                <input type="text" id="opt1" placeholder="Option 1">
+                <input type="text" id="opt2" placeholder="Option 2"><br>
+                <input type="text" id="opt3" placeholder="Option 3">
+                <input type="text" id="opt4" placeholder="Option 4"><br>
+                <input type="text" id="correct" placeholder="Correct Answer (Must exactly match one option)">
+                <br>
+                <button class="btn-green" onclick="submitNewQuestion()">Save Question ✅</button>
+            </div>
+            
+            <h3>📋 Existing Questions</h3>
+            <div id="existingQuestionsList"></div>
+        </div>
+    </div>
+
     <script>
         const token = localStorage.getItem("adminToken");
-        const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; // Double check this!
+        // ⚠️ REPLACE THIS URL IF IT IS DIFFERENT!
+        const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; 
 
         if (!token) { window.location.href = "login.html"; }
 
-        let selectedExamId = null;
+        let currentEditingExamId = null;
+
+        function logout() {
+            localStorage.removeItem("adminToken");
+            window.location.href = "login.html";
+        }
+
+        async function createExam() {
+            const title = document.getElementById("title").value;
+            if(!title) return alert("Please enter a title!");
+            await fetch(`${BACKEND_URL}/api/exams`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ title: title, questions: [] })
+            });
+            document.getElementById("title").value = "";
+            loadExams();
+        }
 
         async function loadExams() {
             const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
             const exams = await res.json();
             const list = document.getElementById("examList");
             list.innerHTML = "";
+            
             exams.forEach(exam => {
                 list.innerHTML += `
                     <div class="card">
-                        <h4>${exam.title}</h4>
-                        <p>Questions: ${exam.questions?.length || 0}</p>
-                        <button class="btn-green" onclick="manageQuestions('${exam.id}', '${exam.title}')">Manage Questions ⚙️</button>
+                        <h4 style="margin: 0 0 10px 0;">${exam.title}</h4>
+                        <p style="margin: 0 0 10px 0;">Questions: ${exam.questions ? exam.questions.length : 0}</p>
+                        <button class="btn-blue" onclick="openEditor('${exam.id}', '${exam.title}')">Manage Questions ⚙️</button>
                         <button onclick="deleteExam('${exam.id}')">Delete Exam 🗑️</button>
                     </div>`;
             });
         }
 
-        // Opens the question editor for a specific exam
-        async function manageQuestions(id, title) {
-            selectedExamId = id;
-            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
-            const exams = await res.json();
-            const exam = exams.find(e => e.id === id);
-
-            // Create a temporary overlay/modal for editing
-            const modal = document.createElement("div");
-            modal.id = "editorModal";
-            modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:white; overflow-y:auto; padding:20px; z-index:100;";
-            
-            let questionsHTML = exam.questions.map((q, index) => `
-                <div style="border-bottom:1px solid #ccc; padding:10px;">
-                    <p><b>Q${index+1}:</b> ${q.question}</p>
-                    <button onclick="deleteQuestion('${id}', ${index})">Delete Q</button>
-                </div>
-            `).join("");
-
-            modal.innerHTML = `
-                <button onclick="document.getElementById('editorModal').remove()" style="background:black;">✖ Close Editor</button>
-                <h2>Editing Exam: ${title}</h2>
-                <div style="background:#f0f0f0; padding:15px; border-radius:8px;">
-                    <h4>Add New Question</h4>
-                    <input type="text" id="newQ" placeholder="Question Text" style="width:100%;"><br><br>
-                    <input type="text" id="opt1" placeholder="Option 1">
-                    <input type="text" id="opt2" placeholder="Option 2"><br><br>
-                    <input type="text" id="opt3" placeholder="Option 3">
-                    <input type="text" id="opt4" placeholder="Option 4"><br><br>
-                    <input type="text" id="correct" placeholder="Correct Answer (Exact Match)">
-                    <button class="btn-green" onclick="submitNewQuestion('${id}')">Save Question ✅</button>
-                </div>
-                <hr>
-                <h3>Existing Questions</h3>
-                ${questionsHTML || "<p>No questions added yet.</p>"}
-            `;
-            document.body.appendChild(modal);
+        async function deleteExam(id) {
+            if (!confirm("Delete this entire exam?")) return;
+            await fetch(`${BACKEND_URL}/api/exams/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            loadExams(); 
         }
 
-        async function submitNewQuestion(examId) {
+        // --- NEW EDITOR LOGIC --- //
+        
+        async function openEditor(id, title) {
+            currentEditingExamId = id;
+            document.getElementById("modalExamTitle").innerText = `Editing: ${title}`;
+            document.getElementById("editorModal").style.display = "flex";
+            refreshQuestionList(id);
+        }
+
+        function closeEditor() {
+            document.getElementById("editorModal").style.display = "none";
+            loadExams(); // Refresh main dashboard when closing
+        }
+
+        async function refreshQuestionList(examId) {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            const exam = exams.find(e => e.id === examId);
+            
+            const list = document.getElementById("existingQuestionsList");
+            list.innerHTML = "";
+            
+            if (!exam.questions || exam.questions.length === 0) {
+                list.innerHTML = "<p>No questions added yet.</p>";
+                return;
+            }
+
+            exam.questions.forEach((q, index) => {
+                list.innerHTML += `
+                    <div style="border-bottom:1px solid #ccc; padding:10px 0; margin-bottom:10px;">
+                        <p style="margin: 5px 0;"><b>Q${index+1}:</b> ${q.question}</p>
+                        <p style="margin: 5px 0; font-size:14px;">Options: [${q.options.join(", ")}] | <span style="color:green;">Correct: ${q.correctAnswer}</span></p>
+                        <button onclick="deleteQuestion('${examId}', ${index})">Delete Question 🗑️</button>
+                    </div>`;
+            });
+        }
+
+        async function submitNewQuestion() {
             const question = document.getElementById("newQ").value;
-            const options = [
-                document.getElementById("opt1").value,
-                document.getElementById("opt2").value,
-                document.getElementById("opt3").value,
-                document.getElementById("opt4").value
-            ];
+            const opt1 = document.getElementById("opt1").value;
+            const opt2 = document.getElementById("opt2").value;
+            const opt3 = document.getElementById("opt3").value;
+            const opt4 = document.getElementById("opt4").value;
             const correctAnswer = document.getElementById("correct").value;
 
-            await fetch(`${BACKEND_URL}/api/exams/${examId}/questions`, {
+            if(!question || !opt1 || !opt2 || !opt3 || !opt4 || !correctAnswer) {
+                return alert("Please fill out all fields!");
+            }
+
+            const options = [opt1, opt2, opt3, opt4];
+
+            await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({ question, options, correctAnswer })
             });
             
-            document.getElementById("editorModal").remove();
-            loadExams();
-            manageQuestions(examId, "Updated Exam");
+            // Clear inputs
+            document.getElementById("newQ").value = "";
+            document.getElementById("opt1").value = "";
+            document.getElementById("opt2").value = "";
+            document.getElementById("opt3").value = "";
+            document.getElementById("opt4").value = "";
+            document.getElementById("correct").value = "";
+            
+            refreshQuestionList(currentEditingExamId);
         }
 
         async function deleteQuestion(examId, index) {
-            if(!confirm("Delete this question?")) return;
+            if(!confirm("Are you sure you want to delete this question?")) return;
+            
             await fetch(`${BACKEND_URL}/api/exams/${examId}/questions/${index}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
-            document.getElementById("editorModal").remove();
-            loadExams();
-            manageQuestions(examId, "Updated Exam");
+            
+            refreshQuestionList(examId);
         }
 
         async function loadResults() {
@@ -136,7 +203,7 @@
             const list = document.getElementById("resultsList");
             list.innerHTML = "";
             results.sort((a,b) => b.score - a.score).forEach((r, i) => {
-                list.innerHTML += `<div class="result-card"><b>#${i+1} ${r.studentName}</b>: ${r.score} marks (${r.examTitle})</div>`;
+                list.innerHTML += `<div class="result-card"><b>#${i+1} ${r.studentName}</b>: <span style="color:green">${r.score} marks</span> (${r.examTitle})</div>`;
             });
         }
 

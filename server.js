@@ -272,7 +272,7 @@ app.post("/api/exams/:id/questions", verifyAdmin, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 
-  // Delete a specific question from an exam
+// Delete a specific question from an exam
 app.delete("/api/exams/:examId/questions/:questionIndex", verifyAdmin, async (req, res) => {
   try {
     const { examId, questionIndex } = req.params;
@@ -282,8 +282,9 @@ app.delete("/api/exams/:examId/questions/:questionIndex", verifyAdmin, async (re
     if (!doc.exists) return res.status(404).json({ message: "Exam not found" });
 
     let questions = doc.data().questions || [];
-    // Remove the question at the specific index
-    questions.splice(questionIndex, 1);
+    
+    // IMPORTANT FIX: Convert the index to a Number before splicing!
+    questions.splice(Number(questionIndex), 1);
 
     await docRef.update({ questions });
     res.json({ message: "Question deleted successfully 🗑️" });
