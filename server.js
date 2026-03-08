@@ -271,6 +271,27 @@ app.post("/api/exams/:id/questions", verifyAdmin, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+
+  // Delete a specific question from an exam
+app.delete("/api/exams/:examId/questions/:questionIndex", verifyAdmin, async (req, res) => {
+  try {
+    const { examId, questionIndex } = req.params;
+    const docRef = db.collection("exams").doc(examId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) return res.status(404).json({ message: "Exam not found" });
+
+    let questions = doc.data().questions || [];
+    // Remove the question at the specific index
+    questions.splice(questionIndex, 1);
+
+    await docRef.update({ questions });
+    res.json({ message: "Question deleted successfully 🗑️" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 });
 
 });

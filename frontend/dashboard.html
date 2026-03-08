@@ -37,145 +37,107 @@
 
     <script>
         const token = localStorage.getItem("adminToken");
-        // ⚠️ REPLACE WITH YOUR REAL RAILWAY URL
-        const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
+        const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; // Double check this!
 
-        if (!token) {
-            alert("Please login first 🚫");
-            window.location.href = "login.html";
-        }
+        if (!token) { window.location.href = "login.html"; }
 
-        function logout() {
-            localStorage.removeItem("adminToken");
-            window.location.href = "login.html";
-        }
-
-        async function createExam() {
-            const title = document.getElementById("title").value;
-            const res = await fetch(`${BACKEND_URL}/api/exams`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({ title: title, questions: [] })
-            });
-            const data = await res.json();
-            alert(data.message || data.error);
-            loadExams();
-        }
+        let selectedExamId = null;
 
         async function loadExams() {
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/exams`, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
-                const exams = await res.json();
-                const examList = document.getElementById("examList");
-                examList.innerHTML = "";
-
-                exams.forEach(exam => {
-                    const card = document.createElement("div");
-                    card.className = "card";
-                    
-                    const title = document.createElement("h4");
-                    title.textContent = exam.title;
-                    
-                    const id = document.createElement("p");
-                    id.textContent = "ID: " + exam.id;
-
-                    const count = document.createElement("p");
-                    count.textContent = "Questions: " + (exam.questions?.length || 0);
-                    
-                    const deleteBtn = document.createElement("button");
-                    deleteBtn.textContent = "Delete 🗑️";
-                    deleteBtn.onclick = () => deleteExam(exam.id);
-
-                    const addQBtn = document.createElement("button");
-                    addQBtn.className = "btn-green";
-                    addQBtn.textContent = "Add Question ➕";
-                    addQBtn.onclick = () => showQuestionForm(exam.id);
-                    
-                    card.appendChild(title);
-                    card.appendChild(id);
-                    card.appendChild(count);
-                    card.appendChild(deleteBtn);
-                    card.appendChild(addQBtn);
-                    examList.appendChild(card);
-                });
-            } catch (error) {
-                console.error("Error:", error);
-            }
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            const list = document.getElementById("examList");
+            list.innerHTML = "";
+            exams.forEach(exam => {
+                list.innerHTML += `
+                    <div class="card">
+                        <h4>${exam.title}</h4>
+                        <p>Questions: ${exam.questions?.length || 0}</p>
+                        <button class="btn-green" onclick="manageQuestions('${exam.id}', '${exam.title}')">Manage Questions ⚙️</button>
+                        <button onclick="deleteExam('${exam.id}')">Delete Exam 🗑️</button>
+                    </div>`;
+            });
         }
 
-        async function deleteExam(id) {
-            if (!confirm("Are you sure you want to delete this exam?")) return;
-            const res = await fetch(`${BACKEND_URL}/api/exams/${id}`, {
+        // Opens the question editor for a specific exam
+        async function manageQuestions(id, title) {
+            selectedExamId = id;
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            const exam = exams.find(e => e.id === id);
+
+            // Create a temporary overlay/modal for editing
+            const modal = document.createElement("div");
+            modal.id = "editorModal";
+            modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:white; overflow-y:auto; padding:20px; z-index:100;";
+            
+            let questionsHTML = exam.questions.map((q, index) => `
+                <div style="border-bottom:1px solid #ccc; padding:10px;">
+                    <p><b>Q${index+1}:</b> ${q.question}</p>
+                    <button onclick="deleteQuestion('${id}', ${index})">Delete Q</button>
+                </div>
+            `).join("");
+
+            modal.innerHTML = `
+                <button onclick="document.getElementById('editorModal').remove()" style="background:black;">✖ Close Editor</button>
+                <h2>Editing Exam: ${title}</h2>
+                <div style="background:#f0f0f0; padding:15px; border-radius:8px;">
+                    <h4>Add New Question</h4>
+                    <input type="text" id="newQ" placeholder="Question Text" style="width:100%;"><br><br>
+                    <input type="text" id="opt1" placeholder="Option 1">
+                    <input type="text" id="opt2" placeholder="Option 2"><br><br>
+                    <input type="text" id="opt3" placeholder="Option 3">
+                    <input type="text" id="opt4" placeholder="Option 4"><br><br>
+                    <input type="text" id="correct" placeholder="Correct Answer (Exact Match)">
+                    <button class="btn-green" onclick="submitNewQuestion('${id}')">Save Question ✅</button>
+                </div>
+                <hr>
+                <h3>Existing Questions</h3>
+                ${questionsHTML || "<p>No questions added yet.</p>"}
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function submitNewQuestion(examId) {
+            const question = document.getElementById("newQ").value;
+            const options = [
+                document.getElementById("opt1").value,
+                document.getElementById("opt2").value,
+                document.getElementById("opt3").value,
+                document.getElementById("opt4").value
+            ];
+            const correctAnswer = document.getElementById("correct").value;
+
+            await fetch(`${BACKEND_URL}/api/exams/${examId}/questions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ question, options, correctAnswer })
+            });
+            
+            document.getElementById("editorModal").remove();
+            loadExams();
+            manageQuestions(examId, "Updated Exam");
+        }
+
+        async function deleteQuestion(examId, index) {
+            if(!confirm("Delete this question?")) return;
+            await fetch(`${BACKEND_URL}/api/exams/${examId}/questions/${index}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
-            const data = await res.json();
-            alert(data.message || data.error);
-            loadExams(); 
-        }
-
-        function showQuestionForm(examId) {
-            const question = prompt("Enter Question:");
-            if (!question) return;
-            const opt1 = prompt("Option 1:");
-            const opt2 = prompt("Option 2:");
-            const opt3 = prompt("Option 3:");
-            const opt4 = prompt("Option 4:");
-            const correctAnswer = prompt("Enter correct answer exactly as one option:");
-
-            addQuestion(examId, question, [opt1, opt2, opt3, opt4], correctAnswer);
-        }
-
-        async function addQuestion(examId, question, options, correctAnswer) {
-            const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/questions`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({ question, options, correctAnswer })
-            });
-            const data = await res.json();
-            alert(data.message || data.error);
+            document.getElementById("editorModal").remove();
             loadExams();
+            manageQuestions(examId, "Updated Exam");
         }
 
-        // 🏆 NEW: Fetch Student Results
         async function loadResults() {
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/results`, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
-                const results = await res.json();
-                const resultsList = document.getElementById("resultsList");
-                resultsList.innerHTML = "";
-
-                if(results.length === 0){
-                    resultsList.innerHTML = "<p>No results yet.</p>";
-                    return;
-                }
-
-                // Sort by highest score automatically
-                results.sort((a, b) => b.score - a.score);
-
-                results.forEach((result, index) => {
-                    resultsList.innerHTML += `
-                    <div class="result-card">
-                        <h4 style="margin:0 0 10px 0;">Rank #${index + 1}: ${result.studentName}</h4>
-                        <p style="margin:5px 0;"><b>Exam:</b> ${result.examTitle}</p>
-                        <p style="margin:5px 0;"><b>Score:</b> <span style="color:#1e8449; font-weight:bold;">${result.score} Marks</span></p>
-                        <p style="margin:5px 0; font-size:14px;">Correct: ${result.correct} | Wrong: ${result.wrong}</p>
-                    </div>
-                    `;
-                });
-            } catch (error) {
-                console.error("Error loading results:", error);
-            }
+            const res = await fetch(`${BACKEND_URL}/api/results`, { headers: { "Authorization": `Bearer ${token}` } });
+            const results = await res.json();
+            const list = document.getElementById("resultsList");
+            list.innerHTML = "";
+            results.sort((a,b) => b.score - a.score).forEach((r, i) => {
+                list.innerHTML += `<div class="result-card"><b>#${i+1} ${r.studentName}</b>: ${r.score} marks (${r.examTitle})</div>`;
+            });
         }
 
         loadExams();
