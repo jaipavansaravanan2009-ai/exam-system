@@ -86,9 +86,19 @@ async function loadExams() {
         const id = document.createElement("p");
         id.textContent = "ID: " + exam.id;
 
+        const count = document.createElement("p");
+        count.textContent = "Questions: " + (exam.questions?.length || 0);
+        card.appendChild(count);
+
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "Delete 🗑️";
         deleteBtn.onclick = () => deleteExam(exam.id);
+
+        const addQBtn = document.createElement("button");
+        addQBtn.textContent = "Add Question ➕";
+        addQBtn.onclick = () => showQuestionForm(exam.id);
+
+        card.appendChild(addQBtn);
 
         card.appendChild(title);
         card.appendChild(id);
@@ -126,6 +136,43 @@ async function deleteExam(id) {
   } catch (error) {
     console.error(error);
   }
+}
+
+function showQuestionForm(examId) {
+  const question = prompt("Enter Question:");
+  if (!question) return;
+
+  const opt1 = prompt("Option 1:");
+  const opt2 = prompt("Option 2:");
+  const opt3 = prompt("Option 3:");
+  const opt4 = prompt("Option 4:");
+
+  const correctAnswer = prompt("Enter correct answer exactly as one option:");
+
+  addQuestion(examId, question, [opt1, opt2, opt3, opt4], correctAnswer);
+}
+
+async function addQuestion(examId, question, options, correctAnswer) {
+  const token = localStorage.getItem("adminToken");
+
+  const res = await fetch(
+    `https://exam-system-production-5def.up.railway.app/api/exams/${examId}/questions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        question,
+        options,
+        correctAnswer
+      })
+    }
+  );
+
+  const data = await res.json();
+  alert(data.message || data.error);
 }
 
 loadExams();
