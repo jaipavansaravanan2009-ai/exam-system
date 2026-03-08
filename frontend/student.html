@@ -1,147 +1,190 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Student Portal - JEE Mock</title>
+    <title>JEE Mains Mock - Student Portal</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f6f9; padding: 20px; }
-        .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .btn { padding: 10px 15px; background: #2e86c1; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;}
-        .btn:hover { background: #1a5276; }
-        .question-box { margin-bottom: 20px; padding: 15px; background: #eaf2f8; border-left: 4px solid #2e86c1; }
-        input[type="text"] { padding: 10px; font-size: 16px; margin-bottom: 15px; width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; }
+        header { background: #1e3d59; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Left Side: Question Area */
+        .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; }
+        
+        /* Right Side: Palette Area */
+        .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; }
+        
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 20px; }
+        .palette-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
+        .palette-btn.active { border: 2px solid #000; font-weight: bold; }
+        .palette-btn.answered { background: #27ae60; color: white; } /* Green */
+        .palette-btn.visited { background: #e74c3c; color: white; } /* Red */
+
+        .controls { margin-top: 30px; display: flex; gap: 10px; }
+        .btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .btn-next { background: #2e86c1; color: white; }
+        .btn-save { background: #27ae60; color: white; }
+        #timer { font-size: 20px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <h2>🎓 Student Exam Portal</h2>
-    <hr>
 
-    <div id="examSelection">
-        <h3>Step 1: Enter your details</h3>
-        <input type="text" id="studentName" placeholder="Enter your Full Name" required>
+<header>
+    <div id="examTitleHeader">JEE Mock Exam</div>
+    <div id="studentNameHeader">Student: Guest</div>
+    <div id="timer">03:00:00</div>
+</header>
+
+<div class="main-container" id="examUI" style="display: none;">
+    <div class="question-section">
+        <h3 id="qNumber">Question 1</h3>
+        <hr>
+        <div id="qText" style="font-size: 18px; margin: 20px 0;">Loading question...</div>
+        <div id="optionsList"></div>
         
-        <h3>Step 2: Select an Exam</h3>
-        <div id="studentExamList">Loading exams...</div>
+        <div class="controls">
+            <button class="btn btn-save" onclick="saveAndNext()">Save & Next</button>
+            <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear Response</button>
+            <button class="btn" style="background:#f1c40f;" onclick="submitFinal()">Submit Exam</button>
+        </div>
     </div>
 
-    <div id="examTaking" style="display: none;">
-        <h3 id="examTitle"></h3>
-        <div id="questionContainer"></div>
-        <br>
-        <button class="btn" id="submitBtn" onclick="submitExam()">Submit Exam ✅</button>
-        <h3 id="resultText" style="color: #1e8449; margin-top: 20px;"></h3>
+    <div class="sidebar">
+        <div style="text-align: center;">
+            <div style="width: 80px; height: 80px; background: #ccc; margin: 0 auto; border-radius: 50%;"></div>
+            <p id="paletteStudentName">Student Name</p>
+        </div>
+        <hr>
+        <h4>Question Palette</h4>
+        <div class="palette-grid" id="palette"></div>
     </div>
+</div>
 
-    <script>
-        // ⚠️ REPLACE WITH YOUR REAL RAILWAY URL
-        const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
-        let currentExam = null;
+<div id="setupBox" style="padding: 50px; text-align: center;">
+    <h2>Welcome to JEE Mock Portal</h2>
+    <input type="text" id="nameInput" placeholder="Enter Your Name" style="padding:10px; width: 250px;"><br><br>
+    <div id="examSelect">Loading exams...</div>
+</div>
 
-        async function loadExams() {
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/public/exams`);
-                const exams = await res.json();
-                const list = document.getElementById("studentExamList");
-                list.innerHTML = "";
+<script>
+    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; // 🚨 UPDATE THIS
+    let examData = null;
+    let currentIdx = 0;
+    let studentAnswers = {}; 
+    let timeLeft = 3 * 60 * 60; // 3 Hours
 
-                if (exams.length === 0) {
-                    list.innerHTML = "<p>No exams available right now.</p>";
-                    return;
-                }
+    async function loadExams() {
+        const res = await fetch(`${BACKEND_URL}/api/public/exams`);
+        const exams = await res.json();
+        const div = document.getElementById("examSelect");
+        div.innerHTML = exams.map(e => `
+            <button class="btn btn-next" onclick="startExam('${e.id}')">Start ${e.title}</button>
+        `).join("");
+    }
 
-                exams.forEach(exam => {
-                    list.innerHTML += `
-                    <div class="card">
-                        <h4>${exam.title}</h4>
-                        <p>Total Questions: ${exam.questionCount}</p>
-                        <button class="btn" onclick="startExam('${exam.id}')">Start Exam 🚀</button>
-                    </div>
-                    `;
-                });
-            } catch (error) {
-                console.error("Error loading exams:", error);
+    async function startExam(id) {
+        const name = document.getElementById("nameInput").value;
+        if(!name) return alert("Enter name!");
+
+        const res = await fetch(`${BACKEND_URL}/api/public/exams/${id}`);
+        examData = await res.json();
+
+        document.getElementById("setupBox").style.display = "none";
+        document.getElementById("examUI").style.display = "flex";
+        document.getElementById("studentNameHeader").innerText = "Student: " + name;
+        document.getElementById("paletteStudentName").innerText = name;
+        
+        renderPalette();
+        showQuestion(0);
+        startTimer();
+    }
+
+    function renderPalette() {
+        const grid = document.getElementById("palette");
+        grid.innerHTML = examData.questions.map((_, i) => `
+            <div class="palette-btn" id="pBtn${i}" onclick="showQuestion(${i})">${i+1}</div>
+        `).join("");
+    }
+
+    function showQuestion(index) {
+        currentIdx = index;
+        const q = examData.questions[index];
+        
+        // Update Active Style
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`pBtn${index}`).classList.add('active');
+        if(!document.getElementById(`pBtn${index}`).classList.contains('answered')) {
+            document.getElementById(`pBtn${index}`).classList.add('visited');
+        }
+
+        document.getElementById("qNumber").innerText = "Question " + (index + 1);
+        document.getElementById("qText").innerText = q.question;
+        
+        const optDiv = document.getElementById("optionsList");
+        optDiv.innerHTML = q.options.map(opt => `
+            <div style="margin: 10px 0;">
+                <label><input type="radio" name="ans" value="${opt}" ${studentAnswers[index] === opt ? 'checked' : ''}> ${opt}</label>
+            </div>
+        `).join("");
+    }
+
+    function saveAndNext() {
+        const selected = document.querySelector('input[name="ans"]:checked');
+        if(selected) {
+            studentAnswers[currentIdx] = selected.value;
+            document.getElementById(`pBtn${currentIdx}`).classList.remove('visited');
+            document.getElementById(`pBtn${currentIdx}`).classList.add('answered');
+        }
+        
+        if(currentIdx < examData.questions.length - 1) {
+            showQuestion(currentIdx + 1);
+        }
+    }
+
+    function clearResponse() {
+        delete studentAnswers[currentIdx];
+        document.getElementById(`pBtn${currentIdx}`).classList.remove('answered');
+        showQuestion(currentIdx);
+    }
+
+    function startTimer() {
+        const timerDiv = document.getElementById("timer");
+        const interval = setInterval(() => {
+            timeLeft--;
+            let hrs = Math.floor(timeLeft / 3600);
+            let mins = Math.floor((timeLeft % 3600) / 60);
+            let secs = timeLeft % 60;
+            timerDiv.innerText = `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            if(timeLeft <= 0) {
+                clearInterval(interval);
+                submitFinal();
             }
-        }
+        }, 1000);
+    }
 
-        async function startExam(id) {
-            const studentName = document.getElementById("studentName").value;
-            if(!studentName) {
-                alert("Please enter your name first! 🛑");
-                return;
-            }
+    async function submitFinal() {
+        if(!confirm("Submit Exam?")) return;
+        
+        let score = 0;
+        examData.questions.forEach((q, i) => {
+            if(studentAnswers[i] === q.correctAnswer) score += 4;
+            else if(studentAnswers[i]) score -= 1;
+        });
 
-            const res = await fetch(`${BACKEND_URL}/api/public/exams/${id}`);
-            currentExam = await res.json();
+        await fetch(`${BACKEND_URL}/api/public/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                studentName: document.getElementById("nameInput").value,
+                examTitle: examData.title,
+                score: score
+            })
+        });
 
-            document.getElementById("examSelection").style.display = "none";
-            document.getElementById("examTaking").style.display = "block";
-            document.getElementById("examTitle").innerText = currentExam.title;
+        alert("Exam Submitted! Score: " + score);
+        window.location.reload();
+    }
 
-            const qContainer = document.getElementById("questionContainer");
-            qContainer.innerHTML = "";
-
-            currentExam.questions.forEach((q, index) => {
-                let optionsHTML = "";
-                q.options.forEach(opt => {
-                    optionsHTML += `
-                    <label style="display: block; margin: 8px 0; cursor: pointer;">
-                        <input type="radio" name="q${index}" value="${opt}"> ${opt}
-                    </label>
-                    `;
-                });
-
-                qContainer.innerHTML += `
-                <div class="question-box">
-                    <p><b>Question ${index + 1}:</b> ${q.question}</p>
-                    ${optionsHTML}
-                </div>
-                `;
-            });
-        }
-
-        async function submitExam() {
-            if (!confirm("Are you sure you want to submit?")) return;
-
-            const studentName = document.getElementById("studentName").value;
-            let score = 0;
-            let correct = 0;
-            let wrong = 0;
-
-            currentExam.questions.forEach((q, index) => {
-                const selectedOption = document.querySelector(`input[name="q${index}"]:checked`);
-                if (selectedOption) {
-                    if (selectedOption.value === q.correctAnswer) {
-                        score += 4; 
-                        correct++;
-                    } else {
-                        score -= 1; 
-                        wrong++;
-                    }
-                }
-            });
-
-            // Show results locally
-            document.getElementById("resultText").innerHTML = `
-                🎉 Exam Submitted!<br>
-                <b>Total Score:</b> ${score} Marks
-            `;
-            document.getElementById("submitBtn").disabled = true;
-            document.getElementById("submitBtn").style.background = "grey";
-
-            // SAVE TO FIREBASE!
-            await fetch(`${BACKEND_URL}/api/public/submit`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    studentName: studentName,
-                    examTitle: currentExam.title,
-                    score: score,
-                    correct: correct,
-                    wrong: wrong
-                })
-            });
-        }
-
-        loadExams();
-    </script>
+    loadExams();
+</script>
 </body>
 </html>
