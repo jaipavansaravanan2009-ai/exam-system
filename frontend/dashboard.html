@@ -157,35 +157,49 @@
 
         async function submitNewQuestion() {
             const question = document.getElementById("newQ").value;
-            const opt1 = document.getElementById("opt1").value;
-            const opt2 = document.getElementById("opt2").value;
-            const opt3 = document.getElementById("opt3").value;
-            const opt4 = document.getElementById("opt4").value;
+            const options = [
+                document.getElementById("opt1").value,
+                document.getElementById("opt2").value,
+                document.getElementById("opt3").value,
+                document.getElementById("opt4").value
+            ];
             const correctAnswer = document.getElementById("correct").value;
 
-            if(!question || !opt1 || !opt2 || !opt3 || !opt4 || !correctAnswer) {
-                return alert("Please fill out all fields!");
+            if(!question || !options[0] || !correctAnswer) return alert("Fill all fields!");
+
+            try {
+                console.log("Sending question to:", `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`);
+                
+                const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json", 
+                        "Authorization": `Bearer ${token}` 
+                    },
+                    body: JSON.stringify({ question, options, correctAnswer })
+                });
+
+                if (!res.ok) {
+                    const errorData = await res.json();
+                    throw new Error(errorData.message || "Failed to save");
+                }
+
+                alert("Question Saved! ✅");
+                
+                // Clear inputs
+                document.getElementById("newQ").value = "";
+                document.getElementById("opt1").value = "";
+                document.getElementById("opt2").value = "";
+                document.getElementById("opt3").value = "";
+                document.getElementById("opt4").value = "";
+                document.getElementById("correct").value = "";
+                
+                refreshQuestionList(currentEditingExamId);
+            } catch (err) {
+                console.error("Fetch Error:", err);
+                alert("CRITICAL ERROR: " + err.message);
             }
-
-            const options = [opt1, opt2, opt3, opt4];
-
-            await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ question, options, correctAnswer })
-            });
-            
-            // Clear inputs
-            document.getElementById("newQ").value = "";
-            document.getElementById("opt1").value = "";
-            document.getElementById("opt2").value = "";
-            document.getElementById("opt3").value = "";
-            document.getElementById("opt4").value = "";
-            document.getElementById("correct").value = "";
-            
-            refreshQuestionList(currentEditingExamId);
         }
-
         async function deleteQuestion(examId, index) {
             if(!confirm("Are you sure you want to delete this question?")) return;
             
