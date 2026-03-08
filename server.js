@@ -144,6 +144,38 @@ app.get("/api/public/exams/:id", async (req, res) => {
   }
 });
 
+// ==========================================
+// 📊 RESULTS & LEADERBOARD ROUTES
+// ==========================================
+
+// 1. Save Student Result (Public)
+app.post("/api/public/submit", async (req, res) => {
+  try {
+    const resultData = req.body;
+    resultData.submittedAt = new Date(); // Adds timestamp
+    
+    // Automatically creates a "results" collection in Firebase!
+    await db.collection("results").add(resultData); 
+    res.status(201).json({ message: "Result saved successfully ✅" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Get All Results (Protected - Admin Only)
+app.get("/api/results", verifyAdmin, async (req, res) => {
+  try {
+    const snapshot = await db.collection("results").get();
+    const results = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 
 // UPDATE EXAM

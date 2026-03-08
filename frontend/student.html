@@ -8,6 +8,7 @@
         .btn { padding: 10px 15px; background: #2e86c1; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;}
         .btn:hover { background: #1a5276; }
         .question-box { margin-bottom: 20px; padding: 15px; background: #eaf2f8; border-left: 4px solid #2e86c1; }
+        input[type="text"] { padding: 10px; font-size: 16px; margin-bottom: 15px; width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -15,7 +16,10 @@
     <hr>
 
     <div id="examSelection">
-        <h3>Available Exams</h3>
+        <h3>Step 1: Enter your details</h3>
+        <input type="text" id="studentName" placeholder="Enter your Full Name" required>
+        
+        <h3>Step 2: Select an Exam</h3>
         <div id="studentExamList">Loading exams...</div>
     </div>
 
@@ -32,7 +36,6 @@
         const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
         let currentExam = null;
 
-        // Fetch all exams when page loads
         async function loadExams() {
             try {
                 const res = await fetch(`${BACKEND_URL}/api/public/exams`);
@@ -59,12 +62,16 @@
             }
         }
 
-        // Start Exam and load questions
         async function startExam(id) {
+            const studentName = document.getElementById("studentName").value;
+            if(!studentName) {
+                alert("Please enter your name first! 🛑");
+                return;
+            }
+
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${id}`);
             currentExam = await res.json();
 
-            // Hide list, show exam
             document.getElementById("examSelection").style.display = "none";
             document.getElementById("examTaking").style.display = "block";
             document.getElementById("examTitle").innerText = currentExam.title;
@@ -91,44 +98,49 @@
             });
         }
 
-        // Calculate Score (+4 / -1 Logic)
-        function submitExam() {
-            if (!confirm("Are you sure you want to submit your exam?")) return;
+        async function submitExam() {
+            if (!confirm("Are you sure you want to submit?")) return;
 
+            const studentName = document.getElementById("studentName").value;
             let score = 0;
             let correct = 0;
             let wrong = 0;
-            let unattempted = 0;
 
             currentExam.questions.forEach((q, index) => {
                 const selectedOption = document.querySelector(`input[name="q${index}"]:checked`);
-                
                 if (selectedOption) {
                     if (selectedOption.value === q.correctAnswer) {
-                        score += 4;  // +4 for correct
+                        score += 4; 
                         correct++;
                     } else {
-                        score -= 1;  // -1 for wrong
+                        score -= 1; 
                         wrong++;
                     }
-                } else {
-                    unattempted++;   // 0 for unattempted
                 }
             });
 
-            // Show results
+            // Show results locally
             document.getElementById("resultText").innerHTML = `
-                🎉 Exam Completed!<br>
-                <b>Total Score:</b> ${score} Marks<br>
-                ✅ Correct: ${correct} | ❌ Wrong: ${wrong} | ⚪ Unattempted: ${unattempted}
+                🎉 Exam Submitted!<br>
+                <b>Total Score:</b> ${score} Marks
             `;
-            
-            // Disable submit button so they can't click it twice
             document.getElementById("submitBtn").disabled = true;
             document.getElementById("submitBtn").style.background = "grey";
+
+            // SAVE TO FIREBASE!
+            await fetch(`${BACKEND_URL}/api/public/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    studentName: studentName,
+                    examTitle: currentExam.title,
+                    score: score,
+                    correct: correct,
+                    wrong: wrong
+                })
+            });
         }
 
-        // Initialize
         loadExams();
     </script>
 </body>
