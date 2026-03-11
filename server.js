@@ -230,6 +230,35 @@ app.post("/api/admin/create-user", async (req, res) => {
     }
 });
 
+const bcrypt = require('bcryptjs');
+
+// Route to create a new user (Only accessible by Admin)
+app.post("/api/admin/users", authorize(["admin"]), async (req, res) => {
+    const { name, email, password, role } = req.body;
+
+    try {
+        // 1. Check if user already exists
+        const existing = await db.collection("users").where("email", "==", email).get();
+        if (!existing.empty) return res.status(400).json({ message: "Email already registered!" });
+
+        // 2. HASH the password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // 3. Save to Firestore
+        await db.collection("users").add({
+            name,
+            email,
+            password: hashedPassword,
+            role,
+            createdAt: new Date()
+        });
+
+        res.json({ message: `User ${name} created as ${role} ✅` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get("/api/results", verifyAdmin, async (req, res) => {
   const snapshot = await db.collection("results").get();
   res.json(snapshot.docs.map(doc => doc.data()));

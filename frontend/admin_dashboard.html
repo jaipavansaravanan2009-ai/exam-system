@@ -74,6 +74,25 @@
         </div>
     </div>
 
+    <div class="box" style="margin-top: 20px;">
+    <h3>👥 User Management</h3>
+    <p>Create credentials for Paper Setters or Students</p>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <input type="text" id="userName" placeholder="Full Name">
+        <input type="email" id="userEmail" placeholder="Email Address">
+        <input type="password" id="userPass" placeholder="Set Password">
+        <select id="userRole">
+            <option value="student">Student</option>
+            <option value="setter">Question Paper Setter</option>
+            <option value="admin">Another Admin</option>
+        </select>
+    </div>
+    <button class="btn-add" onclick="createUser()" style="width: 100%; margin-top: 10px; background: #2c3e50;">
+        Create Account & Generate Hash
+    </button>
+</div>
+
     <script>
         const token = localStorage.getItem("adminToken");
         // ⚠️ REPLACE THIS URL IF IT IS DIFFERENT!
@@ -159,6 +178,46 @@
                     </div>`;
             });
         }
+
+    async function createUser() {
+    // 1. Get values from inputs
+    const name = document.getElementById("userName").value;
+    const email = document.getElementById("userEmail").value;
+    const password = document.getElementById("userPass").value;
+    const role = document.getElementById("userRole").value;
+
+    // 2. IMPORTANT: Use the same token name as the rest of the dashboard
+    const adminToken = localStorage.getItem("adminToken"); 
+
+    if(!name || !email || !password) return alert("Please fill all fields!");
+    if(!adminToken) return alert("Your session has expired. Please log in again.");
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/users`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${adminToken}` // Corrected token variable
+            },
+            body: JSON.stringify({ name, email, password, role })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            alert(`Success: Account created for ${name} ✅`);
+            // Clear the form
+            document.getElementById("userName").value = "";
+            document.getElementById("userEmail").value = "";
+            document.getElementById("userPass").value = "";
+        } else {
+            alert("Error: " + (data.message || "Could not create user. Check backend logs."));
+        }
+    } catch (err) {
+        console.error("Connection Error:", err);
+        alert("Network Error: Make sure your Railway server is running!");
+    }
+}
 
         async function submitNewQuestion() {
     // 1. Get values from the correct HTML IDs
