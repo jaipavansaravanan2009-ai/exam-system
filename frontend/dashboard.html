@@ -61,6 +61,11 @@
                 <input type="text" id="opt4" placeholder="Option 4"><br>
                 <input type="text" id="correct" placeholder="Correct Answer (Must exactly match one option)">
                 <br>
+                <select id="subjectSelect" style="padding: 8px; width: 95%; margin-bottom: 10px;">
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Maths">Maths</option>
+                </select>
                 <button class="btn-green" onclick="submitNewQuestion()">Save Question ✅</button>
             </div>
             
@@ -156,6 +161,17 @@
         }
 
         async function submitNewQuestion() {
+
+            // Add 'subject' to the body object
+            const subject = document.getElementById("subjectSelect").value;
+
+            const body = {
+                question: document.getElementById("qText").value,
+                options: [/* ... your options ... */],
+                correctAnswer: document.getElementById("ans").value,
+                subject: subject // ⬅️ Add this line
+            };
+            
             const question = document.getElementById("newQ").value;
             const options = [
                 document.getElementById("opt1").value,

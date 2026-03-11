@@ -35,6 +35,28 @@
 </header>
 
 <div class="main-container" id="examUI" style="display: none;">
+
+    <div class="subject-bar" style="background: #e5e7e9; display: flex; border-bottom: 1px solid #ccc;">
+    <button class="subj-btn active" onclick="switchSubject('Physics')">Physics</button>
+    <button class="subj-btn" onclick="switchSubject('Chemistry')">Chemistry</button>
+    <button class="subj-btn" onclick="switchSubject('Maths')">Maths</button>
+</div>
+
+<style>
+    .subj-btn {
+        padding: 10px 25px;
+        border: none;
+        background: white;
+        cursor: pointer;
+        font-weight: bold;
+        border-right: 1px solid #ccc;
+    }
+    .subj-btn.active {
+        background: #2e86c1;
+        color: white;
+    }
+</style>
+
     <div class="question-section">
         <h3 id="qNumber">Question 1</h3>
         <hr>
@@ -67,6 +89,7 @@
 
 <script>
     const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; // 🚨 UPDATE THIS
+    let currentSubject = 'Physics';
     let examData = null;
     let currentIdx = 0;
     let studentAnswers = {}; 
@@ -98,33 +121,53 @@
         startTimer();
     }
 
-    function renderPalette() {
-        const grid = document.getElementById("palette");
-        grid.innerHTML = examData.questions.map((_, i) => `
-            <div class="palette-btn" id="pBtn${i}" onclick="showQuestion(${i})">${i+1}</div>
-        `).join("");
-    }
+    function switchSubject(subj) {
+    currentSubject = subj;
+    // Update button colors
+    document.querySelectorAll('.subj-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.innerText === subj);
+    });
+    renderPalette();
+    
+    // Find the first question of this subject and show it
+    const firstIndex = examData.questions.findIndex(q => q.subject === subj);
+    if (firstIndex !== -1) showQuestion(firstIndex);
+}
 
-    function showQuestion(index) {
+function renderPalette() {
+    const grid = document.getElementById("palette");
+    grid.innerHTML = "";
+    
+    examData.questions.forEach((q, i) => {
+        // ONLY show dots for the selected subject
+        if (q.subject === currentSubject) {
+            grid.innerHTML += `
+                <div class="palette-btn ${studentAnswers[i] ? 'answered' : ''}" 
+                     id="pBtn${i}" onclick="showQuestion(${i})">
+                     ${i + 1}
+                </div>`;
+        }
+    });
+}
+
+        function showQuestion(index) {
         currentIdx = index;
         const q = examData.questions[index];
         
-        // Update Active Style
-        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById(`pBtn${index}`).classList.add('active');
-        if(!document.getElementById(`pBtn${index}`).classList.contains('answered')) {
-            document.getElementById(`pBtn${index}`).classList.add('visited');
-        }
-
-        document.getElementById("qNumber").innerText = "Question " + (index + 1);
         document.getElementById("qText").innerText = q.question;
-        
         const optDiv = document.getElementById("optionsList");
-        optDiv.innerHTML = q.options.map(opt => `
-            <div style="margin: 10px 0;">
-                <label><input type="radio" name="ans" value="${opt}" ${studentAnswers[index] === opt ? 'checked' : ''}> ${opt}</label>
-            </div>
-        `).join("");
+        
+        if (q.options && q.options.length > 0 && q.options[0] !== "") {
+            // Render MCQs
+            optDiv.innerHTML = q.options.map(opt => `
+                <label><input type="radio" name="ans" value="${opt}"> ${opt}</label><br>
+            `).join("");
+        } else {
+            // Render Numerical Input
+            optDiv.innerHTML = `<input type="number" id="numAns" placeholder="Enter Integer Value" 
+                                value="${studentAnswers[index] || ''}" 
+                                onchange="studentAnswers[${index}] = this.value">`;
+        }
     }
 
     function saveAndNext() {
