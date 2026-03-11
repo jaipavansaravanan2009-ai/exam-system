@@ -153,6 +153,8 @@
 </div>
 
 <script>
+    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
+    
     async function handleLogin() {
         const role = document.getElementById("role").value;
         const username = document.getElementById("username").value;
@@ -167,8 +169,7 @@
         btn.disabled = true;
 
         try {
-            // Updated to a common login endpoint
-            const res = await fetch("https://exam-system-production-5def.up.railway.app/api/auth/login", {
+            const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, password, role })
@@ -176,13 +177,16 @@
 
             const data = await res.json();
 
-            if (data.token) {
-                // Store token and role for the session
-                localStorage.setItem("authToken", data.token);
+            if (res.ok && data.token) {
+                // --- THE CRITICAL FIX ---
+                // We use "adminToken" because your Dashboard code looks for that specific key
+                localStorage.setItem("adminToken", data.token);
                 localStorage.setItem("userRole", data.role);
                 localStorage.setItem("userName", data.username);
 
-                // Redirect based on the role received from backend
+                console.log("Login Success. Role:", data.role);
+
+                // Redirect logic
                 if (data.role === "admin") {
                     window.location.href = "admin_dashboard.html";
                 } else if (data.role === "setter") {
@@ -191,16 +195,20 @@
                     window.location.href = "student_portal.html";
                 }
             } else {
-                alert(data.message || "Invalid Credentials");
-                btn.innerText = "Sign In to Dashboard";
-                btn.disabled = false;
+                alert("Login Failed: " + (data.message || "Invalid Credentials"));
+                resetBtn();
             }
         } catch (err) {
-            console.error(err);
-            alert("Server connection failed.");
-            btn.innerText = "Sign In to Dashboard";
-            btn.disabled = false;
+            console.error("Fetch error:", err);
+            alert("Connection Failed. Check if your Railway server is active at: " + BACKEND_URL);
+            resetBtn();
         }
+    }
+
+    function resetBtn() {
+        const btn = document.getElementById("loginBtn");
+        btn.innerText = "Sign In to Dashboard";
+        btn.disabled = false;
     }
 
     // Hit Enter to Login
