@@ -5,6 +5,24 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const admin = require("firebase-admin");
 
+const bcrypt = require('bcryptjs');
+
+async function createHashedPassword(plainPassword) {
+    // The "Salt" makes the hash unique even if two users have the same password
+    const saltRounds = 10; 
+    
+    // Generate the hash
+    const hashedPassword = await bcrypt.hash(plainPassword, saltRounds);
+    
+    console.log("Original:", plainPassword);
+    console.log("Hashed:", hashedPassword);
+    
+    return hashedPassword;
+}
+
+// Example: Creating a hash for a new Admin
+// createHashedPassword("admin123");
+
 // 1. Firebase setup
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 admin.initializeApp({
@@ -18,46 +36,80 @@ app.use(express.json());
 
 console.log("Server is starting up... 🚀");
 
-// 2. Admin Verification Middleware
-function verifyAdmin(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ message: "Access denied 🚫" });
+// 2. Authorize Verification Middleware
+function authorize(roles = []) {
+    return (req, res, next) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return res.status(401).json({ message: "No token provided" });
 
-  const token = authHeader.split(" ")[1];
-  try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.admin = verified;
-    next();
-  } catch (err) {
-    return res.status(400).json({ message: "Invalid token ❌" });
-  }
+        const token = authHeader.split(" ")[1];
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            // Check if user's role is allowed for this route
+            if (roles.length && !roles.includes(decoded.role)) {
+                return res.status(403).json({ message: "Unauthorized role 🚫" });
+            }
+
+            req.user = decoded;
+            next();
+        } catch (err) {
+            return res.status(401).json({ message: "Invalid or expired token" });
+        }
+    };
 }
+
+// Example usage on routes:
+app.post("/api/exams", authorize(["admin"]), createExam); // Only Admin
+app.get("/api/exams", authorize(["admin", "setter", "student"]), getExams); // Everyone
+app.post("/api/exams/:id/questions", authorize(["admin", "setter"]), addQuestion); // Admin & Setter
 
 // ==========================================
 // 🔑 ADMIN AUTH ROUTES
 // ==========================================
 
-app.post("/api/admin/login", async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const snapshot = await db.collection("admins").where("email", "==", email).get();
-    if (snapshot.empty) return res.status(401).json({ message: "Invalid email ❌" });
+// server.js - Unified Auth Route
+app.post("/api/auth/login", async (req, res) => {
+    const { username, password, role } = req.body; // username is the email
 
-    const adminDoc = snapshot.docs[0];
-    const adminData = adminDoc.data();
-    const isMatch = await bcrypt.compare(password, adminData.password);
+    try {
+        // 1. Find user by email AND role
+        const snapshot = await db.collection("users")
+            .where("email", "==", username)
+            .where("role", "==", role)
+            .get();
 
-    if (!isMatch) return res.status(401).json({ message: "Wrong password ❌" });
+        if (snapshot.empty) {
+            return res.status(401).json({ message: "Invalid credentials or role ❌" });
+        }
 
-    const token = jwt.sign(
-      { id: adminDoc.id, email: adminData.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "2h" }
-    );
-    res.json({ message: "Login successful ✅", token });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+        const userDoc = snapshot.docs[0];
+        const userData = userDoc.data();
+
+        // 2. Verify hashed password
+        const isMatch = await bcrypt.compare(password, userData.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: "Wrong password ❌" });
+        }
+
+        // 3. Create JWT token with role included
+        const token = jwt.sign(
+            { id: userDoc.id, email: userData.email, role: userData.role },
+            process.env.JWT_SECRET,
+            { expiresIn: "4h" }
+        );
+
+        // 4. Send success response
+        res.json({
+            message: "Login successful ✅",
+            token: token,
+            role: userData.role,
+            username: userData.name || userData.email
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ==========================================
@@ -153,6 +205,28 @@ app.post("/api/public/submit", async (req, res) => {
         res.status(200).json({ message: "Score recorded successfully! ✅" });
     } catch (error) {
         res.status(500).json({ error: "Failed to save score" });
+    }
+});
+
+app.post("/api/admin/create-user", async (req, res) => {
+    const { email, password, role, name } = req.body;
+
+    try {
+        // 1. Hash the password before saving
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // 2. Save the user to the "users" collection
+        await db.collection("users").add({
+            email,
+            password: hashedPassword, // Store the HASH, never the plain text
+            role,
+            name,
+            createdAt: new Date()
+        });
+
+        res.json({ message: "User created successfully! ✅" });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 

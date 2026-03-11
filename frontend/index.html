@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JEE Mock CBT | Portal Login</title>
+    <style>
+        :root {
+            --primary: #1e3d59;
+            --secondary: #2e86c1;
+            --accent: #f39c12;
+            --bg: #f4f7f6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+
+        body {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #34495e;
+            margin-bottom: 8px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--secondary);
+            box-shadow: 0 0 8px rgba(46, 134, 193, 0.2);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .login-btn:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+        }
+
+        .footer-links {
+            margin-top: 25px;
+            font-size: 13px;
+            color: #95a5a6;
+        }
+
+        .footer-links a {
+            color: var(--secondary);
+            text-decoration: none;
+        }
+
+        /* Role-specific highlight */
+        .role-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            text-transform: uppercase;
+            background: #ecf0f1;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-container">
+    <div class="logo">🚀 JEE CBT PORTAL</div>
+    <p class="subtitle">Unified Examination Management System</p>
+
+    <div class="form-group">
+        <label>I am a...</label>
+        <select id="role">
+            <option value="student">Student / Candidate</option>
+            <option value="setter">Question Paper Setter</option>
+            <option value="admin">System Administrator</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Email / Username</label>
+        <input type="text" id="username" placeholder="Enter your ID or Email">
+    </div>
+
+    <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="••••••••">
+    </div>
+
+    <button class="login-btn" id="loginBtn" onclick="handleLogin()">Sign In to Dashboard</button>
+
+    <div class="footer-links">
+        Forgot password? <a href="#">Contact Support</a>
+    </div>
+</div>
+
+<script>
+    async function handleLogin() {
+        const role = document.getElementById("role").value;
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+        const btn = document.getElementById("loginBtn");
+
+        if (!username || !password) {
+            return alert("Please enter credentials.");
+        }
+
+        btn.innerText = "Verifying...";
+        btn.disabled = true;
+
+        try {
+            // Updated to a common login endpoint
+            const res = await fetch("https://exam-system-production-5def.up.railway.app/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password, role })
+            });
+
+            const data = await res.json();
+
+            if (data.token) {
+                // Store token and role for the session
+                localStorage.setItem("authToken", data.token);
+                localStorage.setItem("userRole", data.role);
+                localStorage.setItem("userName", data.username);
+
+                // Redirect based on the role received from backend
+                if (data.role === "admin") {
+                    window.location.href = "admin_dashboard.html";
+                } else if (data.role === "setter") {
+                    window.location.href = "setter_dashboard.html";
+                } else {
+                    window.location.href = "student_portal.html";
+                }
+            } else {
+                alert(data.message || "Invalid Credentials");
+                btn.innerText = "Sign In to Dashboard";
+                btn.disabled = false;
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Server connection failed.");
+            btn.innerText = "Sign In to Dashboard";
+            btn.disabled = false;
+        }
+    }
+
+    // Hit Enter to Login
+    document.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleLogin(); });
+</script>
+
+</body>
+</html>
