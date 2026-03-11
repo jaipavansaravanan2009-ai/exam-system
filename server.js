@@ -141,8 +141,19 @@ app.get("/api/public/exams/:id", async (req, res) => {
 });
 
 app.post("/api/public/submit", async (req, res) => {
-  await db.collection("results").add({ ...req.body, submittedAt: new Date() });
-  res.json({ message: "Result saved ✅" });
+    const { studentName, examTitle, score } = req.body;
+    try {
+        // If using Firebase, save to a 'submissions' collection
+        await db.collection("submissions").add({
+            studentName,
+            examTitle,
+            score,
+            submittedAt: new Date()
+        });
+        res.status(200).json({ message: "Score recorded successfully! ✅" });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to save score" });
+    }
 });
 
 app.get("/api/results", verifyAdmin, async (req, res) => {

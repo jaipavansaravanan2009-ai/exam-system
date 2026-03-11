@@ -55,6 +55,33 @@
         background: #2e86c1;
         color: white;
     }
+
+    /* Purple color for Mark for Review */
+.palette-btn.review { 
+    background: #8e44ad; 
+    color: white; 
+    border-radius: 50%; /* Circle shape */
+}
+
+/* Purple with a small green dot (Answered & Marked for Review) */
+.palette-btn.review-answered { 
+    background: #8e44ad; 
+    color: white; 
+    border-radius: 50%;
+    position: relative;
+}
+
+.palette-btn.review-answered::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    background: #27ae60;
+    border-radius: 50%;
+    border: 1px solid white;
+}
 </style>
 
     <div class="question-section">
@@ -66,7 +93,9 @@
         <div class="controls">
             <button class="btn btn-save" onclick="saveAndNext()">Save & Next</button>
             <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear Response</button>
+            <button class="btn" style="background:#95a5a6;" onclick="nextQuestion()">Next (Skip)</button> <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear Response</button>
             <button class="btn" style="background:#f1c40f;" onclick="submitFinal()">Submit Exam</button>
+            <button class="btn" style="background: #8e44ad; color: white;" onclick="markForReview()">Mark for Review & Next</button>
         </div>
     </div>
 
@@ -79,6 +108,12 @@
         <h4>Question Palette</h4>
         <div class="palette-grid" id="palette"></div>
     </div>
+    <div style="margin-top: 20px; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+    <div><span style="background:#27ae60; color:white; padding:2px 5px;">0</span> Answered</div>
+    <div><span style="background:#e74c3c; color:white; padding:2px 5px;">0</span> Not Answered</div>
+    <div><span style="background:#8e44ad; color:white; padding:2px 5px; border-radius:50%;">0</span> Review</div>
+    <div><span style="background:white; border:1px solid #999; padding:2px 5px;">0</span> Not Visited</div>
+</div>
 </div>
 
 <div id="setupBox" style="padding: 50px; text-align: center;">
@@ -88,12 +123,13 @@
 </div>
 
 <script>
-    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; // 🚨 UPDATE THIS
+    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; 
     let currentSubject = 'Physics';
     let examData = null;
+    let reviewStatus = {}; // { index: true/false }
+    let studentAnswers = {}; // { index: answerValue }
     let currentIdx = 0;
-    let studentAnswers = {}; 
-    let timeLeft = 3 * 60 * 60; // 3 Hours
+    let timeLeft = 3 * 60 * 60; 
 
     async function loadExams() {
         const res = await fetch(`${BACKEND_URL}/api/public/exams`);
@@ -116,76 +152,140 @@
         document.getElementById("studentNameHeader").innerText = "Student: " + name;
         document.getElementById("paletteStudentName").innerText = name;
         
-        renderPalette();
-        showQuestion(0);
+        switchSubject('Physics'); // Initialize with Physics
         startTimer();
     }
 
     function switchSubject(subj) {
-    currentSubject = subj;
-    // Update button colors
-    document.querySelectorAll('.subj-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.innerText === subj);
-    });
-    renderPalette();
-    
-    // Find the first question of this subject and show it
-    const firstIndex = examData.questions.findIndex(q => q.subject === subj);
-    if (firstIndex !== -1) showQuestion(firstIndex);
-}
+        currentSubject = subj;
+        document.querySelectorAll('.subj-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.innerText === subj);
+        });
+        
+        renderPalette();
+        
+        // Find first question of this subject
+        const firstIndex = examData.questions.findIndex(q => q.subject === subj);
+        if (firstIndex !== -1) showQuestion(firstIndex);
+    }
 
-function renderPalette() {
-    const grid = document.getElementById("palette");
-    grid.innerHTML = "";
-    
-    examData.questions.forEach((q, i) => {
-        // ONLY show dots for the selected subject
-        if (q.subject === currentSubject) {
-            grid.innerHTML += `
-                <div class="palette-btn ${studentAnswers[i] ? 'answered' : ''}" 
-                     id="pBtn${i}" onclick="showQuestion(${i})">
-                     ${i + 1}
-                </div>`;
+    function renderPalette() {
+        const grid = document.getElementById("palette");
+        grid.innerHTML = "";
+        
+        examData.questions.forEach((q, i) => {
+            if (q.subject === currentSubject) {
+                let statusClass = "";
+                if (reviewStatus[i] && studentAnswers[i]) statusClass = "review-answered";
+                else if (reviewStatus[i]) statusClass = "review";
+                else if (studentAnswers[i]) statusClass = "answered";
+                else if (i === currentIdx) statusClass = ""; // Handled by active check
+
+                grid.innerHTML += `
+                    <div class="palette-btn ${statusClass} ${i === currentIdx ? 'active' : ''}" 
+                         id="pBtn${i}" onclick="showQuestion(${i})">
+                         ${i + 1}
+                    </div>`;
+            }
+        });
+    }
+
+    function showQuestion(index) {
+        // Handle subject auto-switching if index moves out of current subject
+        if (examData.questions[index].subject !== currentSubject) {
+            currentSubject = examData.questions[index].subject;
+            document.querySelectorAll('.subj-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.innerText === currentSubject);
+            });
         }
-    });
-}
 
-        function showQuestion(index) {
         currentIdx = index;
         const q = examData.questions[index];
         
+        // Update Palette Visuals
+        renderPalette(); 
+        const pBtn = document.getElementById(`pBtn${index}`);
+        if (pBtn && !studentAnswers[index] && !reviewStatus[index]) {
+            pBtn.classList.add('visited');
+        }
+
+        document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
         document.getElementById("qText").innerText = q.question;
         const optDiv = document.getElementById("optionsList");
         
         if (q.options && q.options.length > 0 && q.options[0] !== "") {
-            // Render MCQs
+            // MCQ: Added the 'checked' logic so answers persist in UI
             optDiv.innerHTML = q.options.map(opt => `
-                <label><input type="radio" name="ans" value="${opt}"> ${opt}</label><br>
+                <div style="margin: 10px 0;">
+                    <label>
+                        <input type="radio" name="ans" value="${opt}" 
+                        ${studentAnswers[index] === opt ? 'checked' : ''}> 
+                        ${opt}
+                    </label>
+                </div>
             `).join("");
         } else {
-            // Render Numerical Input
-            optDiv.innerHTML = `<input type="number" id="numAns" placeholder="Enter Integer Value" 
-                                value="${studentAnswers[index] || ''}" 
-                                onchange="studentAnswers[${index}] = this.value">`;
+            // Numerical
+            optDiv.innerHTML = `
+                <div style="margin: 20px 0;">
+                    <input type="number" id="numAns" placeholder="Enter Integer Value" 
+                    style="padding:10px; font-size:16px;"
+                    value="${studentAnswers[index] || ''}" 
+                    oninput="updateNumericalAns(this.value)">
+                </div>`;
         }
     }
 
-    function saveAndNext() {
-        const selected = document.querySelector('input[name="ans"]:checked');
-        if(selected) {
-            studentAnswers[currentIdx] = selected.value;
-            document.getElementById(`pBtn${currentIdx}`).classList.remove('visited');
-            document.getElementById(`pBtn${currentIdx}`).classList.add('answered');
+    function updateNumericalAns(val) {
+        if(val !== "") {
+            studentAnswers[currentIdx] = val;
+        } else {
+            delete studentAnswers[currentIdx];
         }
+        renderPalette();
+    }
+
+    function nextQuestion() {
+    if (currentIdx < examData.questions.length - 1) {
+        showQuestion(currentIdx + 1);
+    } else {
+        alert("You are at the last question.");
+    }
+}
+
+    function saveAndNext() {
+    const selected = document.querySelector('input[name="ans"]:checked');
+    const pBtn = document.getElementById(`pBtn${currentIdx}`);
+    
+    if (selected) {
+        studentAnswers[currentIdx] = selected.value;
+        delete reviewStatus[currentIdx]; // Remove review status if saving
+        pBtn.className = "palette-btn answered";
+        nextQuestion(); // Move forward after saving
+    } else if (document.getElementById("numAns") && document.getElementById("numAns").value !== "") {
+        // Handle numerical input
+        studentAnswers[currentIdx] = document.getElementById("numAns").value;
+        pBtn.className = "palette-btn answered";
+        nextQuestion();
+    } else {
+        alert("Please select an answer to 'Save'. To just skip, use the Question Palette or the Next button.");
+    }
+}
+
+    function markForReview() {
+        const selected = document.querySelector('input[name="ans"]:checked');
+        reviewStatus[currentIdx] = true;
         
-        if(currentIdx < examData.questions.length - 1) {
+        if (selected) studentAnswers[currentIdx] = selected.value;
+
+        if (currentIdx < examData.questions.length - 1) {
             showQuestion(currentIdx + 1);
         }
     }
 
     function clearResponse() {
         delete studentAnswers[currentIdx];
-        document.getElementById(`pBtn${currentIdx}`).classList.remove('answered');
+        delete reviewStatus[currentIdx];
         showQuestion(currentIdx);
     }
 
@@ -199,21 +299,23 @@ function renderPalette() {
             timerDiv.innerText = `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
             if(timeLeft <= 0) {
                 clearInterval(interval);
-                submitFinal();
+                submitFinal(true);
             }
         }, 1000);
     }
 
     async function submitFinal() {
-        if(!confirm("Submit Exam?")) return;
-        
-        let score = 0;
-        examData.questions.forEach((q, i) => {
-            if(studentAnswers[i] === q.correctAnswer) score += 4;
-            else if(studentAnswers[i]) score -= 1;
-        });
+    if(!confirm("Are you sure you want to submit the exam?")) return;
+    
+    let score = 0;
+    examData.questions.forEach((q, i) => {
+        // Use loose equality (==) in case types differ (string vs number)
+        if(studentAnswers[i] == q.correctAnswer) score += 4;
+        else if(studentAnswers[i]) score -= 1;
+    });
 
-        await fetch(`${BACKEND_URL}/api/public/submit`, {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/public/submit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -223,9 +325,18 @@ function renderPalette() {
             })
         });
 
-        alert("Exam Submitted! Score: " + score);
-        window.location.reload();
+        if (response.ok) {
+            alert("Exam Submitted Successfully! Final Score: " + score);
+            window.location.reload();
+        } else {
+            const err = await response.json();
+            alert("Submission failed: " + (err.message || "Unknown error"));
+        }
+    } catch (error) {
+        console.error("Submission Error:", error);
+        alert("Network Error: Could not connect to the server for submission.");
     }
+}
 
     loadExams();
 </script>

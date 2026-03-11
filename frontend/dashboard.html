@@ -161,61 +161,63 @@
         }
 
         async function submitNewQuestion() {
+    // 1. Get values from the correct HTML IDs
+    const question = document.getElementById("newQ").value;
+    const options = [
+        document.getElementById("opt1").value,
+        document.getElementById("opt2").value,
+        document.getElementById("opt3").value,
+        document.getElementById("opt4").value
+    ];
+    const correctAnswer = document.getElementById("correct").value;
+    const subject = document.getElementById("subjectSelect").value;
 
-            // Add 'subject' to the body object
-            const subject = document.getElementById("subjectSelect").value;
+    // 2. Validation
+    if(!question || !options[0] || !correctAnswer) {
+        return alert("Please fill in the Question, Options, and Correct Answer!");
+    }
 
-            const body = {
-                question: document.getElementById("qText").value,
-                options: [/* ... your options ... */],
-                correctAnswer: document.getElementById("ans").value,
-                subject: subject // ⬅️ Add this line
-            };
-            
-            const question = document.getElementById("newQ").value;
-            const options = [
-                document.getElementById("opt1").value,
-                document.getElementById("opt2").value,
-                document.getElementById("opt3").value,
-                document.getElementById("opt4").value
-            ];
-            const correctAnswer = document.getElementById("correct").value;
+    try {
+        console.log("Attempting to save to:", `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`);
+        
+        // 3. Send to Backend
+        const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json", 
+                "Authorization": `Bearer ${token}` 
+            },
+            body: JSON.stringify({ 
+                question: question, 
+                options: options, 
+                correctAnswer: correctAnswer,
+                subject: subject 
+            })
+        });
 
-            if(!question || !options[0] || !correctAnswer) return alert("Fill all fields!");
-
-            try {
-                console.log("Sending question to:", `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`);
-                
-                const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
-                    method: "POST",
-                    headers: { 
-                        "Content-Type": "application/json", 
-                        "Authorization": `Bearer ${token}` 
-                    },
-                    body: JSON.stringify({ question, options, correctAnswer })
-                });
-
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.message || "Failed to save");
-                }
-
-                alert("Question Saved! ✅");
-                
-                // Clear inputs
-                document.getElementById("newQ").value = "";
-                document.getElementById("opt1").value = "";
-                document.getElementById("opt2").value = "";
-                document.getElementById("opt3").value = "";
-                document.getElementById("opt4").value = "";
-                document.getElementById("correct").value = "";
-                
-                refreshQuestionList(currentEditingExamId);
-            } catch (err) {
-                console.error("Fetch Error:", err);
-                alert("CRITICAL ERROR: " + err.message);
-            }
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.message || "Server refused to save question");
         }
+
+        alert("Question Saved Successfully! ✅");
+        
+        // 4. Clear the input boxes for the next question
+        document.getElementById("newQ").value = "";
+        document.getElementById("opt1").value = "";
+        document.getElementById("opt2").value = "";
+        document.getElementById("opt3").value = "";
+        document.getElementById("opt4").value = "";
+        document.getElementById("correct").value = "";
+        
+        // 5. Refresh the list so you see the new question immediately
+        refreshQuestionList(currentEditingExamId);
+
+    } catch (err) {
+        console.error("Fetch Error:", err);
+        alert("SAVE FAILED: " + err.message);
+    }
+}
         async function deleteQuestion(examId, index) {
             if(!confirm("Are you sure you want to delete this question?")) return;
             
