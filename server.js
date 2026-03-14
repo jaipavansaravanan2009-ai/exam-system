@@ -224,6 +224,18 @@ app.get("/api/public/exams/:id", async (req, res) => {
     res.json({ id: doc.id, ...doc.data() });
 });
 
+const cors = require('cors');
+
+// Place this BEFORE your routes
+app.use(cors({
+    origin: "*", // Allows access from any local file or domain
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// Add this to handle "Preflight" requests explicitly
+app.options('*', cors());
+
 // 4. Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
