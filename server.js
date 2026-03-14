@@ -33,9 +33,14 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // ==========================================
+// 🚀 INITIALIZE EXPRESS APP
+// ==========================================
+const app = express();
+
+// ==========================================
 // 🛡️ CRITICAL: UNIFIED CORS & MIDDLEWARE
 // ==========================================
-// This must stay at the TOP to prevent 502/Preflight errors
+// This stays at the top of the app usage to prevent 502/Preflight errors
 app.use(cors({
     origin: "*", 
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -44,7 +49,7 @@ app.use(cors({
 
 app.use(express.json());
 
-console.log("Server is starting up... 🚀");
+console.log("Server logic initialized... 🚀");
 
 // 2. Middleware: Unified Authorization
 function authorize(roles = []) {
@@ -175,16 +180,20 @@ app.get("/api/results", authorize(["admin"]), async (req, res) => {
 });
 
 app.get("/api/public/exams", async (req, res) => {
-    const snapshot = await db.collection("exams").get();
-    res.json(snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        title: doc.data().title, 
-        questionCount: doc.data().questions?.length || 0 
-    })));
+    try {
+        const snapshot = await db.collection("exams").get();
+        res.json(snapshot.docs.map(doc => ({ 
+            id: doc.id, 
+            title: doc.data().title, 
+            questionCount: doc.data().questions?.length || 0 
+        })));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // 4. Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT} ✅`);
 });
