@@ -2,11 +2,10 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs"); // Use bcryptjs consistently
+const bcrypt = require("bcryptjs");
 const admin = require("firebase-admin");
 
 // 1. Firebase Setup
-// Ensure your Railway Environment Variable FIREBASE_KEY is the full JSON string
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 if (!admin.apps.length) {
     admin.initializeApp({
@@ -16,7 +15,17 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 const app = express();
-app.use(cors());
+
+// ==========================================
+// 🛡️ CRITICAL: UNIFIED CORS & MIDDLEWARE
+// ==========================================
+// This must stay at the TOP to prevent 502/Preflight errors
+app.use(cors({
+    origin: "*", 
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(express.json());
 
 console.log("Server is starting up... 🚀");
@@ -30,12 +39,9 @@ function authorize(roles = []) {
         const token = authHeader.split(" ")[1];
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            
-            // Check if user's role is allowed for this route
             if (roles.length && !roles.includes(decoded.role)) {
                 return res.status(403).json({ message: "Unauthorized role 🚫" });
             }
-
             req.user = decoded;
             next();
         } catch (err) {
@@ -48,10 +54,8 @@ function authorize(roles = []) {
 // 🔑 AUTHENTICATION ROUTES
 // ==========================================
 
-// Unified Login for Admin, Setter, and Student
 app.post("/api/auth/login", async (req, res) => {
-    const { username, password, role } = req.body; // username is the email
-
+    const { username, password, role } = req.body;
     try {
         const snapshot = await db.collection("users")
             .where("email", "==", username)
@@ -65,7 +69,6 @@ app.post("/api/auth/login", async (req, res) => {
         const userDoc = snapshot.docs[0];
         const userData = userDoc.data();
 
-        // Verify hashed password
         const isMatch = await bcrypt.compare(password, userData.password);
         if (!isMatch) {
             return res.status(401).json({ message: "Wrong password ❌" });
@@ -83,14 +86,13 @@ app.post("/api/auth/login", async (req, res) => {
             role: userData.role,
             username: userData.name || userData.email
         });
-
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
 // ==========================================
-// 👑 ADMIN ONLY: USER MANAGEMENT
+// 👑 ADMIN & USER MANAGEMENT
 // ==========================================
 
 app.post("/api/admin/users", authorize(["admin"]), async (req, res) => {
@@ -100,39 +102,27 @@ app.post("/api/admin/users", authorize(["admin"]), async (req, res) => {
         if (!existing.empty) return res.status(400).json({ message: "Email already registered!" });
 
         const hashedPassword = await bcrypt.hash(password, 10);
-
         await db.collection("users").add({
-            name,
-            email,
-            password: hashedPassword,
-            role,
-            createdAt: new Date()
+            name, email, password: hashedPassword, role, createdAt: new Date()
         });
-
         res.json({ message: `User ${name} created as ${role} ✅` });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // ==========================================
-// 📝 EXAM MANAGEMENT (ADMIN & SETTER)
+// 📝 EXAM MANAGEMENT
 // ==========================================
 
-// Create Exam (Admin Only)
 app.post("/api/exams", authorize(["admin"]), async (req, res) => {
     const { title, questions } = req.body;
     try {
         const docRef = await db.collection("exams").add({
-            title,
-            questions: questions || [],
-            createdAt: new Date()
+            title, questions: questions || [], createdAt: new Date()
         });
         res.status(201).json({ message: "Exam created! ✅", id: docRef.id });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Get All Exams
 app.get("/api/exams", authorize(["admin", "setter"]), async (req, res) => {
     try {
         const snapshot = await db.collection("exams").get();
@@ -140,7 +130,6 @@ app.get("/api/exams", authorize(["admin", "setter"]), async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Delete Exam
 app.delete("/api/exams/:id", authorize(["admin"]), async (req, res) => {
     try {
         await db.collection("exams").doc(req.params.id).delete();
@@ -148,66 +137,26 @@ app.delete("/api/exams/:id", authorize(["admin"]), async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Add Question to Exam
-app.post("/api/exams/:examId/questions", authorize(["admin", "setter"]), async (req, res) => {
-    try {
-        const docRef = db.collection("exams").doc(req.params.examId);
-        const doc = await docRef.get();
-        if (!doc.exists) return res.status(404).json({ message: "Exam not found" });
-
-        let questions = doc.data().questions || [];
-        questions.push(req.body); 
-
-        await docRef.update({ questions });
-        res.json({ message: "Question added successfully ✅" });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
-// Delete Specific Question
-app.delete("/api/exams/:examId/questions/:questionIndex", authorize(["admin", "setter"]), async (req, res) => {
-    try {
-        const docRef = db.collection("exams").doc(req.params.examId);
-        const doc = await docRef.get();
-        let questions = doc.data().questions || [];
-        
-        questions.splice(Number(req.params.questionIndex), 1);
-
-        await docRef.update({ questions });
-        res.json({ message: "Question deleted 🗑️" });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
 // ==========================================
-// 🏆 RESULTS & SUBMISSIONS
+// 🏆 RESULTS & PUBLIC ROUTES
 // ==========================================
 
-// Submit Exam (Students)
 app.post("/api/public/submit", async (req, res) => {
     const { studentName, examTitle, score } = req.body;
     try {
         await db.collection("results").add({
-            studentName,
-            examTitle,
-            score,
-            submittedAt: new Date()
+            studentName, examTitle, score, submittedAt: new Date()
         });
         res.status(200).json({ message: "Score recorded successfully! ✅" });
-    } catch (error) {
-        res.status(500).json({ error: "Failed to save score" });
-    }
+    } catch (error) { res.status(500).json({ error: "Failed to save score" }); }
 });
 
-// Get Results (Admin Only)
 app.get("/api/results", authorize(["admin"]), async (req, res) => {
     try {
         const snapshot = await db.collection("results").get();
         res.json(snapshot.docs.map(doc => doc.data()));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
-
-// ==========================================
-// 🎓 PUBLIC EXAM ROUTES (STUDENTS)
-// ==========================================
 
 app.get("/api/public/exams", async (req, res) => {
     const snapshot = await db.collection("exams").get();
@@ -217,37 +166,6 @@ app.get("/api/public/exams", async (req, res) => {
         questionCount: doc.data().questions?.length || 0 
     })));
 });
-
-app.get("/api/public/exams/:id", async (req, res) => {
-    const doc = await db.collection("exams").doc(req.params.id).get();
-    if (!doc.exists) return res.status(404).json({ message: "Not found" });
-    res.json({ id: doc.id, ...doc.data() });
-});
-
-// Add this immediately after const app = express();
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-    
-    // Check for OPTIONS request (Preflight)
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
-
-const cors = require('cors');
-
-// Place this BEFORE your routes
-app.use(cors({
-    origin: "*", // Allows access from any local file or domain
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
-// Add this to handle "Preflight" requests explicitly
-app.options('*', cors());
 
 // 4. Start Server
 const PORT = process.env.PORT || 5000;
