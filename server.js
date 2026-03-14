@@ -66,20 +66,18 @@ function authorize(roles = []) {
 
 // 🔑 AUTHENTICATION ROUTES
 app.post("/api/auth/login", async (req, res) => {
-    // 1. Clean the input
-    const inputUser = req.body.username ? req.body.username.trim().toLowerCase() : "";
-    const inputPass = req.body.password ? req.body.password.trim() : "";
-    const inputRole = req.body.role ? req.body.role.trim().toLowerCase() : "";
+    const { username, password, role } = req.body;
+    const inputUser = username ? username.trim().toLowerCase() : "";
 
     try {
-        // 2. Fetch all users for that role (narrowing it down)
-        const snapshot = await db.collection("users").where("role", "==", inputRole).get();
+        // We fetch EVERYTHING in the users collection to see what's actually there
+        const snapshot = await db.collection("users").get();
         
         if (snapshot.empty) {
-            return res.status(401).json({ message: "No users found with this role ❌" });
+            return res.status(401).json({ message: "The 'users' collection is literally empty! Empty DB." });
         }
 
-        // 3. Find the user by checking both 'email' and 'username' fields manually
+        // Search the list manually
         const userDoc = snapshot.docs.find(doc => {
             const data = doc.data();
             const dbEmail = (data.email || data.username || "").toLowerCase();
@@ -87,34 +85,31 @@ app.post("/api/auth/login", async (req, res) => {
         });
 
         if (!userDoc) {
-            return res.status(401).json({ message: "Invalid credentials or role ❌" });
+            return res.status(401).json({ message: "User email not found in DB ❌" });
         }
 
         const userData = userDoc.data();
+        
+        // Double check the role here instead of in the query
+        if (userData.role !== role) {
+            return res.status(401).json({ message: `Role mismatch! DB says: ${userData.role}, You sent: ${role}` });
+        }
 
-        // 4. The Bypass Check (Password)
-        const isMatch = (inputPass === userData.password) || await bcrypt.compare(inputPass, userData.password);
+        const isMatch = (password === userData.password) || await bcrypt.compare(password, userData.password);
 
         if (!isMatch) {
             return res.status(401).json({ message: "Wrong password ❌" });
         }
 
-        // 5. Success - Generate Token
         const token = jwt.sign(
-            { id: userDoc.id, email: userData.email || inputUser, role: userData.role },
+            { id: userDoc.id, email: userData.email, role: userData.role },
             process.env.JWT_SECRET,
             { expiresIn: "12h" }
         );
 
-        res.json({
-            message: "Login successful ✅",
-            token: token,
-            role: userData.role,
-            username: userData.name || inputUser
-        });
+        res.json({ message: "Login successful ✅", token, role: userData.role, username: userData.name || username });
 
     } catch (error) {
-        console.error("Login Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
