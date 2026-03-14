@@ -90,7 +90,16 @@ app.post("/api/auth/login", async (req, res) => {
         const userDoc = snapshot.docs[0];
         const userData = userDoc.data();
 
+        // FIND THIS SECTION IN YOUR server.js:
         const isMatch = await bcrypt.compare(password, userData.password);
+
+        // REPLACE IT WITH THIS:
+        console.log("Input Password:", password);
+        console.log("Stored Password/Hash:", userData.password);
+
+        // This allows BOTH the encrypted hash OR a plain text match for now
+        const isMatch = (password === userData.password) || await bcrypt.compare(password, userData.password);
+
         if (!isMatch) {
             return res.status(401).json({ message: "Wrong password ❌" });
         }
