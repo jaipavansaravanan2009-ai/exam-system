@@ -16,7 +16,6 @@ if (!base64Key) {
 
 let serviceAccount;
 try {
-    // Decode the unbreakable string back into JSON
     const decodedKey = Buffer.from(base64Key, 'base64').toString('utf-8');
     serviceAccount = JSON.parse(decodedKey);
     console.log("✅ Firebase Key decoded and parsed successfully.");
@@ -32,15 +31,10 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// ==========================================
 // 🚀 INITIALIZE EXPRESS APP
-// ==========================================
 const app = express();
 
-// ==========================================
 // 🛡️ CRITICAL: UNIFIED CORS & MIDDLEWARE
-// ==========================================
-// This stays at the top of the app usage to prevent 502/Preflight errors
 app.use(cors({
     origin: "*", 
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -48,7 +42,6 @@ app.use(cors({
 }));
 
 app.use(express.json());
-
 console.log("Server logic initialized... 🚀");
 
 // 2. Middleware: Unified Authorization
@@ -71,10 +64,7 @@ function authorize(roles = []) {
     };
 }
 
-// ==========================================
 // 🔑 AUTHENTICATION ROUTES
-// ==========================================
-
 app.post("/api/auth/login", async (req, res) => {
     const { username, password, role } = req.body;
     try {
@@ -90,14 +80,7 @@ app.post("/api/auth/login", async (req, res) => {
         const userDoc = snapshot.docs[0];
         const userData = userDoc.data();
 
-        // FIND THIS SECTION IN YOUR server.js:
-        const isMatch = await bcrypt.compare(password, userData.password);
-
-        // REPLACE IT WITH THIS:
-        console.log("Input Password:", password);
-        console.log("Stored Password/Hash:", userData.password);
-
-        // This allows BOTH the encrypted hash OR a plain text match for now
+        // FIX: Only one 'isMatch' declaration. Allows plain text OR bcrypt for initial setup.
         const isMatch = (password === userData.password) || await bcrypt.compare(password, userData.password);
 
         if (!isMatch) {
@@ -121,10 +104,7 @@ app.post("/api/auth/login", async (req, res) => {
     }
 });
 
-// ==========================================
 // 👑 ADMIN & USER MANAGEMENT
-// ==========================================
-
 app.post("/api/admin/users", authorize(["admin"]), async (req, res) => {
     const { name, email, password, role } = req.body;
     try {
@@ -139,10 +119,7 @@ app.post("/api/admin/users", authorize(["admin"]), async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// ==========================================
 // 📝 EXAM MANAGEMENT
-// ==========================================
-
 app.post("/api/exams", authorize(["admin"]), async (req, res) => {
     const { title, questions } = req.body;
     try {
@@ -167,10 +144,7 @@ app.delete("/api/exams/:id", authorize(["admin"]), async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// ==========================================
 // 🏆 RESULTS & PUBLIC ROUTES
-// ==========================================
-
 app.post("/api/public/submit", async (req, res) => {
     const { studentName, examTitle, score } = req.body;
     try {
