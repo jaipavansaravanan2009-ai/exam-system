@@ -224,6 +224,19 @@ app.get("/api/public/exams/:id", async (req, res) => {
     res.json({ id: doc.id, ...doc.data() });
 });
 
+// Add this immediately after const app = express();
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    
+    // Check for OPTIONS request (Preflight)
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
 const cors = require('cors');
 
 // Place this BEFORE your routes

@@ -169,11 +169,14 @@
         btn.disabled = true;
 
         try {
-            const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, password, role })
-            });
+            const res = await fetch("https://exam-system-production-5def.up.railway.app/api/auth/login", {
+            method: "POST",
+            mode: "cors", // Explicitly set mode
+            headers: { 
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ username, password, role })
+        });
 
             const data = await res.json();
 
