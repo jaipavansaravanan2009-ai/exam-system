@@ -5,16 +5,32 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const admin = require("firebase-admin");
 
-// 1. Firebase Setup
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+// 1. Firebase Setup (BULLETPROOF BASE64 METHOD)
+console.log("Checking Environment Variables...");
+
+const base64Key = process.env.FIREBASE_BASE64;
+if (!base64Key) {
+    console.error("❌ ERROR: FIREBASE_BASE64 is missing from Railway variables!");
+    process.exit(1);
+}
+
+let serviceAccount;
+try {
+    // Decode the unbreakable string back into JSON
+    const decodedKey = Buffer.from(base64Key, 'base64').toString('utf-8');
+    serviceAccount = JSON.parse(decodedKey);
+    console.log("✅ Firebase Key decoded and parsed successfully.");
+} catch (err) {
+    console.error("❌ ERROR: Failed to parse decoded key!", err.message);
+    process.exit(1);
+}
+
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
     });
 }
 const db = admin.firestore();
-
-const app = express();
 
 // ==========================================
 // 🛡️ CRITICAL: UNIFIED CORS & MIDDLEWARE
