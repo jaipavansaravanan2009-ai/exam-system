@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Portal | Available Exams</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f7f9; margin: 0; padding: 20px; }
+        header { background: #1e3d59; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .exam-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .exam-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-top: 5px solid #2e86c1; }
+        .exam-card h3 { margin-top: 0; color: #1e3d59; }
+        .btn-start { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        .btn-start:hover { background: #219150; }
+        .user-info { font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>
+        <h1>Welcome to the Portal</h1>
+        <div class="user-info" id="userNameDisplay">Student Name</div>
+    </div>
+    <button onclick="logout()" style="background:transparent; border:1px solid white; color:white; cursor:pointer; padding:5px 10px;">Logout</button>
+</header>
+
+<h2>Available Exams</h2>
+<hr>
+<br>
+
+<div class="exam-container" id="examList">
+    <p>Fetching exams from server...</p>
+</div>
+
+<script>
+    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
+
+    // 1. Display Student Name from LocalStorage
+    document.getElementById("userNameDisplay").innerText = "Student: " + (localStorage.getItem("userName") || "Guest");
+
+    // 2. Load Exams from your Railway Backend
+    async function fetchExams() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams`);
+            const exams = await res.json();
+            
+            const listDiv = document.getElementById("examList");
+            if (exams.length === 0) {
+                listDiv.innerHTML = "<p>No exams available at the moment.</p>";
+                return;
+            }
+
+            listDiv.innerHTML = exams.map(exam => `
+                <div class="exam-card">
+                    <h3>${exam.title}</h3>
+                    <p><strong>Questions:</strong> ${exam.questions ? exam.questions.length : 0}</p>
+                    <p><strong>Time:</strong> 180 Minutes</p>
+                    <button class="btn-start" onclick="goToExam('${exam.id}')">Start Test</button>
+                </div>
+            `).join('');
+        } catch (err) {
+            console.error(err);
+            document.getElementById("examList").innerHTML = "<p>Error loading exams. Please check your connection.</p>";
+        }
+    }
+
+    // 3. The Bridge: Send student to the code you just sent me
+    function goToExam(examId) {
+        // This sends the ID to your take_exam.html file
+        window.location.href = `take_exam.html?id=${examId}`;
+    }
+
+    function logout() {
+        localStorage.clear();
+        window.location.href = "login.html";
+    }
+
+    fetchExams();
+</script>
+
+</body>
+</html>
