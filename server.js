@@ -41,6 +41,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// 📂 SERVE FRONTEND FILES
+// This tells Express to look into the 'frontend' folder for your HTML/CSS/JS
+app.use(express.static('frontend')); 
+
+// 🏠 OPTIONAL: Redirect root URL to login page
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/frontend/login.html');
+});
+
 // 2. Middleware: Unified Authorization
 function authorize(roles = []) {
     return (req, res, next) => {

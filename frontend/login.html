@@ -157,8 +157,8 @@
     
     async function handleLogin() {
         const role = document.getElementById("role").value;
-        const username = document.getElementById("username").value;
-        const password = document.getElementById("password").value;
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value.trim();
         const btn = document.getElementById("loginBtn");
 
         if (!username || !password) {
@@ -169,29 +169,29 @@
         btn.disabled = true;
 
         try {
-            const res = await fetch("https://exam-system-production-5def.up.railway.app/api/auth/login", {
-            method: "POST",
-            mode: "cors", // Explicitly set mode
-            headers: { 
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ username, password, role })
-        });
+            console.log("Attempting login for:", username, "as", role);
+            
+            const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password, role })
+            });
 
             const data = await res.json();
 
             if (res.ok && data.token) {
-                // --- THE CRITICAL FIX ---
-                // We use "adminToken" because your Dashboard code looks for that specific key
+                console.log("Server Response:", data);
+
+                // --- STORAGE SYNC ---
                 localStorage.setItem("adminToken", data.token);
                 localStorage.setItem("userRole", data.role);
                 localStorage.setItem("userName", data.username);
 
-                console.log("Login Success. Role:", data.role);
-
-                // Redirect logic
+                // --- REDIRECT LOGIC ---
+                // IMPORTANT: Ensure these filenames match your actual .html files exactly!
                 if (data.role === "admin") {
-                    window.location.href = "admin_dashboard.html";
+                    console.log("Redirecting to Admin...");
+                    window.location.href = "admin.html"; 
                 } else if (data.role === "setter") {
                     window.location.href = "setter_dashboard.html";
                 } else {
@@ -203,7 +203,7 @@
             }
         } catch (err) {
             console.error("Fetch error:", err);
-            alert("Connection Failed. Check if your Railway server is active at: " + BACKEND_URL);
+            alert("Connection Failed. Make sure your Railway server is awake.");
             resetBtn();
         }
     }
@@ -214,7 +214,6 @@
         btn.disabled = false;
     }
 
-    // Hit Enter to Login
     document.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleLogin(); });
 </script>
 
