@@ -1,42 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>JEE Mains Mock - Live Exam</title>
+    <title>JEE Mains Mock - Official Interface</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; }
-        header { background: #1e3d59; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        :root { --nta-blue: #1e3d59; --green: #27ae60; --red: #e74c3c; --purple: #8e44ad; --gray: #bdc3c7; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* Header & Subject Bar */
+        header { background: var(--nta-blue); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .subject-bar { background: #fff; border-bottom: 1px solid #ccc; display: flex; }
+        .sub-btn { padding: 12px 25px; border: none; background: none; cursor: pointer; font-weight: bold; border-right: 1px solid #eee; }
+        .sub-btn.active { background: var(--nta-blue); color: white; }
+
         .main-container { display: flex; flex: 1; overflow: hidden; }
         .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; }
         .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; }
-        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 20px; }
-        .palette-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
-        .palette-btn.active { border: 2px solid #000; font-weight: bold; }
-        .palette-btn.answered { background: #27ae60; color: white; }
-        .palette-btn.visited { background: #e74c3c; color: white; }
-        .palette-btn.review { background: #8e44ad; color: white; border-radius: 50%; }
-        .controls { margin-top: 30px; display: flex; gap: 10px; }
-        .btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; }
+
+        /* Palette Colors */
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; }
+        .p-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
+        .p-btn.active { border: 2px solid #000; outline: 2px solid #3498db; }
+        
+        .p-btn.visited { background: var(--red); color: white; border-radius: 50% 50% 0 0; } /* NTA style shape */
+        .p-btn.answered { background: var(--green); color: white; border-radius: 0 0 50% 50%; }
+        .p-btn.review { background: var(--purple); color: white; border-radius: 50%; }
+        .p-btn.review-answered { background: var(--purple); color: white; border-radius: 50%; position: relative; }
+        .p-btn.review-answered::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 8px; height: 8px; background: var(--green); border-radius: 50%; border: 1px solid white; }
+
+        .controls { margin-top: 30px; display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 20px; }
+        .btn { padding: 10px 18px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; }
         #timer { font-size: 20px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
     </style>
 </head>
 <body>
 
 <header>
-    <div id="examTitleHeader">JEE Mock Exam</div>
-    <div id="studentNameHeader">Candidate: Loading...</div>
+    <div id="examTitle">JEE Mock Exam</div>
     <div id="timer">03:00:00</div>
 </header>
 
+<div class="subject-bar">
+    <button class="sub-btn active" onclick="filterSubject('Physics')">Physics</button>
+    <button class="sub-btn" onclick="filterSubject('Chemistry')">Chemistry</button>
+    <button class="sub-btn" onclick="filterSubject('Mathematics')">Mathematics</button>
+</div>
+
 <div class="main-container" id="examUI" style="display: none;">
     <div class="question-section">
-        <h3 id="qNumber">Question 1</h3>
+        <h3 id="qNumber">Question</h3>
         <hr>
-        <div id="qText" style="font-size: 18px; margin: 20px 0;">Loading...</div>
+        <div id="qText" style="font-size: 18px; margin: 20px 0;">Select a subject to begin.</div>
         <div id="optionsList"></div>
+        
         <div class="controls">
             <button class="btn" style="background:#27ae60;" onclick="saveAndNext()">Save & Next</button>
-            <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear</button>
-            <button class="btn" style="background:#8e44ad;" onclick="markForReview()">Review & Next</button>
+            <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear Response</button>
+            <button class="btn" style="background:#8e44ad;" onclick="markForReview()">Mark for Review & Next</button>
             <button class="btn" style="background:#e67e22;" onclick="submitFinal()">Submit Exam</button>
         </div>
     </div>
@@ -44,76 +63,104 @@
     <div class="sidebar">
         <h4>Question Palette</h4>
         <div class="palette-grid" id="palette"></div>
+        <div style="margin-top: auto; font-size: 12px;">
+            <p>🟢 Answered | 🔴 Not Answered | 🟣 Review | ⚪ Not Visited</p>
+        </div>
     </div>
 </div>
 
 <script>
     const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
     let examData = null;
-    let currentIdx = 0;
-    let studentAnswers = {};
-    let reviewStatus = {};
-    let timeLeft = 3 * 60 * 60;
+    let currentIdx = -1;
+    let currentSub = 'Physics';
+    let studentAnswers = {}; // { index: value }
+    let statusMap = {}; // { index: 'visited' | 'answered' | 'review' | 'review-answered' }
+    let timeLeft = 180 * 60;
 
     window.onload = async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const examId = urlParams.get('id');
-        if (!examId) return alert("No Exam ID found!");
-
-        document.getElementById("studentNameHeader").innerText = "Candidate: " + (localStorage.getItem("userName") || "Guest");
-        
         try {
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`);
-            if (!res.ok) throw new Error("Exam not found");
             examData = await res.json();
-            
-            document.getElementById("examTitleHeader").innerText = examData.title;
             document.getElementById("examUI").style.display = "flex";
-            showQuestion(0);
+            filterSubject('Physics');
             startTimer();
-        } catch (err) {
-            alert("Failed to load exam. Check your internet or ID.");
-        }
+        } catch (err) { alert("Error loading exam."); }
     };
 
+    function filterSubject(sub) {
+        currentSub = sub;
+        document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === sub));
+        renderPalette();
+        // Automatically go to the first question of this subject
+        const firstOfSub = examData.questions.findIndex(q => q.subject === sub);
+        if (firstOfSub !== -1) showQuestion(firstOfSub);
+    }
+
     function showQuestion(index) {
+        if (currentIdx !== -1 && !statusMap[currentIdx]) {
+            statusMap[currentIdx] = 'visited'; // If they leave without saving, it's "Not Answered" (Red)
+        }
+        
         currentIdx = index;
         const q = examData.questions[index];
-        document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject || 'General'})`;
+        document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
         document.getElementById("qText").innerText = q.question;
-        
+
         const optDiv = document.getElementById("optionsList");
-        optDiv.innerHTML = q.options.map(opt => `
-            <div style="margin: 10px 0;">
-                <label><input type="radio" name="ans" value="${opt}" ${studentAnswers[index] === opt ? 'checked' : ''}> ${opt}</label>
-            </div>
-        `).join("");
+        if (q.options && q.options.length > 1) {
+            optDiv.innerHTML = q.options.map(opt => `
+                <div style="margin: 10px 0;"><label>
+                    <input type="radio" name="ans" value="${opt}" ${studentAnswers[index] === opt ? 'checked' : ''}> ${opt}
+                </label></div>`).join("");
+        } else {
+            optDiv.innerHTML = `<input type="number" id="numAns" value="${studentAnswers[index] || ''}" placeholder="Enter Value">`;
+        }
         renderPalette();
     }
 
     function renderPalette() {
         const grid = document.getElementById("palette");
-        grid.innerHTML = examData.questions.map((_, i) => {
-            let status = "";
-            if (studentAnswers[i]) status = "answered";
-            else if (reviewStatus[i]) status = "review";
-            return `<div class="palette-btn ${status} ${i === currentIdx ? 'active' : ''}" onclick="showQuestion(${i})">${i + 1}</div>`;
+        grid.innerHTML = examData.questions.map((q, i) => {
+            if (q.subject !== currentSub) return '';
+            let cls = statusMap[i] || '';
+            if (i === currentIdx) cls += ' active';
+            return `<div class="p-btn ${cls}" onclick="showQuestion(${i})">${i + 1}</div>`;
         }).join("");
     }
 
     function saveAndNext() {
-        const selected = document.querySelector('input[name="ans"]:checked');
-        if (selected) studentAnswers[currentIdx] = selected.value;
-        if (currentIdx < examData.questions.length - 1) showQuestion(currentIdx + 1);
+        const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
+        if (sel && sel.value) {
+            studentAnswers[currentIdx] = sel.value;
+            statusMap[currentIdx] = 'answered';
+        } else {
+            statusMap[currentIdx] = 'visited';
+        }
+        nextLogic();
     }
 
     function markForReview() {
-        reviewStatus[currentIdx] = true;
+        const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
+        if (sel && sel.value) {
+            studentAnswers[currentIdx] = sel.value;
+            statusMap[currentIdx] = 'review-answered';
+        } else {
+            statusMap[currentIdx] = 'review';
+        }
+        nextLogic();
+    }
+
+    function nextLogic() {
         if (currentIdx < examData.questions.length - 1) showQuestion(currentIdx + 1);
+        renderPalette();
     }
 
     function clearResponse() {
         delete studentAnswers[currentIdx];
+        delete statusMap[currentIdx];
         showQuestion(currentIdx);
     }
 
@@ -121,25 +168,24 @@
         setInterval(() => {
             timeLeft--;
             let h = Math.floor(timeLeft / 3600), m = Math.floor((timeLeft % 3600) / 60), s = timeLeft % 60;
-            document.getElementById("timer").innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-            if(timeLeft <= 0) submitFinal();
+            document.getElementById("timer").innerText = `${h}:${m}:${s}`.replace(/\b\d\b/g, "0$&");
+            if (timeLeft <= 0) submitFinal();
         }, 1000);
     }
 
     async function submitFinal() {
-        if(!confirm("Submit exam?")) return;
+        if (!confirm("Confirm submission?")) return;
         let score = 0;
         examData.questions.forEach((q, i) => {
-            if(studentAnswers[i] === q.correctAnswer) score += 4;
-            else if(studentAnswers[i]) score -= 1;
+            if (studentAnswers[i] == q.correctAnswer) score += 4;
+            else if (studentAnswers[i]) score -= 1;
         });
-
         await fetch(`${BACKEND_URL}/api/public/submit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ studentName: localStorage.getItem("userName"), examTitle: examData.title, score })
         });
-        alert("Exam Submitted! Final Score: " + score);
+        alert("Exam Finished! Score: " + score);
         window.location.href = "student_portal.html";
     }
 </script>

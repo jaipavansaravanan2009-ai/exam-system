@@ -120,6 +120,41 @@ app.post("/api/exams", authorize(["admin"]), async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// Add this to your server.js to handle adding questions to an existing exam
+app.post("/api/exams/:id/questions", authorize(["admin", "setter"]), async (req, res) => {
+    try {
+        const examId = req.params.id;
+        const newQuestion = req.body; // { question, options, correctAnswer, subject }
+
+        const examRef = db.collection("exams").doc(examId);
+        const doc = await examRef.get();
+
+        if (!doc.exists) return res.status(404).json({ message: "Exam not found" });
+
+        // Add the new question to the array
+        const currentQuestions = doc.data().questions || [];
+        currentQuestions.push(newQuestion);
+
+        await examRef.update({ questions: currentQuestions });
+        
+        res.json({ message: "Question added successfully! ✅" });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Route to delete a specific question
+app.delete("/api/exams/:id/questions/:index", authorize(["admin"]), async (req, res) => {
+    try {
+        const examRef = db.collection("exams").doc(req.params.id);
+        const doc = await examRef.get();
+        let questions = doc.data().questions;
+        questions.splice(req.params.index, 1);
+        await examRef.update({ questions });
+        res.json({ message: "Question deleted!" });
+    } catch (error) { res.status(500).send(error.message); }
+});
+
 app.get("/api/exams", authorize(["admin", "setter"]), async (req, res) => {
     try {
         const snapshot = await db.collection("exams").get();
