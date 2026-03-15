@@ -66,31 +66,44 @@ function authorize(roles = []) {
 
 // 🔑 AUTHENTICATION ROUTES
 app.post("/api/auth/login", async (req, res) => {
-    const { username, password, role } = req.body;
-    
-    try {
-        // Search by the 'email' field specifically as seen in your screenshot
-        const snapshot = await db.collection("users")
-            .where("email", "==", username)
-            .where("role", "==", role)
-            .get();
+    // 1. Trim everything to remove hidden spaces
+    const inputUser = req.body.username ? req.body.username.trim() : "";
+    const inputPass = req.body.password ? req.body.password.trim() : "";
+    const inputRole = req.body.role ? req.body.role.trim() : "";
 
-        if (snapshot.empty) {
-            return res.status(401).json({ message: "User not found with that role ❌" });
+    console.log(`Login attempt for: ${inputUser} with role: ${inputRole}`);
+
+    try {
+        // 2. We fetch the collection 'users' (plural)
+        const snapshot = await db.collection("users").get();
+        
+        // 3. Manually find the user so we can see what's happening
+        const userDoc = snapshot.docs.find(doc => {
+            const data = doc.data();
+            // Check every possible field for a match
+            const matchesUser = (data.email === inputUser || data.username === inputUser || data.Email === inputUser);
+            const matchesRole = (data.role === inputRole);
+            return matchesUser && matchesRole;
+        });
+
+        if (!userDoc) {
+            // If we can't find them, let's see why
+            console.log("No match found. Check if role/username matches Firestore exactly.");
+            return res.status(401).json({ message: "Invalid Credentials: User or Role mismatch ❌" });
         }
 
-        const userDoc = snapshot.docs[0];
         const userData = userDoc.data();
 
-        // Check password (supports plain text "123456" or bcrypt)
-        const isMatch = (password === userData.password) || await bcrypt.compare(password, userData.password);
+        // 4. Password Check (Plain text vs Bcrypt)
+        const isMatch = (inputPass === userData.password) || await bcrypt.compare(inputPass, userData.password);
 
         if (!isMatch) {
             return res.status(401).json({ message: "Wrong password ❌" });
         }
 
+        // 5. Generate Token
         const token = jwt.sign(
-            { id: userDoc.id, email: userData.email, role: userData.role },
+            { id: userDoc.id, email: userData.email || inputUser, role: userData.role },
             process.env.JWT_SECRET,
             { expiresIn: "12h" }
         );
@@ -99,11 +112,12 @@ app.post("/api/auth/login", async (req, res) => {
             message: "Login successful ✅",
             token,
             role: userData.role,
-            username: userData.email // this will be "jaipavan"
+            username: userData.name || inputUser
         });
 
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error("Server Error:", error);
+        res.status(500).json({ error: "Database connection failed" });
     }
 });
 
