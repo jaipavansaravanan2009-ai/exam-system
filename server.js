@@ -67,34 +67,22 @@ function authorize(roles = []) {
 // 🔑 AUTHENTICATION ROUTES
 app.post("/api/auth/login", async (req, res) => {
     const { username, password, role } = req.body;
-    const inputUser = username ? username.trim().toLowerCase() : "";
-
+    
     try {
-        // We fetch EVERYTHING in the users collection to see what's actually there
-        const snapshot = await db.collection("users").get();
-        
+        // Search by the 'email' field specifically as seen in your screenshot
+        const snapshot = await db.collection("users")
+            .where("email", "==", username)
+            .where("role", "==", role)
+            .get();
+
         if (snapshot.empty) {
-            return res.status(401).json({ message: "The 'users' collection is literally empty! Empty DB." });
+            return res.status(401).json({ message: "User not found with that role ❌" });
         }
 
-        // Search the list manually
-        const userDoc = snapshot.docs.find(doc => {
-            const data = doc.data();
-            const dbEmail = (data.email || data.username || "").toLowerCase();
-            return dbEmail === inputUser;
-        });
-
-        if (!userDoc) {
-            return res.status(401).json({ message: "User email not found in DB ❌" });
-        }
-
+        const userDoc = snapshot.docs[0];
         const userData = userDoc.data();
-        
-        // Double check the role here instead of in the query
-        if (userData.role !== role) {
-            return res.status(401).json({ message: `Role mismatch! DB says: ${userData.role}, You sent: ${role}` });
-        }
 
+        // Check password (supports plain text "123456" or bcrypt)
         const isMatch = (password === userData.password) || await bcrypt.compare(password, userData.password);
 
         if (!isMatch) {
@@ -107,7 +95,12 @@ app.post("/api/auth/login", async (req, res) => {
             { expiresIn: "12h" }
         );
 
-        res.json({ message: "Login successful ✅", token, role: userData.role, username: userData.name || username });
+        res.json({
+            message: "Login successful ✅",
+            token,
+            role: userData.role,
+            username: userData.email // this will be "jaipavan"
+        });
 
     } catch (error) {
         res.status(500).json({ error: error.message });
