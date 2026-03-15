@@ -115,22 +115,30 @@ const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
 
     async function startExam(id) {
         try {
-            console.log("Fetching exam ID:", id);
+            console.log("Attempting to fetch Exam ID:", id); // Check your F12 console for this!
+            
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${id}`);
             
-            if (!res.ok) throw new Error("Exam not found on server");
+            if (!res.ok) {
+                console.error("Server responded with status:", res.status);
+                throw new Error("Exam not found");
+            }
             
             examData = await res.json();
+            console.log("Exam Data Received:", examData);
+
+            // If your backend returns an array instead of a single object, grab the first one
+            if (Array.isArray(examData)) {
+                examData = examData[0];
+            }
+
+            // Initialize UI
+            document.getElementById("examTitleDisplay").innerText = examData.title || "Untitled Exam";
+            // ... (rest of your initialization)
             
-            // Hide the "Loading" text and show the UI
-            document.getElementById("examTitleHeader").innerText = examData.title;
-            document.getElementById("examUI").style.display = "flex";
-            
-            showQuestion(0);
-            startTimer();
         } catch (err) {
-            console.error(err);
-            alert("Failed to load exam. Make sure the Exam ID is correct in Firestore.");
+            console.error("Detailed Error:", err);
+            alert("Failed to load exam. Check the Console (F12) for details.");
         }
     }
 

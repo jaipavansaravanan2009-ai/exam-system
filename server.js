@@ -179,14 +179,16 @@ app.get("/api/results", authorize(["admin"]), async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get("/api/public/exams", async (req, res) => {
+app.get('/api/public/exams/:id', async (req, res) => {
     try {
-        const snapshot = await db.collection("exams").get();
-        res.json(snapshot.docs.map(doc => ({ 
-            id: doc.id, 
-            title: doc.data().title, 
-            questionCount: doc.data().questions?.length || 0 
-        })));
+        const examId = req.params.id;
+        const doc = await db.collection('exams').doc(examId).get();
+        
+        if (!doc.exists) {
+            return res.status(404).json({ message: "Exam not found" });
+        }
+        
+        res.json({ id: doc.id, ...doc.data() });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
