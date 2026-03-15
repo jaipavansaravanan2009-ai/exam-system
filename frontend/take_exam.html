@@ -1,258 +1,147 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JEE Mock Exam | Live Test</title>
+    <title>JEE Mains Mock - Live Exam</title>
     <style>
-        :root { --nta-blue: #1e3d59; --nta-light: #e8eff5; --green: #27ae60; --red: #e74c3c; --gray: #bdc3c7; }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
-        
-        body { background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
-
-        /* Header */
-        header { background: white; padding: 10px 20px; border-bottom: 2px solid var(--nta-blue); display: flex; justify-content: space-between; align-items: center; }
-        .exam-info h2 { color: var(--nta-blue); font-size: 18px; }
-        .timer-box { background: var(--nta-blue); color: white; padding: 8px 20px; border-radius: 5px; font-weight: bold; font-size: 20px; }
-
-        /* Main Layout */
-        .container { display: grid; grid-template-columns: 1fr 300px; flex: 1; overflow: hidden; }
-
-        /* Left Side: Question Area */
-        .question-section { padding: 30px; overflow-y: auto; background: white; }
-        .subject-tabs { margin-bottom: 20px; border-bottom: 1px solid #ddd; }
-        .tab-btn { padding: 10px 20px; border: none; cursor: pointer; background: #eee; margin-right: 5px; border-radius: 5px 5px 0 0; }
-        .tab-btn.active { background: var(--nta-blue); color: white; }
-
-        .question-card { margin-top: 20px; }
-        .q-text { font-size: 18px; line-height: 1.6; margin-bottom: 20px; }
-        .option { display: block; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; cursor: pointer; transition: 0.2s; }
-        .option:hover { background: var(--nta-light); }
-        .option input { margin-right: 15px; }
-
-        /* Right Side: Palette */
-        .sidebar { background: #f9f9f9; border-left: 1px solid #ddd; padding: 20px; display: flex; flex-direction: column; }
-        .user-profile { text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #ddd; }
-        .palette-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; overflow-y: auto; }
-        .q-num { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 14px; background: white; }
-        .q-num.answered { background: var(--green); color: white; border-color: var(--green); }
-        .q-num.not-answered { background: var(--red); color: white; border-color: var(--red); }
-        .q-num.active { border: 2px solid black; font-weight: bold; }
-
-        /* Bottom Controls */
-        .controls { background: white; border-top: 1px solid #ddd; padding: 15px 30px; display: flex; justify-content: space-between; }
-        .btn { padding: 10px 25px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; }
-        .btn-save { background: var(--green); color: white; }
-        .btn-clear { background: #eee; color: #333; }
-        .btn-submit { background: var(--nta-blue); color: white; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; }
+        header { background: #1e3d59; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; }
+        .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; }
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 20px; }
+        .palette-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
+        .palette-btn.active { border: 2px solid #000; font-weight: bold; }
+        .palette-btn.answered { background: #27ae60; color: white; }
+        .palette-btn.visited { background: #e74c3c; color: white; }
+        .palette-btn.review { background: #8e44ad; color: white; border-radius: 50%; }
+        .controls { margin-top: 30px; display: flex; gap: 10px; }
+        .btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; }
+        #timer { font-size: 20px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
     </style>
 </head>
 <body>
 
 <header>
-    <div class="exam-info">
-        <h2 id="examTitleDisplay">Loading Exam...</h2>
-        <small id="studentNameDisplay">Candidate: Loading...</small>
-    </div>
-    <div class="timer-box" id="timer">00:00:00</div>
+    <div id="examTitleHeader">JEE Mock Exam</div>
+    <div id="studentNameHeader">Candidate: Loading...</div>
+    <div id="timer">03:00:00</div>
 </header>
 
-<div class="container">
+<div class="main-container" id="examUI" style="display: none;">
     <div class="question-section">
-        <div class="subject-tabs">
-            <button class="tab-btn active">Physics</button>
-            <button class="tab-btn">Chemistry</button>
-            <button class="tab-btn">Mathematics</button>
+        <h3 id="qNumber">Question 1</h3>
+        <hr>
+        <div id="qText" style="font-size: 18px; margin: 20px 0;">Loading...</div>
+        <div id="optionsList"></div>
+        <div class="controls">
+            <button class="btn" style="background:#27ae60;" onclick="saveAndNext()">Save & Next</button>
+            <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear</button>
+            <button class="btn" style="background:#8e44ad;" onclick="markForReview()">Review & Next</button>
+            <button class="btn" style="background:#e67e22;" onclick="submitFinal()">Submit Exam</button>
         </div>
-        
-        <div id="questionContainer">
-            </div>
     </div>
 
     <div class="sidebar">
-        <div class="user-profile">
-            <img src="https://via.placeholder.com/80" style="border-radius: 50%;">
-            <p id="profileName">Student Name</p>
-        </div>
         <h4>Question Palette</h4>
-        <br>
-        <div class="palette-grid" id="palette">
-            </div>
-        <br><br>
-        <button class="btn btn-submit" style="width: 100%;" onclick="finalSubmit()">Final Submit</button>
-    </div>
-</div>
-
-<div class="controls">
-    <div>
-        <button class="btn btn-clear" onclick="clearResponse()">Clear Response</button>
-    </div>
-    <div>
-        <button class="btn btn-save" onclick="saveAndNext()">Save & Next</button>
+        <div class="palette-grid" id="palette"></div>
     </div>
 </div>
 
 <script>
-const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
+    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
     let examData = null;
     let currentIdx = 0;
     let studentAnswers = {};
-    let timeLeft = 3 * 60 * 60; // 3 hours
+    let reviewStatus = {};
+    let timeLeft = 3 * 60 * 60;
 
-    // THIS IS THE FIX: Run automatically on load
     window.onload = async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const examId = urlParams.get('id');
+        if (!examId) return alert("No Exam ID found!");
 
-        if (!examId) {
-            alert("No Exam ID found. Returning to portal.");
-            window.location.href = "student_portal.html";
-            return;
+        document.getElementById("studentNameHeader").innerText = "Candidate: " + (localStorage.getItem("userName") || "Guest");
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`);
+            if (!res.ok) throw new Error("Exam not found");
+            examData = await res.json();
+            
+            document.getElementById("examTitleHeader").innerText = examData.title;
+            document.getElementById("examUI").style.display = "flex";
+            showQuestion(0);
+            startTimer();
+        } catch (err) {
+            alert("Failed to load exam. Check your internet or ID.");
         }
-
-        await startExam(examId);
     };
 
-    async function startExam(id) {
-        try {
-            console.log("Attempting to fetch Exam ID:", id); // Check your F12 console for this!
-            
-            const res = await fetch(`${BACKEND_URL}/api/public/exams/${id}`);
-            
-            if (!res.ok) {
-                console.error("Server responded with status:", res.status);
-                throw new Error("Exam not found");
-            }
-            
-            examData = await res.json();
-            console.log("Exam Data Received:", examData);
-
-            // If your backend returns an array instead of a single object, grab the first one
-            if (Array.isArray(examData)) {
-                examData = examData[0];
-            }
-
-            // Initialize UI
-            document.getElementById("examTitleDisplay").innerText = examData.title || "Untitled Exam";
-            // ... (rest of your initialization)
-            
-        } catch (err) {
-            console.error("Detailed Error:", err);
-            alert("Failed to load exam. Check the Console (F12) for details.");
-        }
-    }
-
-    async function loadExam() {
-        const token = localStorage.getItem("adminToken"); // Or studentToken
-        const examId = new URLSearchParams(window.location.search).get("id");
+    function showQuestion(index) {
+        currentIdx = index;
+        const q = examData.questions[index];
+        document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject || 'General'})`;
+        document.getElementById("qText").innerText = q.question;
         
-        // Fetch specific exam
-        const res = await fetch(`https://exam-system-production-5def.up.railway.app/api/exams`, {
-            headers: { "Authorization": `Bearer ${token}` }
-        });
-        const allExams = await res.json();
-        const exam = allExams.find(e => e.id === examId);
-
-        questions = exam.questions;
-        document.getElementById("examTitleDisplay").innerText = exam.title;
-        document.getElementById("profileName").innerText = localStorage.getItem("userName");
-        
-        renderQuestion();
-        renderPalette();
-        startTimer();
-    }
-
-    function renderQuestion() {
-        const q = questions[currentIndex];
-        const container = document.getElementById("questionContainer");
-        
-        container.innerHTML = `
-            <div class="question-card">
-                <h3>Question ${currentIndex + 1}</h3><br>
-                <p class="q-text">${q.question}</p>
-                ${q.options.map((opt, i) => `
-                    <label class="option">
-                        <input type="radio" name="q${currentIndex}" value="${opt}" 
-                        ${answers[currentIndex] === opt ? 'checked' : ''}>
-                        ${opt}
-                    </label>
-                `).join('')}
+        const optDiv = document.getElementById("optionsList");
+        optDiv.innerHTML = q.options.map(opt => `
+            <div style="margin: 10px 0;">
+                <label><input type="radio" name="ans" value="${opt}" ${studentAnswers[index] === opt ? 'checked' : ''}> ${opt}</label>
             </div>
-        `;
+        `).join("");
+        renderPalette();
     }
 
     function renderPalette() {
-        const palette = document.getElementById("palette");
-        palette.innerHTML = questions.map((_, i) => `
-            <div class="q-num ${currentIndex === i ? 'active' : ''} ${answers[i] ? 'answered' : ''}" 
-                 onclick="goToQuestion(${i})">
-                ${i + 1}
-            </div>
-        `).join('');
+        const grid = document.getElementById("palette");
+        grid.innerHTML = examData.questions.map((_, i) => {
+            let status = "";
+            if (studentAnswers[i]) status = "answered";
+            else if (reviewStatus[i]) status = "review";
+            return `<div class="palette-btn ${status} ${i === currentIdx ? 'active' : ''}" onclick="showQuestion(${i})">${i + 1}</div>`;
+        }).join("");
     }
 
     function saveAndNext() {
-        const selected = document.querySelector(`input[name="q${currentIndex}"]:checked`);
-        if (selected) {
-            answers[currentIndex] = selected.value;
-        }
-        if (currentIndex < questions.length - 1) {
-            currentIndex++;
-            renderQuestion();
-            renderPalette();
-        }
+        const selected = document.querySelector('input[name="ans"]:checked');
+        if (selected) studentAnswers[currentIdx] = selected.value;
+        if (currentIdx < examData.questions.length - 1) showQuestion(currentIdx + 1);
     }
 
-    function goToQuestion(index) {
-        currentIndex = index;
-        renderQuestion();
-        renderPalette();
+    function markForReview() {
+        reviewStatus[currentIdx] = true;
+        if (currentIdx < examData.questions.length - 1) showQuestion(currentIdx + 1);
+    }
+
+    function clearResponse() {
+        delete studentAnswers[currentIdx];
+        showQuestion(currentIdx);
     }
 
     function startTimer() {
-        const timerDisplay = document.getElementById("timer");
-        const interval = setInterval(() => {
-            let h = Math.floor(timeRemaining / 3600);
-            let m = Math.floor((timeRemaining % 3600) / 60);
-            let s = timeRemaining % 60;
-            timerDisplay.innerText = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            
-            if (timeRemaining <= 0) {
-                clearInterval(interval);
-                finalSubmit();
-            }
-            timeRemaining--;
+        setInterval(() => {
+            timeLeft--;
+            let h = Math.floor(timeLeft / 3600), m = Math.floor((timeLeft % 3600) / 60), s = timeLeft % 60;
+            document.getElementById("timer").innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            if(timeLeft <= 0) submitFinal();
         }, 1000);
     }
 
-    async function finalSubmit() {
-        if(!confirm("Are you sure you want to submit the exam?")) return;
-        
-        // Calculate score
+    async function submitFinal() {
+        if(!confirm("Submit exam?")) return;
         let score = 0;
-        questions.forEach((q, i) => {
-            if (answers[i] === q.correctAnswer) score += 4;
-            else if (answers[i]) score -= 1; // Negative marking
+        examData.questions.forEach((q, i) => {
+            if(studentAnswers[i] === q.correctAnswer) score += 4;
+            else if(studentAnswers[i]) score -= 1;
         });
 
-        const res = await fetch("https://exam-system-production-5def.up.railway.app/api/public/submit", {
+        await fetch(`${BACKEND_URL}/api/public/submit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                studentName: localStorage.getItem("userName"),
-                examTitle: document.getElementById("examTitleDisplay").innerText,
-                score: score
-            })
+            body: JSON.stringify({ studentName: localStorage.getItem("userName"), examTitle: examData.title, score })
         });
-
-        if(res.ok) {
-            alert(`Exam Submitted! Your Score: ${score}`);
-            window.location.href = "student_portal.html";
-        }
+        alert("Exam Submitted! Final Score: " + score);
+        window.location.href = "student_portal.html";
     }
-
-    loadExam();
 </script>
-
 </body>
 </html>
