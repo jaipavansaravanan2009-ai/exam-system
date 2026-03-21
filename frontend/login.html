@@ -153,7 +153,7 @@
 </div>
 
 <script>
-    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
+    const BACKEND_URL = "https://jee-mock-portal.onrender.com";
     
     async function handleLogin() {
         const role = document.getElementById("role").value;
@@ -170,37 +170,44 @@
 
         try {
             console.log("Attempting login for:", username, "as", role);
-            
+
             const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json"
+                },
                 body: JSON.stringify({ username, password, role })
             });
 
             const data = await res.json();
 
             if (res.ok && data.token) {
-            // 1. Save with consistent names
-            localStorage.setItem("adminToken", data.token);
-            localStorage.setItem("userRole", data.role.toLowerCase()); // Force lowercase 'admin'
-            localStorage.setItem("userName", data.username);
+                // --- SUCCESS ---
+                localStorage.setItem("adminToken", data.token);
+                localStorage.setItem("userRole", data.role.toLowerCase()); // Force lowercase
+                localStorage.setItem("userName", data.username);
 
-            console.log("Logged in as:", data.role);
+                console.log("Logged in as:", data.role);
 
-            // 2. Redirect based on role
-            if (data.role.toLowerCase() === "admin") {
-                window.location.href = "admin.html"; // Ensure this matches your filename
-            } else if (data.role.toLowerCase() === "setter") {
-                window.location.href = "setter_dashboard.html";
+                // Redirect based on role
+                if (data.role.toLowerCase() === "admin") {
+                    window.location.href = "admin.html";
+                } else if (data.role.toLowerCase() === "setter") {
+                    window.location.href = "setter_dashboard.html";
+                } else {
+                    window.location.href = "student_portal.html";
+                }
             } else {
-                window.location.href = "student_portal.html";
+                // --- ERROR HANDLING FIX ---
+                // Python FastAPI uses 'detail', Node.js used 'message'
+                const errorMsg = data.detail || data.message || "Invalid Credentials";
+                alert("Login Failed: " + errorMsg);
+                resetBtn(); // Brings the button back to "Sign In"
             }
-        }
-        
         } catch (err) {
             console.error("Fetch error:", err);
-            alert("Connection Failed. Make sure your Railway server is awake.");
-            resetBtn();
+            alert("Connection Failed. Make sure your Render server is awake.");
+            resetBtn(); // Ensures the button is never stuck if the network fails
         }
     }
 
