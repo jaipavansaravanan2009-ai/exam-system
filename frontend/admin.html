@@ -198,7 +198,10 @@
 </div>
 
 <script>
-    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
+    // Make sure to replace this URL with your actual Render URL if needed
+    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; 
+    
+    // 1. Get Tokens
     const token = localStorage.getItem("adminToken");
     const role = localStorage.getItem("userRole");
 
@@ -206,38 +209,111 @@
     console.log("Token exists:", !!token);
     console.log("Role found:", role);
 
-    // 2. The Guard Logic (Case-insensitive)
+    // 2. Fortified Guard Logic
     if (!token || !role || role.toLowerCase() !== "admin") {
         console.error("⛔ ACCESS DENIED: Redirecting to login...");
         alert("Unauthorized! Please login as Admin.");
         window.location.href = "login.html";
     }
 
-    if (!token) { window.location.href = "login.html"; }
+    // Set Welcome Name
+    const adminName = localStorage.getItem("userName");
+    if(adminName) {
+        document.getElementById("adminName").innerText = "Welcome, " + adminName;
+    }
 
     let currentEditingExamId = null;
 
-    // --- MISSING: DELETE EXAM ---
+    // --- LOGOUT FUNCTION ---
+    function logout() {
+        localStorage.clear();
+        window.location.href = "login.html";
+    }
+
+    // --- CREATE NEW EXAM ---
+    async function createExam() {
+        const title = document.getElementById("title").value.trim();
+        if (!title) return alert("Please enter an exam title.");
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify({ title: title, questions: [] })
+            });
+
+            if (res.ok) {
+                alert("Exam created successfully! ✅");
+                document.getElementById("title").value = "";
+                loadExams();
+            } else {
+                alert("Failed to create exam.");
+            }
+        } catch (error) {
+            console.error("Error creating exam:", error);
+        }
+    }
+
+    // --- CREATE NEW USER ---
+    async function createUser() {
+        const name = document.getElementById("userName").value.trim();
+        const email = document.getElementById("userEmail").value.trim();
+        const password = document.getElementById("userPass").value.trim();
+        const userRole = document.getElementById("userRole").value;
+
+        if (!name || !email || !password) return alert("Please fill all user fields.");
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/users`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify({ name, email, password, role: userRole })
+            });
+
+            if (res.ok) {
+                alert(`User ${name} created successfully! ✅`);
+                document.getElementById("userName").value = "";
+                document.getElementById("userEmail").value = "";
+                document.getElementById("userPass").value = "";
+            } else {
+                alert("Failed to create user.");
+            }
+        } catch (error) {
+            console.error("Error creating user:", error);
+        }
+    }
+
+    // --- DELETE EXAM ---
     async function deleteExam(id) {
         if(!confirm("Are you sure you want to delete this entire exam?")) return;
-        const res = await fetch(`${BACKEND_URL}/api/exams/${id}`, {
-            method: "DELETE",
-            headers: { "Authorization": `Bearer ${token}` }
-        });
-        if(res.ok) loadExams();
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams/${id}`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if(res.ok) loadExams();
+        } catch(e) { console.error(e); }
     }
 
-    // --- MISSING: DELETE QUESTION ---
+    // --- DELETE QUESTION ---
     async function deleteQuestion(examId, index) {
         if(!confirm("Delete this question?")) return;
-        const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/questions/${index}`, {
-            method: "DELETE",
-            headers: { "Authorization": `Bearer ${token}` }
-        });
-        if(res.ok) refreshQuestionList(examId);
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/questions/${index}`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if(res.ok) refreshQuestionList(examId);
+        } catch(e) { console.error(e); }
     }
 
-    // --- FIXED: SUBMIT NEW QUESTION ---
+    // --- SUBMIT NEW QUESTION ---
     async function submitNewQuestion() {
         const payload = {
             question: document.getElementById("newQ").value,
@@ -253,76 +329,82 @@
 
         if(!payload.question || !payload.correctAnswer) return alert("Please fill basic details!");
 
-        const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
-            method: "POST",
-            headers: { 
-                "Content-Type": "application/json", 
-                "Authorization": `Bearer ${token}` 
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if(res.ok) {
-            alert("Question added! ✅");
-            // Clear inputs
-            document.getElementById("newQ").value = "";
-            document.getElementById("opt1").value = "";
-            document.getElementById("opt2").value = "";
-            document.getElementById("opt3").value = "";
-            document.getElementById("opt4").value = "";
-            document.getElementById("correct").value = "";
-            refreshQuestionList(currentEditingExamId);
-        } else {
-            alert("Failed to add question.");
-        }
-    }
-
-    // --- REFRESH QUESTION LIST FIX ---
-    async function refreshQuestionList(examId) {
-        const res = await fetch(`${BACKEND_URL}/api/exams`, { 
-            headers: { "Authorization": `Bearer ${token}` } 
-        });
-        const exams = await res.json();
-        const exam = exams.find(e => e.id === examId);
-        const list = document.getElementById("existingQuestionsList");
-        list.innerHTML = "";
-        
-        if (exam && exam.questions) {
-            exam.questions.forEach((q, i) => {
-                list.innerHTML += `
-                <div style="padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:11px;">${q.subject}</span><br>
-                        <b>Q${i+1}:</b> ${q.question}
-                    </div>
-                    <button class="btn" style="background:#ff7675; color:white; font-size:12px;" onclick="deleteQuestion('${examId}', ${i})">Delete</button>
-                </div>`;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify(payload)
             });
-        }
+
+            if(res.ok) {
+                alert("Question added! ✅");
+                document.getElementById("newQ").value = "";
+                document.getElementById("opt1").value = "";
+                document.getElementById("opt2").value = "";
+                document.getElementById("opt3").value = "";
+                document.getElementById("opt4").value = "";
+                document.getElementById("correct").value = "";
+                refreshQuestionList(currentEditingExamId);
+            } else {
+                alert("Failed to add question.");
+            }
+        } catch(e) { console.error(e); }
     }
 
+    // --- REFRESH QUESTION LIST ---
+    async function refreshQuestionList(examId) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            const exams = await res.json();
+            const exam = exams.find(e => e.id === examId);
+            const list = document.getElementById("existingQuestionsList");
+            list.innerHTML = "";
+            
+            if (exam && exam.questions) {
+                exam.questions.forEach((q, i) => {
+                    list.innerHTML += `
+                    <div style="padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:11px;">${q.subject}</span><br>
+                            <b>Q${i+1}:</b> ${q.question}
+                        </div>
+                        <button class="btn" style="background:#ff7675; color:white; font-size:12px;" onclick="deleteQuestion('${examId}', ${i})">Delete</button>
+                    </div>`;
+                });
+            }
+        } catch(e) { console.error(e); }
+    }
 
+    // --- LOAD EXAMS ---
     async function loadExams() {
-        const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
-        const exams = await res.json();
-        const list = document.getElementById("examList");
-        list.innerHTML = "";
-        
-        exams.forEach(exam => {
-            list.innerHTML += `
-                <div class="exam-item">
-                    <div>
-                        <strong>${exam.title}</strong><br>
-                        <small>${exam.questions ? exam.questions.length : 0} Questions</small>
-                    </div>
-                    <div>
-                        <button class="btn btn-outline" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Edit</button>
-                        <button class="btn btn-primary" style="background:#e74c3c" onclick="deleteExam('${exam.id}')">🗑️</button>
-                    </div>
-                </div>`;
-        });
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            const list = document.getElementById("examList");
+            list.innerHTML = "";
+            
+            exams.forEach(exam => {
+                list.innerHTML += `
+                    <div class="exam-item">
+                        <div>
+                            <strong>${exam.title}</strong><br>
+                            <small>${exam.questions ? exam.questions.length : 0} Questions</small>
+                        </div>
+                        <div>
+                            <button class="btn btn-outline" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Edit</button>
+                            <button class="btn btn-primary" style="background:#e74c3c" onclick="deleteExam('${exam.id}')">🗑️</button>
+                        </div>
+                    </div>`;
+            });
+        } catch(e) { console.error("Could not load exams:", e); }
     }
 
+    // --- MODAL CONTROLS ---
     async function openEditor(id, title) {
         currentEditingExamId = id;
         document.getElementById("modalExamTitle").innerText = `Editing: ${title}`;
@@ -330,58 +412,39 @@
         refreshQuestionList(id);
     }
 
-    function closeEditor() { document.getElementById("editorModal").style.display = "none"; loadExams(); }
-
-    async function refreshQuestionList(examId) {
-        const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
-        const exams = await res.json();
-        const exam = exams.find(e => e.id === examId);
-        const list = document.getElementById("existingQuestionsList");
-        list.innerHTML = "";
-        
-        if (exam.questions) {
-            exam.questions.forEach((q, i) => {
-                list.innerHTML += `<div style="padding:10px; border-bottom:1px solid #eee">
-                    <b>Q${i+1}:</b> ${q.question} <br>
-                    <button class="btn" style="font-size:12px; margin-top:5px;" onclick="deleteQuestion('${examId}', ${i})">Delete</button>
-                </div>`;
-            });
-        }
+    function closeEditor() { 
+        document.getElementById("editorModal").style.display = "none"; 
+        loadExams(); 
     }
 
-    async function submitNewQuestion() {
-        const payload = {
-            question: document.getElementById("newQ").value,
-            options: [document.getElementById("opt1").value, document.getElementById("opt2").value, document.getElementById("opt3").value, document.getElementById("opt4").value],
-            correctAnswer: document.getElementById("correct").value,
-            subject: document.getElementById("subjectSelect").value
-        };
-
-        const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify(payload)
-        });
-
-        if(res.ok) {
-            alert("Added!");
-            refreshQuestionList(currentEditingExamId);
-        }
-    }
-
+    // --- LOAD RESULTS ---
     async function loadResults() {
-        const res = await fetch(`${BACKEND_URL}/api/results`, { headers: { "Authorization": `Bearer ${token}` } });
-        const results = await res.json();
-        const list = document.getElementById("resultsList");
-        list.innerHTML = results.map(r => `<div><strong>${r.studentName}</strong>: ${r.score} marks</div>`).join("");
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/results`, { headers: { "Authorization": `Bearer ${token}` } });
+            if(res.ok) {
+                const results = await res.json();
+                const list = document.getElementById("resultsList");
+                if(results.length === 0) {
+                    list.innerHTML = "<div>No results yet.</div>";
+                } else {
+                    list.innerHTML = results.map(r => `<div><strong>${r.studentName || 'Student'}</strong>: ${r.score} marks</div>`).join("");
+                }
+            } else {
+                document.getElementById("resultsList").innerHTML = "<div>Cannot fetch results.</div>";
+            }
+        } catch(e) { console.error("Could not load results:", e); }
     }
 
-    // Helper for Sidebar
-    function scrollToSec(id) { document.getElementById(id).scrollIntoView({behavior: 'smooth'}); }
+    // --- HELPER SCROLL ---
+    function scrollToSec(id) { 
+        document.getElementById(id).scrollIntoView({behavior: 'smooth'}); 
+    }
 
-    // Init
-    loadExams();
-    loadResults();
+    // Initialize Page
+    if (token && role && role.toLowerCase() === "admin") {
+        loadExams();
+        loadResults();
+    }
 </script>
 
 </body>

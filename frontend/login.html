@@ -180,27 +180,23 @@
             const data = await res.json();
 
             if (res.ok && data.token) {
-                console.log("Server Response:", data);
+            // 1. Save with consistent names
+            localStorage.setItem("adminToken", data.token);
+            localStorage.setItem("userRole", data.role.toLowerCase()); // Force lowercase 'admin'
+            localStorage.setItem("userName", data.username);
 
-                // --- STORAGE SYNC ---
-                localStorage.setItem("adminToken", data.token);
-                localStorage.setItem("userRole", data.role);
-                localStorage.setItem("userName", data.username);
+            console.log("Logged in as:", data.role);
 
-                // --- REDIRECT LOGIC ---
-                // IMPORTANT: Ensure these filenames match your actual .html files exactly!
-                if (data.role === "admin") {
-                    console.log("Redirecting to Admin...");
-                    window.location.href = "admin.html"; 
-                } else if (data.role === "setter") {
-                    window.location.href = "setter_dashboard.html";
-                } else {
-                    window.location.href = "student_portal.html";
-                }
+            // 2. Redirect based on role
+            if (data.role.toLowerCase() === "admin") {
+                window.location.href = "admin.html"; // Ensure this matches your filename
+            } else if (data.role.toLowerCase() === "setter") {
+                window.location.href = "setter_dashboard.html";
             } else {
-                alert("Login Failed: " + (data.message || "Invalid Credentials"));
-                resetBtn();
+                window.location.href = "student_portal.html";
             }
+        }
+        
         } catch (err) {
             console.error("Fetch error:", err);
             alert("Connection Failed. Make sure your Railway server is awake.");
