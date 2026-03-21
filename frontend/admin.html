@@ -214,6 +214,19 @@
         
         <div style="background:#f9f9f9; padding:20px; border-radius:10px; border: 1px solid #ddd;">
             <h4>Add Question to Paper</h4><br>
+
+            <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #2e86c1;">
+                <h4 style="color: #2e86c1; margin-bottom: 10px;">⚡ Bulk Upload via CSV</h4>
+                <p style="font-size: 12px; color: #555; margin-bottom: 10px;">
+                    Create an Excel file with these exact column headers, save as <b>.csv</b>, and upload it here.<br>
+                    <i>Headers: Subject, QuestionText, QuestionImageURL, OptionA, OptionB, OptionC, OptionD, OptionA_ImageURL, OptionB_ImageURL, OptionC_ImageURL, OptionD_ImageURL, CorrectAnswer</i>
+                </p>
+                <div style="display: flex; gap: 10px;">
+                    <input type="file" id="csvFile" accept=".csv" style="margin-bottom: 0;">
+                    <button class="btn btn-primary" onclick="uploadCSV()" id="csvUploadBtn">Upload File</button>
+                </div>
+            </div>
+            <hr style="margin: 20px 0;">
             
             <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is uploaded)">
             <label style="font-size: 12px; color: #555;">Optional Question Image:</label>
@@ -386,6 +399,46 @@
             }
         } catch (error) {
             console.error("Error creating user:", error);
+        }
+    }
+
+    // --- BULK UPLOAD CSV ---
+    async function uploadCSV() {
+        const fileInput = document.getElementById('csvFile');
+        const file = fileInput.files[0];
+        const btn = document.getElementById('csvUploadBtn');
+
+        if (!file) return alert("Please select a .csv file first!");
+        if (!currentEditingExamId) return alert("No exam selected.");
+
+        btn.innerText = "Uploading... ⏳";
+        btn.disabled = true;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }, // Notice we DON'T set Content-Type for FormData
+                body: formData
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                alert(data.message);
+                fileInput.value = ""; // clear the file input
+                refreshQuestionList(currentEditingExamId);
+            } else {
+                alert("Upload Failed: " + (data.detail || "Unknown error"));
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Connection error during upload.");
+        } finally {
+            btn.innerText = "Upload File";
+            btn.disabled = false;
         }
     }
 

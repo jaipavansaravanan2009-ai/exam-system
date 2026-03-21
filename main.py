@@ -11,6 +11,9 @@ from fastapi.responses import FileResponse
 import firebase_admin
 from firebase_admin import credentials, firestore
 from dotenv import load_dotenv
+from fastapi import UploadFile, File
+import csv
+import io
 
 # Load Environment Variables
 load_dotenv()
@@ -155,6 +158,58 @@ async def create_exam(request: Request, user=Depends(authorize(["admin"]))):
     body["createdAt"] = datetime.now(timezone.utc)
     update_time, doc_ref = db.collection("exams").add(body)
     return {"message": "Exam created! ✅", "id": doc_ref.id}
+
+# --- 🚀 BULK UPLOAD QUESTIONS VIA CSV ---
+@app.post("/api/exams/{exam_id}/bulk-upload")
+async def bulk_upload_questions(exam_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin"]))):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only .csv files are allowed.")
+
+    try:
+        # Read the CSV file
+        contents = await file.read()
+        decoded = contents.decode('utf-8')
+        reader = csv.DictReader(io.StringIO(decoded))
+        
+        exam_ref = db.collection("exams").document(exam_id)
+        doc = exam_ref.get()
+
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Exam not found")
+
+        data = doc.to_dict()
+        questions = data.get("questions", [])
+        
+        # Process each row in the Excel/CSV file
+        added_count = 0
+        for row in reader:
+            new_q = {
+                "subject": row.get("Subject", "Physics").strip(),
+                "question": row.get("QuestionText", "").strip(),
+                "questionImage": row.get("QuestionImageURL", "").strip() or None,
+                "options": [
+                    row.get("OptionA", "").strip(),
+                    row.get("OptionB", "").strip(),
+                    row.get("OptionC", "").strip(),
+                    row.get("OptionD", "").strip()
+                ],
+                "optionImages": [
+                    row.get("OptionA_ImageURL", "").strip() or None,
+                    row.get("OptionB_ImageURL", "").strip() or None,
+                    row.get("OptionC_ImageURL", "").strip() or None,
+                    row.get("OptionD_ImageURL", "").strip() or None
+                ],
+                "correctAnswer": row.get("CorrectAnswer", "").strip()
+            }
+            questions.append(new_q)
+            added_count += 1
+            
+        exam_ref.update({"questions": questions})
+        return {"message": f"Successfully added {added_count} questions! ✅"}
+        
+    except Exception as e:
+        print(f"Bulk upload error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process the CSV file. Check your columns.")
 
 # --- 🔥 NEW: DELETE ENTIRE EXAM ROUTE 🔥 ---
 @app.delete("/api/exams/{exam_id}")
