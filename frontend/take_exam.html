@@ -17,10 +17,44 @@
         .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; }
 
         /* Image Handling for Chemistry/Physics */
-        .exam-img { max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 15px; display: block; border: 1px solid #ddd; padding: 5px; }
-        .opt-img { max-width: 200px; max-height: 80px; border-radius: 4px; margin-left: 15px; vertical-align: middle; border: 1px solid #eee; }
+        .exam-img { max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 15px; display: block; border: 1px solid #ddd; padding: 5px; cursor: zoom-in; transition: 0.2s; }
+        .exam-img:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .opt-img { max-width: 200px; max-height: 80px; border-radius: 4px; margin-left: 15px; vertical-align: middle; border: 1px solid #eee; cursor: zoom-in; transition: 0.2s; }
+        .opt-img:hover { border-color: var(--secondary); }
         .opt-row { margin: 12px 0; padding: 10px; border: 1px solid #f0f0f0; border-radius: 6px; transition: 0.2s; }
         .opt-row:hover { background: #f9f9f9; border-color: #ddd; }
+
+        /* Lightbox Modal for Enlarge Image */
+        #imageModal {
+            display: none; 
+            position: fixed; 
+            z-index: 3000; 
+            left: 0; 
+            top: 0; 
+            width: 100%; 
+            height: 100%; 
+            background-color: rgba(0,0,0,0.85); 
+            justify-content: center; 
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+        #modalImg {
+            max-width: 90%; 
+            max-height: 90vh; 
+            border-radius: 8px; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        .close-modal {
+            position: absolute; 
+            top: 20px; 
+            right: 35px; 
+            color: #f1f1f1; 
+            font-size: 40px; 
+            font-weight: bold; 
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .close-modal:hover { color: #e74c3c; }
 
         /* Palette Colors */
         .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; }
@@ -75,9 +109,14 @@
     </div>
 </div>
 
+<div id="imageModal" onclick="closeLightbox(event)">
+    <span class="close-modal" onclick="closeLightbox(event)">&times;</span>
+    <img id="modalImg" src="">
+</div>
+
 <script>
     // Ensure this matches your Render URL
-    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; 
+    const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
     
     let examData = null;
     let currentIdx = -1;
@@ -102,6 +141,20 @@
             alert("Error loading exam. Please check your connection."); 
         }
     };
+
+    // --- Lightbox Functions ---
+    function openLightbox(src) {
+        document.getElementById("modalImg").src = src;
+        document.getElementById("imageModal").style.display = "flex";
+    }
+
+    function closeLightbox(event) {
+        // Only close if they clicked the background or the X button (not the image itself)
+        if (event.target.id === "imageModal" || event.target.className === "close-modal") {
+            document.getElementById("imageModal").style.display = "none";
+            document.getElementById("modalImg").src = "";
+        }
+    }
 
     function filterSubject(sub) {
         currentSub = sub;
@@ -135,14 +188,14 @@
         const q = examData.questions[index];
         document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
         
-        // 1. Render Question Text AND Image
+        // 1. Render Question Text AND Image (With Lightbox onClick)
         let qContent = q.question;
         if (q.questionImage) {
-            qContent += `<br><img src="${q.questionImage}" class="exam-img" alt="Question Graphic">`;
+            qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to enlarge" onclick="openLightbox(this.src)" alt="Question Graphic">`;
         }
         document.getElementById("qText").innerHTML = qContent;
 
-        // 2. Render Options AND Option Images
+        // 2. Render Options AND Option Images (With Lightbox onClick)
         const optDiv = document.getElementById("optionsList");
         if (q.options && q.options.length > 1) {
             let optionsHTML = "";
@@ -151,7 +204,7 @@
                 let imgHTML = "";
                 // If there's an image for this specific option, append it
                 if (q.optionImages && q.optionImages[idx]) {
-                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" alt="Option ${idx + 1} Graphic">`;
+                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to enlarge" onclick="openLightbox(this.src)" alt="Option ${idx + 1} Graphic">`;
                 }
                 
                 const isChecked = studentAnswers[index] === opt ? 'checked' : '';
