@@ -156,6 +156,16 @@ async def create_exam(request: Request, user=Depends(authorize(["admin"]))):
     update_time, doc_ref = db.collection("exams").add(body)
     return {"message": "Exam created! ✅", "id": doc_ref.id}
 
+# --- 🔥 NEW: DELETE ENTIRE EXAM ROUTE 🔥 ---
+@app.delete("/api/exams/{exam_id}")
+async def delete_exam(exam_id: str, user=Depends(authorize(["admin"]))):
+    try:
+        db.collection("exams").document(exam_id).delete()
+        return {"message": "Exam deleted successfully! 🗑️"}
+    except Exception as e:
+        print(f"Error deleting exam: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete exam from database")
+
 @app.post("/api/exams/{exam_id}/questions")
 async def add_question(exam_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
     new_question = await request.json()
