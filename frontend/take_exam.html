@@ -13,55 +13,73 @@
         .sub-btn.active { background: var(--nta-blue); color: white; }
 
         .main-container { display: flex; flex: 1; overflow: hidden; }
-        .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; }
+        .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; position: relative; }
         .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; }
 
-        /* Image Handling for Chemistry/Physics */
-        .exam-img { max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 15px; display: block; border: 1px solid #ddd; padding: 5px; cursor: zoom-in; transition: 0.2s; }
-        .exam-img:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        /* Image Handling */
+        .exam-img { max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 15px; display: block; border: 1px solid #ddd; padding: 5px; cursor: zoom-in; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .exam-img:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-color: var(--secondary); }
         .opt-img { max-width: 200px; max-height: 80px; border-radius: 4px; margin-left: 15px; vertical-align: middle; border: 1px solid #eee; cursor: zoom-in; transition: 0.2s; }
-        .opt-img:hover { border-color: var(--secondary); }
-        .opt-row { margin: 12px 0; padding: 10px; border: 1px solid #f0f0f0; border-radius: 6px; transition: 0.2s; }
+        .opt-img:hover { border-color: var(--secondary); transform: scale(1.05); }
+        .opt-row { margin: 12px 0; padding: 10px; border: 1px solid #f0f0f0; border-radius: 6px; transition: 0.2s; display: flex; align-items: center;}
         .opt-row:hover { background: #f9f9f9; border-color: #ddd; }
 
-        /* Lightbox Modal for Enlarge Image */
-        #imageModal {
+        /* --- ADVANCED ZOOM MODAL --- */
+        #zoomModal {
             display: none; 
             position: fixed; 
-            z-index: 3000; 
+            z-index: 9999; 
             left: 0; 
             top: 0; 
             width: 100%; 
             height: 100%; 
-            background-color: rgba(0,0,0,0.85); 
-            justify-content: center; 
-            align-items: center;
-            backdrop-filter: blur(5px);
+            background-color: rgba(0,0,0,0.92); 
+            flex-direction: column;
+            backdrop-filter: blur(4px);
         }
-        #modalImg {
-            max-width: 90%; 
-            max-height: 90vh; 
-            border-radius: 8px; 
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        .zoom-toolbar {
+            background: #111;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
-        .close-modal {
-            position: absolute; 
-            top: 20px; 
-            right: 35px; 
-            color: #f1f1f1; 
-            font-size: 40px; 
-            font-weight: bold; 
+        .zoom-btn {
+            padding: 8px 20px;
+            font-size: 16px;
+            font-weight: bold;
             cursor: pointer;
+            border-radius: 6px;
+            border: none;
+            background: var(--nta-blue);
+            color: white;
             transition: 0.2s;
         }
-        .close-modal:hover { color: #e74c3c; }
+        .zoom-btn:hover { background: var(--secondary); }
+        .zoom-btn.danger { background: var(--red); }
+        .zoom-btn.danger:hover { background: #c0392b; }
+        
+        .zoom-canvas {
+            flex: 1;
+            overflow: auto; /* Allows scrolling when image is huge */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        #modalImg {
+            transition: width 0.2s ease;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            border-radius: 4px;
+            background: white; /* In case of transparent PNGs */
+        }
 
         /* Palette Colors */
         .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; }
         .p-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
         .p-btn.active { border: 2px solid #000; outline: 2px solid #3498db; }
-        
-        .p-btn.visited { background: var(--red); color: white; border-radius: 50% 50% 0 0; } /* NTA style shape */
+        .p-btn.visited { background: var(--red); color: white; border-radius: 50% 50% 0 0; }
         .p-btn.answered { background: var(--green); color: white; border-radius: 0 0 50% 50%; }
         .p-btn.review { background: var(--purple); color: white; border-radius: 50%; }
         .p-btn.review-answered { background: var(--purple); color: white; border-radius: 50%; position: relative; }
@@ -109,21 +127,81 @@
     </div>
 </div>
 
-<div id="imageModal" onclick="closeLightbox(event)">
-    <span class="close-modal" onclick="closeLightbox(event)">&times;</span>
-    <img id="modalImg" src="">
+<div id="zoomModal">
+    <div class="zoom-toolbar">
+        <button class="zoom-btn" onclick="changeZoom(50)">🔍 Zoom In (+)</button>
+        <button class="zoom-btn" onclick="changeZoom(-50)">🔍 Zoom Out (-)</button>
+        <button class="zoom-btn" onclick="resetZoom()" style="background: #7f8c8d;">Reset</button>
+        <button class="zoom-btn danger" onclick="closeZoom()">✖ Close</button>
+    </div>
+    <div class="zoom-canvas" id="zoomCanvas" onclick="handleCanvasClick(event)">
+        <img id="modalImg" src="">
+    </div>
 </div>
 
 <script>
-    // Ensure this matches your Render URL
     const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
     
     let examData = null;
     let currentIdx = -1;
     let currentSub = 'Physics';
-    let studentAnswers = {}; // { index: value }
-    let statusMap = {}; // { index: 'visited' | 'answered' | 'review' | 'review-answered' }
-    let timeLeft = 180 * 60; // 3 hours
+    let studentAnswers = {}; 
+    let statusMap = {}; 
+    let timeLeft = 180 * 60; 
+
+    // --- ZOOM LOGIC ---
+    let imgZoomLevel = 100;
+
+    function openZoom(src) {
+        const img = document.getElementById("modalImg");
+        img.src = src;
+        resetZoom(); // Start at 100% every time
+        document.getElementById("zoomModal").style.display = "flex";
+    }
+
+    function closeZoom() {
+        document.getElementById("zoomModal").style.display = "none";
+    }
+
+    // Close if they click the dark background, but not the image itself
+    function handleCanvasClick(event) {
+        if(event.target.id === "zoomCanvas") {
+            closeZoom();
+        }
+    }
+
+    function changeZoom(amount) {
+        imgZoomLevel += amount;
+        if (imgZoomLevel < 50) imgZoomLevel = 50;   // Minimum 50%
+        if (imgZoomLevel > 500) imgZoomLevel = 500; // Maximum 500% zoom
+        updateZoomCSS();
+    }
+
+    function resetZoom() {
+        imgZoomLevel = 100;
+        updateZoomCSS();
+    }
+
+    function updateZoomCSS() {
+        const img = document.getElementById("modalImg");
+        const canvas = document.getElementById("zoomCanvas");
+        
+        if (imgZoomLevel === 100) {
+            // Default fit-to-screen
+            img.style.maxWidth = "90%";
+            img.style.maxHeight = "85vh";
+            img.style.width = "auto";
+            canvas.style.alignItems = "center";
+        } else {
+            // Unbound width for zooming (enables scrolling)
+            img.style.maxWidth = "none";
+            img.style.maxHeight = "none";
+            img.style.width = imgZoomLevel + "%";
+            // If zoomed in large, we align top-left so scrolling works naturally
+            canvas.style.alignItems = imgZoomLevel > 100 ? "flex-start" : "center";
+        }
+    }
+    // ------------------
 
     window.onload = async () => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -142,25 +220,10 @@
         }
     };
 
-    // --- Lightbox Functions ---
-    function openLightbox(src) {
-        document.getElementById("modalImg").src = src;
-        document.getElementById("imageModal").style.display = "flex";
-    }
-
-    function closeLightbox(event) {
-        // Only close if they clicked the background or the X button (not the image itself)
-        if (event.target.id === "imageModal" || event.target.className === "close-modal") {
-            document.getElementById("imageModal").style.display = "none";
-            document.getElementById("modalImg").src = "";
-        }
-    }
-
     function filterSubject(sub) {
         currentSub = sub;
         document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === sub));
         
-        // Find the first question of this subject to display immediately
         let firstOfSub = -1;
         if (examData && examData.questions) {
             firstOfSub = examData.questions.findIndex(q => q.subject === sub);
@@ -169,7 +232,6 @@
         if (firstOfSub !== -1) {
             showQuestion(firstOfSub);
         } else {
-            // Handle case where subject has no questions yet
             document.getElementById("qNumber").innerText = sub;
             document.getElementById("qText").innerHTML = "<i>No questions available for this subject yet.</i>";
             document.getElementById("optionsList").innerHTML = "";
@@ -179,7 +241,6 @@
     }
 
     function showQuestion(index) {
-        // Mark previous question as visited if left blank
         if (currentIdx !== -1 && !statusMap[currentIdx]) {
             statusMap[currentIdx] = 'visited'; 
         }
@@ -188,29 +249,28 @@
         const q = examData.questions[index];
         document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
         
-        // 1. Render Question Text AND Image (With Lightbox onClick)
+        // 1. Render Question Image with openZoom
         let qContent = q.question;
         if (q.questionImage) {
-            qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to enlarge" onclick="openLightbox(this.src)" alt="Question Graphic">`;
+            qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Question Graphic">`;
         }
         document.getElementById("qText").innerHTML = qContent;
 
-        // 2. Render Options AND Option Images (With Lightbox onClick)
+        // 2. Render Options with openZoom
         const optDiv = document.getElementById("optionsList");
         if (q.options && q.options.length > 1) {
             let optionsHTML = "";
             
             q.options.forEach((opt, idx) => {
                 let imgHTML = "";
-                // If there's an image for this specific option, append it
                 if (q.optionImages && q.optionImages[idx]) {
-                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to enlarge" onclick="openLightbox(this.src)" alt="Option ${idx + 1} Graphic">`;
+                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
                 }
                 
                 const isChecked = studentAnswers[index] === opt ? 'checked' : '';
                 optionsHTML += `
                     <div class="opt-row">
-                        <label style="cursor: pointer; display: flex; align-items: center;">
+                        <label style="cursor: pointer; display: flex; align-items: center; width: 100%;">
                             <input type="radio" name="ans" value="${opt}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);"> 
                             <span style="font-size: 16px;">${opt}</span>
                             ${imgHTML}
@@ -219,7 +279,6 @@
             });
             optDiv.innerHTML = optionsHTML;
         } else {
-            // Numerical / Fill in the blank fallback
             optDiv.innerHTML = `<input type="number" id="numAns" value="${studentAnswers[index] || ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px;">`;
         }
         
@@ -232,11 +291,9 @@
         
         let paletteHTML = "";
         examData.questions.forEach((q, i) => {
-            // Only show buttons for the currently selected subject
             if (q.subject === currentSub) {
                 let cls = statusMap[i] || '';
                 if (i === currentIdx) cls += ' active';
-                // Using 'i' ensures we jump to the correct absolute index in the examData array
                 paletteHTML += `<div class="p-btn ${cls}" onclick="showQuestion(${i})">${i + 1}</div>`;
             }
         });
@@ -270,7 +327,6 @@
     }
 
     function nextLogic() {
-        // Find the next question IN THE CURRENT SUBJECT
         let nextIdx = -1;
         for (let i = currentIdx + 1; i < examData.questions.length; i++) {
             if (examData.questions[i].subject === currentSub) {
@@ -282,7 +338,6 @@
         if (nextIdx !== -1) {
             showQuestion(nextIdx);
         } else {
-            // If it was the last question of the subject, just refresh the palette
             renderPalette();
         }
     }
@@ -291,13 +346,11 @@
         if (currentIdx === -1) return;
         
         delete studentAnswers[currentIdx];
-        statusMap[currentIdx] = 'visited'; // Revert to red (visited but not answered)
+        statusMap[currentIdx] = 'visited'; 
         
-        // Uncheck radio buttons visually
         const radios = document.querySelectorAll('input[name="ans"]');
         radios.forEach(r => r.checked = false);
         
-        // Clear numerical input if it exists
         const numInput = document.getElementById("numAns");
         if(numInput) numInput.value = "";
         
@@ -323,11 +376,10 @@
         let score = 0;
         examData.questions.forEach((q, i) => {
             if (studentAnswers[i] === q.correctAnswer) {
-                score += 4; // +4 for correct
+                score += 4; 
             } else if (studentAnswers[i]) {
-                score -= 1; // -1 for incorrect
+                score -= 1; 
             }
-            // 0 for unattempted
         });
         
         try {
