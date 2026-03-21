@@ -199,7 +199,19 @@
 
 <script>
     const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
-    const token = localStorage.getItem("token"); // Changed from adminToken to match common naming
+    const token = localStorage.getItem("adminToken");
+    const role = localStorage.getItem("userRole");
+
+    console.log("Checking Admin Access...");
+    console.log("Token exists:", !!token);
+    console.log("Role found:", role);
+
+    // 2. The Guard Logic (Case-insensitive)
+    if (!token || !role || role.toLowerCase() !== "admin") {
+        console.error("⛔ ACCESS DENIED: Redirecting to login...");
+        alert("Unauthorized! Please login as Admin.");
+        window.location.href = "login.html";
+    }
 
     if (!token) { window.location.href = "login.html"; }
 
