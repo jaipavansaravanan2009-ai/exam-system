@@ -16,6 +16,12 @@
         .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; }
         .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; }
 
+        /* Image Handling for Chemistry/Physics */
+        .exam-img { max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 15px; display: block; border: 1px solid #ddd; padding: 5px; }
+        .opt-img { max-width: 200px; max-height: 80px; border-radius: 4px; margin-left: 15px; vertical-align: middle; border: 1px solid #eee; }
+        .opt-row { margin: 12px 0; padding: 10px; border: 1px solid #f0f0f0; border-radius: 6px; transition: 0.2s; }
+        .opt-row:hover { background: #f9f9f9; border-color: #ddd; }
+
         /* Palette Colors */
         .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; }
         .p-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
@@ -70,13 +76,15 @@
 </div>
 
 <script>
-    const BACKEND_URL = "https://jee-mock-portal.onrender.com";
+    // Ensure this matches your Render URL
+    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; 
+    
     let examData = null;
     let currentIdx = -1;
     let currentSub = 'Physics';
     let studentAnswers = {}; // { index: value }
     let statusMap = {}; // { index: 'visited' | 'answered' | 'review' | 'review-answered' }
-    let timeLeft = 180 * 60;
+    let timeLeft = 180 * 60; // 3 hours
 
     window.onload = async () => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -84,54 +92,107 @@
         try {
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`);
             examData = await res.json();
+            
+            document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
             document.getElementById("examUI").style.display = "flex";
+            
             filterSubject('Physics');
             startTimer();
-        } catch (err) { alert("Error loading exam."); }
+        } catch (err) { 
+            alert("Error loading exam. Please check your connection."); 
+        }
     };
 
     function filterSubject(sub) {
         currentSub = sub;
         document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === sub));
-        renderPalette();
-        // Automatically go to the first question of this subject
-        const firstOfSub = examData.questions.findIndex(q => q.subject === sub);
-        if (firstOfSub !== -1) showQuestion(firstOfSub);
+        
+        // Find the first question of this subject to display immediately
+        let firstOfSub = -1;
+        if (examData && examData.questions) {
+            firstOfSub = examData.questions.findIndex(q => q.subject === sub);
+        }
+        
+        if (firstOfSub !== -1) {
+            showQuestion(firstOfSub);
+        } else {
+            // Handle case where subject has no questions yet
+            document.getElementById("qNumber").innerText = sub;
+            document.getElementById("qText").innerHTML = "<i>No questions available for this subject yet.</i>";
+            document.getElementById("optionsList").innerHTML = "";
+            currentIdx = -1;
+            renderPalette();
+        }
     }
 
     function showQuestion(index) {
+        // Mark previous question as visited if left blank
         if (currentIdx !== -1 && !statusMap[currentIdx]) {
-            statusMap[currentIdx] = 'visited'; // If they leave without saving, it's "Not Answered" (Red)
+            statusMap[currentIdx] = 'visited'; 
         }
         
         currentIdx = index;
         const q = examData.questions[index];
         document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
-        document.getElementById("qText").innerText = q.question;
+        
+        // 1. Render Question Text AND Image
+        let qContent = q.question;
+        if (q.questionImage) {
+            qContent += `<br><img src="${q.questionImage}" class="exam-img" alt="Question Graphic">`;
+        }
+        document.getElementById("qText").innerHTML = qContent;
 
+        // 2. Render Options AND Option Images
         const optDiv = document.getElementById("optionsList");
         if (q.options && q.options.length > 1) {
-            optDiv.innerHTML = q.options.map(opt => `
-                <div style="margin: 10px 0;"><label>
-                    <input type="radio" name="ans" value="${opt}" ${studentAnswers[index] === opt ? 'checked' : ''}> ${opt}
-                </label></div>`).join("");
+            let optionsHTML = "";
+            
+            q.options.forEach((opt, idx) => {
+                let imgHTML = "";
+                // If there's an image for this specific option, append it
+                if (q.optionImages && q.optionImages[idx]) {
+                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" alt="Option ${idx + 1} Graphic">`;
+                }
+                
+                const isChecked = studentAnswers[index] === opt ? 'checked' : '';
+                optionsHTML += `
+                    <div class="opt-row">
+                        <label style="cursor: pointer; display: flex; align-items: center;">
+                            <input type="radio" name="ans" value="${opt}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);"> 
+                            <span style="font-size: 16px;">${opt}</span>
+                            ${imgHTML}
+                        </label>
+                    </div>`;
+            });
+            optDiv.innerHTML = optionsHTML;
         } else {
-            optDiv.innerHTML = `<input type="number" id="numAns" value="${studentAnswers[index] || ''}" placeholder="Enter Value">`;
+            // Numerical / Fill in the blank fallback
+            optDiv.innerHTML = `<input type="number" id="numAns" value="${studentAnswers[index] || ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px;">`;
         }
+        
         renderPalette();
     }
 
     function renderPalette() {
         const grid = document.getElementById("palette");
-        grid.innerHTML = examData.questions.map((q, i) => {
-            if (q.subject !== currentSub) return '';
-            let cls = statusMap[i] || '';
-            if (i === currentIdx) cls += ' active';
-            return `<div class="p-btn ${cls}" onclick="showQuestion(${i})">${i + 1}</div>`;
-        }).join("");
+        if (!examData || !examData.questions) return;
+        
+        let paletteHTML = "";
+        examData.questions.forEach((q, i) => {
+            // Only show buttons for the currently selected subject
+            if (q.subject === currentSub) {
+                let cls = statusMap[i] || '';
+                if (i === currentIdx) cls += ' active';
+                // Using 'i' ensures we jump to the correct absolute index in the examData array
+                paletteHTML += `<div class="p-btn ${cls}" onclick="showQuestion(${i})">${i + 1}</div>`;
+            }
+        });
+        grid.innerHTML = paletteHTML;
     }
 
     function saveAndNext() {
+        if (currentIdx === -1) return;
+        
         const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
         if (sel && sel.value) {
             studentAnswers[currentIdx] = sel.value;
@@ -143,6 +204,8 @@
     }
 
     function markForReview() {
+        if (currentIdx === -1) return;
+        
         const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
         if (sel && sel.value) {
             studentAnswers[currentIdx] = sel.value;
@@ -154,39 +217,81 @@
     }
 
     function nextLogic() {
-        if (currentIdx < examData.questions.length - 1) showQuestion(currentIdx + 1);
-        renderPalette();
+        // Find the next question IN THE CURRENT SUBJECT
+        let nextIdx = -1;
+        for (let i = currentIdx + 1; i < examData.questions.length; i++) {
+            if (examData.questions[i].subject === currentSub) {
+                nextIdx = i;
+                break;
+            }
+        }
+        
+        if (nextIdx !== -1) {
+            showQuestion(nextIdx);
+        } else {
+            // If it was the last question of the subject, just refresh the palette
+            renderPalette();
+        }
     }
 
     function clearResponse() {
+        if (currentIdx === -1) return;
+        
         delete studentAnswers[currentIdx];
-        delete statusMap[currentIdx];
-        showQuestion(currentIdx);
+        statusMap[currentIdx] = 'visited'; // Revert to red (visited but not answered)
+        
+        // Uncheck radio buttons visually
+        const radios = document.querySelectorAll('input[name="ans"]');
+        radios.forEach(r => r.checked = false);
+        
+        // Clear numerical input if it exists
+        const numInput = document.getElementById("numAns");
+        if(numInput) numInput.value = "";
+        
+        renderPalette();
     }
 
     function startTimer() {
-        setInterval(() => {
+        const timerInterval = setInterval(() => {
             timeLeft--;
             let h = Math.floor(timeLeft / 3600), m = Math.floor((timeLeft % 3600) / 60), s = timeLeft % 60;
             document.getElementById("timer").innerText = `${h}:${m}:${s}`.replace(/\b\d\b/g, "0$&");
-            if (timeLeft <= 0) submitFinal();
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                submitFinal();
+            }
         }, 1000);
     }
 
     async function submitFinal() {
-        if (!confirm("Confirm submission?")) return;
+        if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
+        
         let score = 0;
         examData.questions.forEach((q, i) => {
-            if (studentAnswers[i] == q.correctAnswer) score += 4;
-            else if (studentAnswers[i]) score -= 1;
+            if (studentAnswers[i] === q.correctAnswer) {
+                score += 4; // +4 for correct
+            } else if (studentAnswers[i]) {
+                score -= 1; // -1 for incorrect
+            }
+            // 0 for unattempted
         });
-        await fetch(`${BACKEND_URL}/api/public/submit`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ studentName: localStorage.getItem("userName"), examTitle: examData.title, score })
-        });
-        alert("Exam Finished! Score: " + score);
-        window.location.href = "student_portal.html";
+        
+        try {
+            await fetch(`${BACKEND_URL}/api/public/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    studentName: localStorage.getItem("userName") || "Guest Student", 
+                    examTitle: examData.title, 
+                    score: score 
+                })
+            });
+            alert("Exam Submitted Successfully! Your Score: " + score);
+            window.location.href = "student_portal.html";
+        } catch (e) {
+            alert("Error submitting exam. Please check your internet connection.");
+        }
     }
 </script>
 </body>
