@@ -1,81 +1,288 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Student Portal | Available Exams</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard | JEE Portal</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f7f9; margin: 0; padding: 20px; }
-        header { background: #1e3d59; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .exam-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        .exam-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-top: 5px solid #2e86c1; }
-        .exam-card h3 { margin-top: 0; color: #1e3d59; }
-        .btn-start { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
-        .btn-start:hover { background: #219150; }
-        .user-info { font-weight: bold; }
+        :root {
+            --primary: #1e3d59;
+            --secondary: #2e86c1;
+            --accent: #f39c12;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --bg: #f4f7f6;
+            --text-main: #2c3e50;
+            --text-muted: #7f8c8d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body { background: var(--bg); color: var(--text-main); }
+
+        /* Navbar */
+        .navbar {
+            background: var(--primary);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .navbar .logo { font-size: 22px; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+        
+        .user-controls { display: flex; align-items: center; gap: 20px; }
+        .user-name { font-weight: 600; font-size: 15px; }
+        
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.3s;
+            font-weight: bold;
+        }
+        .logout-btn:hover { background: var(--danger); border-color: var(--danger); }
+
+        /* Main Container */
+        .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+
+        /* Welcome Banner */
+        .welcome-banner {
+            background: linear-gradient(135deg, var(--secondary), #1a5276);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 20px rgba(46, 134, 193, 0.2);
+        }
+        .welcome-banner h1 { font-size: 28px; margin-bottom: 10px; }
+        .welcome-banner p { font-size: 15px; opacity: 0.9; line-height: 1.5; }
+
+        /* Layout Grid */
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 25px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            color: var(--primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        /* Exam Cards */
+        .exam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        
+        .exam-card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            border-top: 4px solid var(--secondary);
+            display: flex;
+            flex-direction: column;
+        }
+        .exam-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+        
+        .exam-title { font-size: 18px; font-weight: bold; color: var(--primary); margin-bottom: 15px; }
+        
+        .exam-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+            background: #f8f9f9;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .start-btn {
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: pointer;
+            transition: 0.3s;
+            text-align: center;
+            text-decoration: none;
+            margin-top: auto;
+        }
+        .start-btn:hover { background: #219a52; }
+        .start-btn.disabled { background: #bdc3c7; cursor: not-allowed; }
+
+        /* Sidebar Info */
+        .info-card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .info-list { list-style: none; margin-top: 15px; }
+        .info-list li {
+            margin-bottom: 15px;
+            font-size: 14px;
+            line-height: 1.5;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .info-badge {
+            background: #e8f8f5;
+            color: var(--success);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .danger-badge { background: #fdedec; color: var(--danger); }
+
+        /* Loader */
+        .loader { text-align: center; padding: 40px; color: var(--text-muted); font-style: italic; }
     </style>
 </head>
 <body>
 
-<header>
-    <div>
-        <h1>Welcome to the Portal</h1>
-        <div class="user-info" id="userNameDisplay">Student Name</div>
-    </div>
-    <button onclick="logout()" style="background:transparent; border:1px solid white; color:white; cursor:pointer; padding:5px 10px;">Logout</button>
-</header>
+    <nav class="navbar">
+        <div class="logo">🚀 JEE Mock Portal</div>
+        <div class="user-controls">
+            <div class="user-name" id="displayUserName">Student</div>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </nav>
 
-<h2>Available Exams</h2>
-<hr>
-<br>
+    <div class="container">
+        <div class="welcome-banner">
+            <h1 id="welcomeText">Welcome back!</h1>
+            <p>Select a mock test below to begin your practice. Make sure you are in a quiet environment and have 3 hours of uninterrupted time before starting an exam.</p>
+        </div>
 
-<div class="exam-container" id="examList">
-    <p>Fetching exams from server...</p>
-</div>
-
-<script>
-    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app";
-
-    // 1. Display Student Name from LocalStorage
-    document.getElementById("userNameDisplay").innerText = "Student: " + (localStorage.getItem("userName") || "Guest");
-
-    // 2. Load Exams from your Railway Backend
-    async function fetchExams() {
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/public/exams`);
-            const exams = await res.json();
-            
-            const listDiv = document.getElementById("examList");
-            if (exams.length === 0) {
-                listDiv.innerHTML = "<p>No exams available at the moment.</p>";
-                return;
-            }
-
-            listDiv.innerHTML = exams.map(exam => `
-                <div class="exam-card">
-                    <h3>${exam.title}</h3>
-                    <p><strong>Questions:</strong> ${exam.questions ? exam.questions.length : 0}</p>
-                    <p><strong>Time:</strong> 180 Minutes</p>
-                    <button class="btn-start" onclick="goToExam('${exam.id}')">Start Test</button>
+        <div class="dashboard-layout">
+            <div>
+                <h2 class="section-title">📚 Available Mock Exams</h2>
+                <div id="examGrid" class="exam-grid">
+                    <div class="loader">Fetching your exams...</div>
                 </div>
-            `).join('');
-        } catch (err) {
-            console.error(err);
-            document.getElementById("examList").innerHTML = "<p>Error loading exams. Please check your connection.</p>";
+            </div>
+
+            <div>
+                <div class="info-card">
+                    <h3 style="color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 10px;">📋 Exam Guidelines</h3>
+                    <ul class="info-list">
+                        <li>
+                            <span class="info-badge">⏱️ Time</span> 
+                            <div>The standard duration for JEE Mock tests is <b>180 minutes</b>. The timer cannot be paused once started.</div>
+                        </li>
+                        <li>
+                            <span class="info-badge" style="background: #ebf5fb; color: var(--secondary);">📝 Pattern</span> 
+                            <div>Questions are divided into Physics, Chemistry, and Mathematics sections.</div>
+                        </li>
+                        <li>
+                            <span class="info-badge">✔️ Correct</span> 
+                            <div>You will be awarded <b>+4 marks</b> for every correct answer.</div>
+                        </li>
+                        <li>
+                            <span class="info-badge danger-badge">❌ Incorrect</span> 
+                            <div>A penalty of <b>-1 mark</b> will be applied for every incorrect answer.</div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Ensure this matches your active Render URL
+        const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
+
+        // 1. Check Authentication
+        const studentName = localStorage.getItem("userName");
+        const role = localStorage.getItem("userRole");
+
+        // Guard: If not logged in, kick to login page
+        if (!studentName || !role) {
+            window.location.href = "login.html";
         }
-    }
 
-    // 3. The Bridge: Send student to the code you just sent me
-    function goToExam(examId) {
-        // This sends the ID to your take_exam.html file
-        window.location.href = `take_exam.html?id=${examId}`;
-    }
+        // Set personalized text
+        document.getElementById("displayUserName").innerText = `👨‍🎓 ${studentName}`;
+        document.getElementById("welcomeText").innerText = `Ready to ace it, ${studentName.split(' ')[0]}?`;
 
-    function logout() {
-        localStorage.clear();
-        window.location.href = "login.html";
-    }
+        // 2. Fetch Exams using the new `questionCount` feature
+        async function loadAvailableExams() {
+            const grid = document.getElementById("examGrid");
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/public/exams`);
+                if (!res.ok) throw new Error("Failed to fetch");
+                
+                const exams = await res.json();
+                
+                if (exams.length === 0) {
+                    grid.innerHTML = `<div style="grid-column: 1/-1; background: white; padding: 30px; border-radius: 8px; text-align: center; color: #7f8c8d;">No exams are currently active. Please check back later!</div>`;
+                    return;
+                }
 
-    fetchExams();
-</script>
+                grid.innerHTML = ""; // Clear loader
+                
+                exams.forEach(exam => {
+                    // Make sure questionCount exists, default to 0 if not
+                    const qCount = exam.questionCount || 0;
+                    
+                    // Logic to disable exams that have no questions added to them yet
+                    const isReady = qCount > 0;
+                    const btnClass = isReady ? "start-btn" : "start-btn disabled";
+                    const btnText = isReady ? "Start Mock Test ▶" : "Exam Not Ready";
+                    const btnAction = isReady ? `onclick="startExam('${exam.id}')"` : "disabled";
 
+                    grid.innerHTML += `
+                        <div class="exam-card">
+                            <div class="exam-title">${exam.title}</div>
+                            <div class="exam-meta">
+                                <span><b>Questions:</b> ${qCount}</span>
+                                <span><b>Marks:</b> ${qCount * 4}</span>
+                            </div>
+                            <button class="${btnClass}" ${btnAction}>${btnText}</button>
+                        </div>
+                    `;
+                });
+
+            } catch (error) {
+                console.error("Error:", error);
+                grid.innerHTML = `<div style="grid-column: 1/-1; background: #fdedec; color: #c0392b; padding: 20px; border-radius: 8px; text-align: center;">Unable to connect to the exam server. Please ensure your internet is active.</div>`;
+            }
+        }
+
+        // 3. Navigate to Exam Interface
+        function startExam(examId) {
+            // Confirm before burning an attempt
+            if(confirm("Are you sure you want to start this exam? The 3-hour timer will begin immediately.")) {
+                window.location.href = `take_exam.html?id=${examId}`;
+            }
+        }
+
+        // 4. Logout
+        function logout() {
+            localStorage.clear();
+            window.location.href = "login.html";
+        }
+
+        // Initialize
+        loadAvailableExams();
+    </script>
 </body>
 </html>
