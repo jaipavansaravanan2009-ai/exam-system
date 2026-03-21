@@ -83,10 +83,32 @@
 
         .opt-container {
             background: #fff;
-            padding: 10px;
+            padding: 12px;
             border: 1px solid #ddd;
             border-radius: 6px;
             margin-bottom: 10px;
+            position: relative;
+        }
+
+        .correct-radio-label {
+            display: inline-flex;
+            align-items: center;
+            font-weight: bold;
+            color: var(--success);
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 5px;
+            background: #e8f8f5;
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #a3e4d7;
+            width: 100%;
+        }
+
+        .correct-radio-label input {
+            margin-right: 8px;
+            transform: scale(1.2);
+            accent-color: var(--success);
         }
 
         .btn {
@@ -193,35 +215,46 @@
         <div style="background:#f9f9f9; padding:20px; border-radius:10px; border: 1px solid #ddd;">
             <h4>Add Question to Paper</h4><br>
             
-            <input type="text" id="newQ" placeholder="Question Statement (Required)">
+            <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is uploaded)">
             <label style="font-size: 12px; color: #555;">Optional Question Image:</label>
             <input type="file" id="qImg" accept="image/*">
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
                 <div class="opt-container">
-                    <input type="text" id="opt1" placeholder="Option A Text">
+                    <input type="text" id="opt1" placeholder="Option A Text (Optional if Image)">
                     <label style="font-size: 11px;">Image (Opt A):</label>
                     <input type="file" id="opt1Img" accept="image/*">
+                    <label class="correct-radio-label">
+                        <input type="radio" name="correctOpt" value="0"> Mark as Correct Answer
+                    </label>
                 </div>
                 <div class="opt-container">
-                    <input type="text" id="opt2" placeholder="Option B Text">
+                    <input type="text" id="opt2" placeholder="Option B Text (Optional if Image)">
                     <label style="font-size: 11px;">Image (Opt B):</label>
                     <input type="file" id="opt2Img" accept="image/*">
+                    <label class="correct-radio-label">
+                        <input type="radio" name="correctOpt" value="1"> Mark as Correct Answer
+                    </label>
                 </div>
                 <div class="opt-container">
-                    <input type="text" id="opt3" placeholder="Option C Text">
+                    <input type="text" id="opt3" placeholder="Option C Text (Optional if Image)">
                     <label style="font-size: 11px;">Image (Opt C):</label>
                     <input type="file" id="opt3Img" accept="image/*">
+                    <label class="correct-radio-label">
+                        <input type="radio" name="correctOpt" value="2"> Mark as Correct Answer
+                    </label>
                 </div>
                 <div class="opt-container">
-                    <input type="text" id="opt4" placeholder="Option D Text">
+                    <input type="text" id="opt4" placeholder="Option D Text (Optional if Image)">
                     <label style="font-size: 11px;">Image (Opt D):</label>
                     <input type="file" id="opt4Img" accept="image/*">
+                    <label class="correct-radio-label">
+                        <input type="radio" name="correctOpt" value="3"> Mark as Correct Answer
+                    </label>
                 </div>
             </div>
 
-            <input type="text" id="correct" placeholder="Correct Answer (Must exactly match the text of Option A, B, C, or D)" style="margin-top: 10px;">
-            <select id="subjectSelect">
+            <select id="subjectSelect" style="margin-top: 15px;">
                 <option value="Physics">Physics</option>
                 <option value="Chemistry">Chemistry</option>
                 <option value="Maths">Maths</option>
@@ -235,8 +268,8 @@
 </div>
 
 <script>
-    // Make sure to replace this URL with your actual Render URL if needed
-    const BACKEND_URL = "https://exam-system-production-5def.up.railway.app"; 
+    // FIX: Updated to your active Render URL
+    const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
     
     // 1. Get Tokens
     const token = localStorage.getItem("adminToken");
@@ -262,7 +295,6 @@
     let currentEditingExamId = null;
 
     // --- HELPER: IMAGE COMPRESSOR ---
-    // This safely shrinks images so they don't break your database
     function compressImage(file) {
         return new Promise((resolve) => {
             if (!file) return resolve(null); // No file selected
@@ -273,7 +305,7 @@
                 img.src = event.target.result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 700; // Safe width for exam reading
+                    const MAX_WIDTH = 700; 
                     let width = img.width;
                     let height = img.height;
 
@@ -286,7 +318,6 @@
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    // Compress to JPEG format at 70% quality
                     resolve(canvas.toDataURL('image/jpeg', 0.7)); 
                 }
             };
@@ -366,8 +397,16 @@
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
-            if(res.ok) loadExams();
-        } catch(e) { console.error(e); }
+            
+            if(res.ok) {
+                loadExams();
+            } else {
+                alert("Failed to delete. Make sure your Python backend has the delete route.");
+            }
+        } catch(e) { 
+            console.error(e); 
+            alert("Connection error trying to delete exam.");
+        }
     }
 
     // --- DELETE QUESTION ---
@@ -382,14 +421,17 @@
         } catch(e) { console.error(e); }
     }
 
-    // --- SUBMIT NEW QUESTION WITH IMAGES ---
+    // --- SUBMIT NEW QUESTION WITH IMAGES & RADIO BTNS ---
     async function submitNewQuestion() {
         const btn = document.getElementById("addQuestionBtn");
         btn.innerText = "Processing Images... ⏳";
         btn.disabled = true;
 
         try {
-            // 1. Compress and encode all uploaded images (returns null if no file selected)
+            const qText = document.getElementById("newQ").value.trim();
+            const correctRadio = document.querySelector('input[name="correctOpt"]:checked');
+
+            // 1. Compress images
             const [qImage, o1Image, o2Image, o3Image, o4Image] = await Promise.all([
                 compressImage(document.getElementById("qImg").files[0]),
                 compressImage(document.getElementById("opt1Img").files[0]),
@@ -398,26 +440,39 @@
                 compressImage(document.getElementById("opt4Img").files[0])
             ]);
 
-            // 2. Build the payload
-            const payload = {
-                question: document.getElementById("newQ").value,
-                questionImage: qImage, // Will be Base64 string or null
-                options: [
-                    document.getElementById("opt1").value, 
-                    document.getElementById("opt2").value, 
-                    document.getElementById("opt3").value, 
-                    document.getElementById("opt4").value
-                ],
-                optionImages: [o1Image, o2Image, o3Image, o4Image], // Array of Base64 strings or nulls
-                correctAnswer: document.getElementById("correct").value,
-                subject: document.getElementById("subjectSelect").value
-            };
-
-            if(!payload.question || !payload.correctAnswer) {
+            // Validation: Must have Question Text OR Question Image
+            if (!qText && !qImage) {
                 btn.innerText = "Add Question ✅";
                 btn.disabled = false;
-                return alert("Please fill basic text details!");
+                return alert("You must provide either Question Text or a Question Image.");
             }
+
+            // Validation: Must have selected a correct answer
+            if (!correctRadio) {
+                btn.innerText = "Add Question ✅";
+                btn.disabled = false;
+                return alert("Please mark one of the options as the Correct Answer!");
+            }
+
+            // Create Option Texts (Default to "Option A/B/C/D" if left blank so it has a value in the backend)
+            const optTexts = [
+                document.getElementById("opt1").value.trim() || "Option A",
+                document.getElementById("opt2").value.trim() || "Option B",
+                document.getElementById("opt3").value.trim() || "Option C",
+                document.getElementById("opt4").value.trim() || "Option D"
+            ];
+
+            const correctIndex = parseInt(correctRadio.value);
+
+            // 2. Build the payload
+            const payload = {
+                question: qText,
+                questionImage: qImage,
+                options: optTexts,
+                optionImages: [o1Image, o2Image, o3Image, o4Image],
+                correctAnswer: optTexts[correctIndex], // Set automatically by the radio button
+                subject: document.getElementById("subjectSelect").value
+            };
 
             // 3. Send to Python Backend
             const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
@@ -431,20 +486,23 @@
 
             if(res.ok) {
                 alert("Question added successfully! ✅");
-                // Clear all text inputs
+                
+                // Clear text inputs
                 document.getElementById("newQ").value = "";
                 document.getElementById("opt1").value = "";
                 document.getElementById("opt2").value = "";
                 document.getElementById("opt3").value = "";
                 document.getElementById("opt4").value = "";
-                document.getElementById("correct").value = "";
                 
-                // Clear all file inputs
+                // Clear file inputs
                 document.getElementById("qImg").value = "";
                 document.getElementById("opt1Img").value = "";
                 document.getElementById("opt2Img").value = "";
                 document.getElementById("opt3Img").value = "";
                 document.getElementById("opt4Img").value = "";
+
+                // Uncheck radio buttons
+                document.querySelectorAll('input[name="correctOpt"]').forEach(r => r.checked = false);
 
                 refreshQuestionList(currentEditingExamId);
             } else {
@@ -472,15 +530,16 @@
             
             if (exam && exam.questions) {
                 exam.questions.forEach((q, i) => {
-                    // Show a little picture icon if the question has an image attached
                     const hasImg = q.questionImage ? '🖼️ [Image Attached]' : '';
+                    const qTextDisplay = q.question || "<i>(Image Only Question)</i>";
                     
                     list.innerHTML += `
                     <div style="padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
                         <div>
                             <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:11px;">${q.subject}</span><br>
-                            <b>Q${i+1}:</b> ${q.question} <br>
-                            <small style="color: blue;">${hasImg}</small>
+                            <b>Q${i+1}:</b> ${qTextDisplay} <br>
+                            <small style="color: blue;">${hasImg}</small><br>
+                            <small style="color: var(--success);"><b>Correct:</b> ${q.correctAnswer}</small>
                         </div>
                         <button class="btn" style="background:#ff7675; color:white; font-size:12px;" onclick="deleteQuestion('${examId}', ${i})">Delete</button>
                     </div>`;
