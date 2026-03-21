@@ -172,7 +172,7 @@
 
     function changeZoom(amount) {
         imgZoomLevel += amount;
-        if (imgZoomLevel < 50) imgZoomLevel = 50;   // Minimum 50%
+        if (imgZoomLevel < 50) imgZoomLevel = 100;   // Minimum 50%
         if (imgZoomLevel > 500) imgZoomLevel = 500; // Maximum 500% zoom
         updateZoomCSS();
     }
