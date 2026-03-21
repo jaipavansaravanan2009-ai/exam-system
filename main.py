@@ -209,7 +209,20 @@ async def get_all_exams(user=Depends(authorize(["admin", "setter"]))):
 @app.get("/api/public/exams")
 async def get_public_exams():
     docs = db.collection("exams").stream()
-    return [{"id": doc.id, "title": doc.to_dict().get("title")} for doc in docs]
+    exams_list = []
+    
+    for doc in docs:
+        data = doc.to_dict()
+        # Count the questions on the server side without sending the heavy image data
+        q_count = len(data.get("questions", [])) 
+        
+        exams_list.append({
+            "id": doc.id, 
+            "title": data.get("title", "Untitled Exam"),
+            "questionCount": q_count
+        })
+        
+    return exams_list
 
 @app.get("/api/public/exams/{exam_id}")
 async def get_exam(exam_id: str):
