@@ -230,17 +230,18 @@
         <h2 id="modalExamTitle">Manage Questions</h2>
         <hr style="margin: 20px 0;">
         
-        <div style="background:#f9f9f9; padding:20px; border-radius:10px; border: 1px solid #ddd;">
-            
-            <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #2e86c1;">
-                <h4 style="color: #2e86c1; margin-bottom: 10px;">⚡ Bulk Upload via CSV</h4>
-                <p style="font-size: 12px; color: #555; margin-bottom: 10px;">
-                    Create an Excel file with these exact column headers, save as <b>.csv</b>, and upload it here.<br>
-                    <i>Headers: Subject, QuestionText, QuestionImageURL, OptionA, OptionB, OptionC, OptionD, OptionA_ImageURL, OptionB_ImageURL, OptionC_ImageURL, OptionD_ImageURL</i>
+        <div style="background: #fdf2e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #e67e22;">
+                <h4 style="color: #d35400; margin-bottom: 10px;">📦 Bulk Upload via ZIP File</h4>
+                <p style="font-size: 13px; color: #555; margin-bottom: 10px; line-height: 1.5;">
+                    1. Create a folder on your computer.<br>
+                    2. Put your images inside it (e.g., <i>q1.png, optA.jpg</i>).<br>
+                    3. Create a <b>.csv</b> file and put it in the same folder. Type the exact image filenames in the Image columns.<br>
+                    <i style="color: #d35400;">Headers: Subject, QuestionText, QuestionImage, OptionA, OptionB, OptionC, OptionD, OptionA_Image, OptionB_Image, OptionC_Image, OptionD_Image</i><br>
+                    4. <b>Compress/ZIP the folder</b> and upload it below.
                 </p>
                 <div style="display: flex; gap: 10px;">
-                    <input type="file" id="csvFile" accept=".csv" style="margin-bottom: 0;">
-                    <button class="btn btn-primary" onclick="uploadCSV()" id="csvUploadBtn">Upload File</button>
+                    <input type="file" id="zipFile" accept=".zip" style="margin-bottom: 0;">
+                    <button class="btn btn-primary" style="background:#d35400; border:none;" onclick="uploadZIP()" id="zipUploadBtn">Upload ZIP</button>
                 </div>
             </div>
             
@@ -452,37 +453,44 @@
         } catch (error) { console.error("Error creating user:", error); }
     }
 
-    async function uploadCSV() {
-        const fileInput = document.getElementById('csvFile');
+    // --- 📦 BULK UPLOAD ZIP ---
+    async function uploadZIP() {
+        const fileInput = document.getElementById('zipFile');
         const file = fileInput.files[0];
-        const btn = document.getElementById('csvUploadBtn');
+        const btn = document.getElementById('zipUploadBtn');
 
-        if (!file) return alert("Please select a .csv file first!");
-        if (!currentEditingExamId) return alert("No exam selected.");
+        if (!file) return alert("Please select a .zip file first!");
+        if (!currentEditingExamId) return alert("No exam selected. Please click the ⚙️ Edit button on an exam first.");
 
-        btn.innerText = "Uploading... ⏳";
+        btn.innerText = "Extracting & Uploading... ⏳";
         btn.disabled = true;
 
         const formData = new FormData();
         formData.append("file", file);
 
         try {
-            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload`, {
+            // Point to the new ZIP route
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload-zip`, {
                 method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }, 
+                headers: { "Authorization": `Bearer ${token}` }, // Form data handles its own boundaries
                 body: formData
             });
 
             const data = await res.json();
+
             if (res.ok) {
                 alert(data.message);
                 fileInput.value = ""; 
                 refreshQuestionList(currentEditingExamId);
-            } else { alert("Upload Failed: " + (data.detail || "Unknown error")); }
+            } else {
+                alert("Upload Failed: " + (data.detail || "Unknown error"));
+            }
         } catch (e) {
-            console.error(e); alert("Connection error during upload.");
+            console.error(e);
+            alert("Connection error during upload. Ensure your Python backend is running.");
         } finally {
-            btn.innerText = "Upload File"; btn.disabled = false;
+            btn.innerText = "Upload ZIP";
+            btn.disabled = false;
         }
     }
 

@@ -14,6 +14,9 @@ from dotenv import load_dotenv
 from fastapi import UploadFile, File
 import csv
 import io
+from fastapi import UploadFile, File, HTTPException, Depends
+import zipfile
+import mimetypes
 
 # Load Environment Variables
 load_dotenv()
@@ -159,59 +162,93 @@ async def create_exam(request: Request, user=Depends(authorize(["admin"]))):
     update_time, doc_ref = db.collection("exams").add(body)
     return {"message": "Exam created! ✅", "id": doc_ref.id}
 
-# --- 🚀 BULK UPLOAD QUESTIONS VIA CSV ---
-@app.post("/api/exams/{exam_id}/bulk-upload")
-async def bulk_upload_questions(exam_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin"]))):
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only .csv files are allowed.")
+# --- 📦 BULK UPLOAD VIA ZIP (CSV + IMAGES) ---
+@app.post("/api/exams/{exam_id}/bulk-upload-zip")
+async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin"]))):
+    if not file.filename.lower().endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Only .zip files are allowed.")
 
     try:
-        # Read the CSV file
         contents = await file.read()
-        decoded = contents.decode('utf-8')
-        reader = csv.DictReader(io.StringIO(decoded))
+        
+        csv_data = None
+        images_data = {} # Dictionary to hold filename -> Base64 string
+        
+        # 1. Unpack the ZIP file in memory
+        with zipfile.ZipFile(io.BytesIO(contents)) as z:
+            for filename in z.namelist():
+                # Ignore macOS hidden files and folders
+                if filename.startswith("__MACOSX") or filename.startswith(".") or filename.endswith("/"):
+                    continue
+                    
+                if filename.lower().endswith(".csv"):
+                    csv_data = z.read(filename).decode('utf-8-sig') # sig handles Excel formatting
+                elif filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    # Read image and convert directly to Base64
+                    img_bytes = z.read(filename)
+                    mime_type, _ = mimetypes.guess_type(filename)
+                    if not mime_type:
+                        mime_type = "image/jpeg"
+                    b64_str = base64.b64encode(img_bytes).decode('utf-8')
+                    # Save it using just the base filename (ignoring folder paths)
+                    base_name = filename.split('/')[-1]
+                    images_data[base_name] = f"data:{mime_type};base64,{b64_str}"
+
+        if not csv_data:
+            raise HTTPException(status_code=400, detail="Could not find a .csv file inside the ZIP.")
+
+        # 2. Parse the CSV
+        reader = csv.DictReader(io.StringIO(csv_data))
         
         exam_ref = db.collection("exams").document(exam_id)
         doc = exam_ref.get()
-
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Exam not found")
 
         data = doc.to_dict()
         questions = data.get("questions", [])
         
-        # Process each row in the Excel/CSV file
+        # Helper to match CSV filename to the actual unzipped image
+        def get_img(col_name, row_data):
+            img_name = row_data.get(col_name, "").strip()
+            if not img_name: return None
+            # If they put a full web link, just use it
+            if img_name.startswith("http"): return img_name
+            # Find the image in our extracted dictionary
+            return images_data.get(img_name, None)
+
+        # 3. Build Questions
         added_count = 0
         for row in reader:
             new_q = {
                 "subject": row.get("Subject", "Physics").strip(),
                 "question": row.get("QuestionText", "").strip(),
-                "questionImage": row.get("QuestionImageURL", "").strip() or None,
+                "questionImage": get_img("QuestionImage", row),
                 "options": [
-                    row.get("OptionA", "").strip(),
-                    row.get("OptionB", "").strip(),
-                    row.get("OptionC", "").strip(),
-                    row.get("OptionD", "").strip()
+                    row.get("OptionA", "").strip() or "Option A",
+                    row.get("OptionB", "").strip() or "Option B",
+                    row.get("OptionC", "").strip() or "Option C",
+                    row.get("OptionD", "").strip() or "Option D"
                 ],
                 "optionImages": [
-                    row.get("OptionA_ImageURL", "").strip() or None,
-                    row.get("OptionB_ImageURL", "").strip() or None,
-                    row.get("OptionC_ImageURL", "").strip() or None,
-                    row.get("OptionD_ImageURL", "").strip() or None
+                    get_img("OptionA_Image", row),
+                    get_img("OptionB_Image", row),
+                    get_img("OptionC_Image", row),
+                    get_img("OptionD_Image", row)
                 ],
-                # 🔥 AUTOMATICALLY SET OPTION A AS CORRECT 🔥
-                "correctAnswer": row.get("OptionA", "").strip()
+                "correctAnswer": row.get("OptionA", "").strip() or "Option A" # Always Option A!
             }
             questions.append(new_q)
             added_count += 1
             
         exam_ref.update({"questions": questions})
-        return {"message": f"Successfully added {added_count} questions! ✅"}
-        
-    except Exception as e:
-        print(f"Bulk upload error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process the CSV file. Check your columns.")
+        return {"message": f"Successfully unpacked ZIP and added {added_count} questions! ✅"}
 
+    except Exception as e:
+        print(f"Bulk upload ZIP error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
 # --- 🔥 NEW: DELETE ENTIRE EXAM ROUTE 🔥 ---
 @app.delete("/api/exams/{exam_id}")
 async def delete_exam(exam_id: str, user=Depends(authorize(["admin"]))):
