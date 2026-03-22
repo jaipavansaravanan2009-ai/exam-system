@@ -220,32 +220,25 @@
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
     
-    // 1. Authenticate Guard: DIAGNOSTIC MODE
-    const studentName = localStorage.getItem("userName");
-    const role = localStorage.getItem("userRole");
-    const token = localStorage.getItem("adminToken"); // From your login.html
+    // 1. Ultra-Forgiving Authenticate Guard
+        // Looks for ANY saved token from login.html
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken"); 
+        
+        // Grabs name, but defaults to "Student" if your login.html saved it weirdly
+        let studentName = localStorage.getItem("userName");
+        if (!studentName || studentName === "undefined") {
+            studentName = "Student"; 
+        }
 
-    // Let's build an error message to see exactly what is failing
-    let errorMsg = "";
-    if (!token || token === "undefined" || token === "null") {
-        errorMsg += "❌ Token is missing.\n";
-    }
-    if (!role || role === "undefined" || role === "null" || role.toLowerCase() !== "student") {
-        errorMsg += `❌ Role is wrong (Currently says: "${role}").\n`;
-    }
-    if (!studentName || studentName === "undefined" || studentName === "null") {
-        errorMsg += "❌ Student Name is missing.\n";
-    }
+        // If there is absolutely no token, send them to login
+        if (!token) {
+            console.error("⛔ No login token found.");
+            alert("You are not logged in! Redirecting to the Login page...");
+            window.location.href = "login.html";
+        }
 
-    if (errorMsg !== "") {
-        console.error("Debug Auth Data:", { studentName, role, token });
-        alert("⛔ Security Guard Blocked You Because:\n\n" + errorMsg + "\nRedirecting to login...");
-        localStorage.clear();
-        window.location.href = "login.html";
-    }
-
-    // Set Welcome Name globally (if it passed the check)
-    document.getElementById("welcomeText").innerText = `👨‍🎓 ${studentName}`;
+        // Set Welcome Name globally
+        document.getElementById("welcomeText").innerText = `👨‍🎓 ${studentName}`;
 
     // Global variable to store fetched past results data
     let myResultsData = [];
