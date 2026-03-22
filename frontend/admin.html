@@ -73,11 +73,10 @@
             width: 100%;
         }
 
-        /* Styling for the new image upload buttons */
+        /* ONLY for the CSV uploader now */
         input[type="file"] {
             font-size: 12px;
             color: #666;
-            margin-bottom: 15px;
             width: 100%;
         }
 
@@ -88,27 +87,6 @@
             border-radius: 6px;
             margin-bottom: 10px;
             position: relative;
-        }
-
-        .correct-radio-label {
-            display: inline-flex;
-            align-items: center;
-            font-weight: bold;
-            color: var(--success);
-            font-size: 13px;
-            cursor: pointer;
-            margin-top: 5px;
-            background: #e8f8f5;
-            padding: 5px 10px;
-            border-radius: 4px;
-            border: 1px solid #a3e4d7;
-            width: 100%;
-        }
-
-        .correct-radio-label input {
-            margin-right: 8px;
-            transform: scale(1.2);
-            accent-color: var(--success);
         }
 
         .btn {
@@ -145,6 +123,46 @@
         .modal-content {
             background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 900px;
             max-height: 90vh; overflow-y: auto;
+        }
+
+        /* 📸 Smart Image Paste Zones */
+        .paste-zone {
+            border: 2px dashed #bdc3c7;
+            padding: 15px;
+            text-align: center;
+            border-radius: 6px;
+            color: #7f8c8d;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-bottom: 10px;
+            font-size: 12px;
+            background: #fafafa;
+            position: relative;
+        }
+        .paste-zone:hover, .paste-zone:focus {
+            border-color: var(--secondary);
+            background: #ebf5fb;
+            outline: none;
+        }
+        .img-preview {
+            max-width: 100%;
+            max-height: 80px;
+            display: none;
+            margin-top: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .clear-img-btn {
+            position: absolute;
+            top: 5px; right: 5px;
+            background: var(--danger);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px; height: 20px;
+            font-size: 10px;
+            cursor: pointer;
+            display: none;
         }
 
     </style>
@@ -213,57 +231,69 @@
         <hr style="margin: 20px 0;">
         
         <div style="background:#f9f9f9; padding:20px; border-radius:10px; border: 1px solid #ddd;">
-            <h4>Add Question to Paper</h4><br>
-
+            
             <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #2e86c1;">
                 <h4 style="color: #2e86c1; margin-bottom: 10px;">⚡ Bulk Upload via CSV</h4>
                 <p style="font-size: 12px; color: #555; margin-bottom: 10px;">
                     Create an Excel file with these exact column headers, save as <b>.csv</b>, and upload it here.<br>
-                    <i>Headers: Subject, QuestionText, QuestionImageURL, OptionA, OptionB, OptionC, OptionD, OptionA_ImageURL, OptionB_ImageURL, OptionC_ImageURL, OptionD_ImageURL, CorrectAnswer</i>
+                    <i>Headers: Subject, QuestionText, QuestionImageURL, OptionA, OptionB, OptionC, OptionD, OptionA_ImageURL, OptionB_ImageURL, OptionC_ImageURL, OptionD_ImageURL</i>
                 </p>
                 <div style="display: flex; gap: 10px;">
                     <input type="file" id="csvFile" accept=".csv" style="margin-bottom: 0;">
                     <button class="btn btn-primary" onclick="uploadCSV()" id="csvUploadBtn">Upload File</button>
                 </div>
             </div>
-            <hr style="margin: 20px 0;">
             
-            <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is uploaded)">
-            <label style="font-size: 12px; color: #555;">Optional Question Image:</label>
-            <input type="file" id="qImg" accept="image/*">
+            <hr style="margin: 20px 0;">
+            <h4>Add Individual Question to Paper</h4><br>
+            
+            <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted)">
+            
+            <div class="paste-zone" id="zone-qImg" tabindex="0">
+                📸 Click here & press <b>Ctrl+V</b> to paste Question Image
+                <img id="preview-qImg" class="img-preview">
+                <button class="clear-img-btn" onclick="clearPasteZone('qImg', event)">✖</button>
+            </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                <div class="opt-container">
-                    <input type="text" id="opt1" placeholder="Option A Text (Optional if Image)">
-                    <label style="font-size: 11px;">Image (Opt A):</label>
-                    <input type="file" id="opt1Img" accept="image/*">
-                    <label class="correct-radio-label">
-                        <input type="radio" name="correctOpt" value="0"> Mark as Correct Answer
-                    </label>
+                <div class="opt-container" style="border: 2px solid var(--success);">
+                    <div style="font-size: 11px; font-weight: bold; color: var(--success); margin-bottom: 5px;">✅ Correct Answer (Option A)</div>
+                    <input type="text" id="opt1" placeholder="Option A Text">
+                    <div class="paste-zone" id="zone-opt1Img" tabindex="0">
+                        📸 Click & Ctrl+V to paste image
+                        <img id="preview-opt1Img" class="img-preview">
+                        <button class="clear-img-btn" onclick="clearPasteZone('opt1Img', event)">✖</button>
+                    </div>
                 </div>
+
                 <div class="opt-container">
-                    <input type="text" id="opt2" placeholder="Option B Text (Optional if Image)">
-                    <label style="font-size: 11px;">Image (Opt B):</label>
-                    <input type="file" id="opt2Img" accept="image/*">
-                    <label class="correct-radio-label">
-                        <input type="radio" name="correctOpt" value="1"> Mark as Correct Answer
-                    </label>
+                    <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option B)</div>
+                    <input type="text" id="opt2" placeholder="Option B Text">
+                    <div class="paste-zone" id="zone-opt2Img" tabindex="0">
+                        📸 Click & Ctrl+V to paste image
+                        <img id="preview-opt2Img" class="img-preview">
+                        <button class="clear-img-btn" onclick="clearPasteZone('opt2Img', event)">✖</button>
+                    </div>
                 </div>
+
                 <div class="opt-container">
-                    <input type="text" id="opt3" placeholder="Option C Text (Optional if Image)">
-                    <label style="font-size: 11px;">Image (Opt C):</label>
-                    <input type="file" id="opt3Img" accept="image/*">
-                    <label class="correct-radio-label">
-                        <input type="radio" name="correctOpt" value="2"> Mark as Correct Answer
-                    </label>
+                    <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option C)</div>
+                    <input type="text" id="opt3" placeholder="Option C Text">
+                    <div class="paste-zone" id="zone-opt3Img" tabindex="0">
+                        📸 Click & Ctrl+V to paste image
+                        <img id="preview-opt3Img" class="img-preview">
+                        <button class="clear-img-btn" onclick="clearPasteZone('opt3Img', event)">✖</button>
+                    </div>
                 </div>
+
                 <div class="opt-container">
-                    <input type="text" id="opt4" placeholder="Option D Text (Optional if Image)">
-                    <label style="font-size: 11px;">Image (Opt D):</label>
-                    <input type="file" id="opt4Img" accept="image/*">
-                    <label class="correct-radio-label">
-                        <input type="radio" name="correctOpt" value="3"> Mark as Correct Answer
-                    </label>
+                    <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option D)</div>
+                    <input type="text" id="opt4" placeholder="Option D Text">
+                    <div class="paste-zone" id="zone-opt4Img" tabindex="0">
+                        📸 Click & Ctrl+V to paste image
+                        <img id="preview-opt4Img" class="img-preview">
+                        <button class="clear-img-btn" onclick="clearPasteZone('opt4Img', event)">✖</button>
+                    </div>
                 </div>
             </div>
 
@@ -281,25 +311,18 @@
 </div>
 
 <script>
-    // FIX: Updated to your active Render URL
     const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
     
     // 1. Get Tokens
     const token = localStorage.getItem("adminToken");
     const role = localStorage.getItem("userRole");
 
-    console.log("Checking Admin Access...");
-    console.log("Token exists:", !!token);
-    console.log("Role found:", role);
-
-    // 2. Fortified Guard Logic
     if (!token || !role || role.toLowerCase() !== "admin") {
         console.error("⛔ ACCESS DENIED: Redirecting to login...");
         alert("Unauthorized! Please login as Admin.");
         window.location.href = "login.html";
     }
 
-    // Set Welcome Name
     const adminName = localStorage.getItem("userName");
     if(adminName) {
         document.getElementById("adminName").innerText = "Welcome, " + adminName;
@@ -307,10 +330,49 @@
 
     let currentEditingExamId = null;
 
+    // --- 📸 SMART PASTE LOGIC ---
+    let pastedImages = { qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null };
+
+    document.addEventListener("paste", function(e) {
+        // Find out which paste-zone the user clicked on
+        const activeElement = document.activeElement;
+        if (!activeElement.classList.contains("paste-zone")) return;
+
+        const zoneId = activeElement.id.replace("zone-", ""); // e.g., "qImg" or "opt1Img"
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+
+        for (let item of items) {
+            if (item.type.indexOf("image") === 0) {
+                const file = item.getAsFile();
+                pastedImages[zoneId] = file; // Save the file to memory
+
+                // Show a preview to the user
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const imgPreview = document.getElementById(`preview-${zoneId}`);
+                    imgPreview.src = event.target.result;
+                    imgPreview.style.display = "block";
+                    activeElement.querySelector('.clear-img-btn').style.display = "block";
+                    activeElement.childNodes[0].nodeValue = ""; // Hide the instruction text
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+    });
+
+    function clearPasteZone(zoneId, event) {
+        if(event) event.stopPropagation(); // Stop the zone from being clicked when hitting the X
+        pastedImages[zoneId] = null;
+        document.getElementById(`preview-${zoneId}`).style.display = "none";
+        document.getElementById(`preview-${zoneId}`).src = "";
+        document.querySelector(`#zone-${zoneId} .clear-img-btn`).style.display = "none";
+        document.getElementById(`zone-${zoneId}`).childNodes[0].nodeValue = "📸 Click here & press Ctrl+V to paste image";
+    }
+
     // --- HELPER: IMAGE COMPRESSOR ---
     function compressImage(file) {
         return new Promise((resolve) => {
-            if (!file) return resolve(null); // No file selected
+            if (!file) return resolve(null); // No file provided
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = event => {
@@ -337,13 +399,11 @@
         });
     }
 
-    // --- LOGOUT FUNCTION ---
     function logout() {
         localStorage.clear();
         window.location.href = "login.html";
     }
 
-    // --- CREATE NEW EXAM ---
     async function createExam() {
         const title = document.getElementById("title").value.trim();
         if (!title) return alert("Please enter an exam title.");
@@ -357,20 +417,14 @@
                 },
                 body: JSON.stringify({ title: title, questions: [] })
             });
-
             if (res.ok) {
                 alert("Exam created successfully! ✅");
                 document.getElementById("title").value = "";
                 loadExams();
-            } else {
-                alert("Failed to create exam.");
-            }
-        } catch (error) {
-            console.error("Error creating exam:", error);
-        }
+            } else { alert("Failed to create exam."); }
+        } catch (error) { console.error("Error creating exam:", error); }
     }
 
-    // --- CREATE NEW USER ---
     async function createUser() {
         const name = document.getElementById("userName").value.trim();
         const email = document.getElementById("userEmail").value.trim();
@@ -394,15 +448,10 @@
                 document.getElementById("userName").value = "";
                 document.getElementById("userEmail").value = "";
                 document.getElementById("userPass").value = "";
-            } else {
-                alert("Failed to create user.");
-            }
-        } catch (error) {
-            console.error("Error creating user:", error);
-        }
+            } else { alert("Failed to create user."); }
+        } catch (error) { console.error("Error creating user:", error); }
     }
 
-    // --- BULK UPLOAD CSV ---
     async function uploadCSV() {
         const fileInput = document.getElementById('csvFile');
         const file = fileInput.files[0];
@@ -420,29 +469,23 @@
         try {
             const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload`, {
                 method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }, // Notice we DON'T set Content-Type for FormData
+                headers: { "Authorization": `Bearer ${token}` }, 
                 body: formData
             });
 
             const data = await res.json();
-
             if (res.ok) {
                 alert(data.message);
-                fileInput.value = ""; // clear the file input
+                fileInput.value = ""; 
                 refreshQuestionList(currentEditingExamId);
-            } else {
-                alert("Upload Failed: " + (data.detail || "Unknown error"));
-            }
+            } else { alert("Upload Failed: " + (data.detail || "Unknown error")); }
         } catch (e) {
-            console.error(e);
-            alert("Connection error during upload.");
+            console.error(e); alert("Connection error during upload.");
         } finally {
-            btn.innerText = "Upload File";
-            btn.disabled = false;
+            btn.innerText = "Upload File"; btn.disabled = false;
         }
     }
 
-    // --- DELETE EXAM ---
     async function deleteExam(id) {
         if(!confirm("Are you sure you want to delete this entire exam?")) return;
         try {
@@ -450,19 +493,11 @@
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
-            
-            if(res.ok) {
-                loadExams();
-            } else {
-                alert("Failed to delete. Make sure your Python backend has the delete route.");
-            }
-        } catch(e) { 
-            console.error(e); 
-            alert("Connection error trying to delete exam.");
-        }
+            if(res.ok) loadExams();
+            else alert("Failed to delete.");
+        } catch(e) { console.error(e); }
     }
 
-    // --- DELETE QUESTION ---
     async function deleteQuestion(examId, index) {
         if(!confirm("Delete this question?")) return;
         try {
@@ -474,90 +509,85 @@
         } catch(e) { console.error(e); }
     }
 
-    // --- SUBMIT NEW QUESTION WITH AUTO-OPTION-A ---
-        async function submitNewQuestion() {
-            const btn = document.getElementById("addQuestionBtn");
-            btn.innerText = "Processing Images... ⏳";
-            btn.disabled = true;
+    // --- SUBMIT NEW QUESTION WITH PASTED IMAGES ---
+    async function submitNewQuestion() {
+        const btn = document.getElementById("addQuestionBtn");
+        btn.innerText = "Processing Images... ⏳";
+        btn.disabled = true;
 
-            try {
-                const qText = document.getElementById("newQ").value.trim();
+        try {
+            const qText = document.getElementById("newQ").value.trim();
 
-                // 1. Compress images
-                const [qImage, o1Image, o2Image, o3Image, o4Image] = await Promise.all([
-                    compressImage(document.getElementById("qImg").files[0]),
-                    compressImage(document.getElementById("opt1Img").files[0]),
-                    compressImage(document.getElementById("opt2Img").files[0]),
-                    compressImage(document.getElementById("opt3Img").files[0]),
-                    compressImage(document.getElementById("opt4Img").files[0])
-                ]);
+            // 1. Compress images directly from the pastedImages memory
+            const [qImage, o1Image, o2Image, o3Image, o4Image] = await Promise.all([
+                compressImage(pastedImages.qImg),
+                compressImage(pastedImages.opt1Img),
+                compressImage(pastedImages.opt2Img),
+                compressImage(pastedImages.opt3Img),
+                compressImage(pastedImages.opt4Img)
+            ]);
 
-                // Validation: Must have Question Text OR Question Image
-                if (!qText && !qImage) {
-                    btn.innerText = "Add Question ✅";
-                    btn.disabled = false;
-                    return alert("You must provide either Question Text or a Question Image.");
-                }
-
-                // Create Option Texts (Default to "Option A/B/C/D" if left blank)
-                const optTexts = [
-                    document.getElementById("opt1").value.trim() || "Option A",
-                    document.getElementById("opt2").value.trim() || "Option B",
-                    document.getElementById("opt3").value.trim() || "Option C",
-                    document.getElementById("opt4").value.trim() || "Option D"
-                ];
-
-                // 2. Build the payload (🔥 Option 1 is ALWAYS the correct answer 🔥)
-                const payload = {
-                    question: qText,
-                    questionImage: qImage,
-                    options: optTexts,
-                    optionImages: [o1Image, o2Image, o3Image, o4Image],
-                    correctAnswer: optTexts[0], // Sets the first option as the correct one automatically
-                    subject: document.getElementById("subjectSelect").value
-                };
-
-                // 3. Send to Python Backend
-                const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
-                    method: "POST",
-                    headers: { 
-                        "Content-Type": "application/json", 
-                        "Authorization": `Bearer ${token}` 
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                if(res.ok) {
-                    alert("Question added! Option A is saved as the correct answer. ✅");
-                    
-                    // Clear text inputs
-                    document.getElementById("newQ").value = "";
-                    document.getElementById("opt1").value = "";
-                    document.getElementById("opt2").value = "";
-                    document.getElementById("opt3").value = "";
-                    document.getElementById("opt4").value = "";
-                    
-                    // Clear file inputs
-                    document.getElementById("qImg").value = "";
-                    document.getElementById("opt1Img").value = "";
-                    document.getElementById("opt2Img").value = "";
-                    document.getElementById("opt3Img").value = "";
-                    document.getElementById("opt4Img").value = "";
-
-                    refreshQuestionList(currentEditingExamId);
-                } else {
-                    alert("Failed to add question.");
-                }
-            } catch(e) { 
-                console.error(e); 
-                alert("Error uploading question.");
-            } finally {
+            if (!qText && !qImage) {
                 btn.innerText = "Add Question ✅";
                 btn.disabled = false;
+                return alert("You must provide either Question Text or a Question Image.");
             }
-        }
 
-    // --- REFRESH QUESTION LIST ---
+            const optTexts = [
+                document.getElementById("opt1").value.trim() || "Option A",
+                document.getElementById("opt2").value.trim() || "Option B",
+                document.getElementById("opt3").value.trim() || "Option C",
+                document.getElementById("opt4").value.trim() || "Option D"
+            ];
+
+            const payload = {
+                question: qText,
+                questionImage: qImage,
+                options: optTexts,
+                optionImages: [o1Image, o2Image, o3Image, o4Image],
+                correctAnswer: optTexts[0], // Option 1 is ALWAYS the correct answer
+                subject: document.getElementById("subjectSelect").value
+            };
+
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if(res.ok) {
+                alert("Question added! Option A is saved as the correct answer. ✅");
+                
+                // Clear text inputs
+                document.getElementById("newQ").value = "";
+                document.getElementById("opt1").value = "";
+                document.getElementById("opt2").value = "";
+                document.getElementById("opt3").value = "";
+                document.getElementById("opt4").value = "";
+                
+                // Clear Paste Zones
+                clearPasteZone('qImg');
+                clearPasteZone('opt1Img');
+                clearPasteZone('opt2Img');
+                clearPasteZone('opt3Img');
+                clearPasteZone('opt4Img');
+
+                refreshQuestionList(currentEditingExamId);
+            } else {
+                alert("Failed to add question.");
+            }
+        } catch(e) { 
+            console.error(e); 
+            alert("Error uploading question.");
+        } finally {
+            btn.innerText = "Add Question ✅";
+            btn.disabled = false;
+        }
+    }
+
     async function refreshQuestionList(examId) {
         try {
             const res = await fetch(`${BACKEND_URL}/api/exams`, { 
@@ -588,7 +618,6 @@
         } catch(e) { console.error(e); }
     }
 
-    // --- LOAD EXAMS ---
     async function loadExams() {
         try {
             const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
@@ -612,7 +641,6 @@
         } catch(e) { console.error("Could not load exams:", e); }
     }
 
-    // --- MODAL CONTROLS ---
     async function openEditor(id, title) {
         currentEditingExamId = id;
         document.getElementById("modalExamTitle").innerText = `Editing: ${title}`;
@@ -625,7 +653,6 @@
         loadExams(); 
     }
 
-    // --- LOAD RESULTS ---
     async function loadResults() {
         try {
             const res = await fetch(`${BACKEND_URL}/api/results`, { headers: { "Authorization": `Bearer ${token}` } });
@@ -643,12 +670,10 @@
         } catch(e) { console.error("Could not load results:", e); }
     }
 
-    // --- HELPER SCROLL ---
     function scrollToSec(id) { 
         document.getElementById(id).scrollIntoView({behavior: 'smooth'}); 
     }
 
-    // Initialize Page
     if (token && role && role.toLowerCase() === "admin") {
         loadExams();
         loadResults();
