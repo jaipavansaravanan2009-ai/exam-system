@@ -124,6 +124,7 @@ async def login(request: Request):
         "id": user_doc.id,
         "email": user_data.get("email") or input_user,
         "role": user_data.get("role"),
+        "name": user_data.get("name") or input_user, # 🔥 WE ADDED THIS LINE
         "exp": exp
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
@@ -370,7 +371,8 @@ async def get_exam(exam_id: str):
 @app.get("/api/public/results/my-results")
 async def get_my_results(user = Depends(authorize(["student"]))):
     try:
-        student_name = user["name"]
+        # 🔥 Change to .get() so it doesn't crash if the name is weird
+        student_name = user.get("name") or user.get("email") 
         
         query = db.collection("results").where("studentName", "==", student_name).order_by("submittedAt", direction=db.firestore.Query.DESCENDING).stream()
         
@@ -390,7 +392,7 @@ async def get_my_results(user = Depends(authorize(["student"]))):
 
 @app.post("/api/public/submit")
 async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["student"]))):
-    student_name = user["name"]
+    student_name = user.get("name") or user.get("email")
     exam_title = result_payload.get("examTitle")
     exam_id = result_payload.get("examId")
     rich_breakdown = result_payload.get("subjectWiseBreakdown")
