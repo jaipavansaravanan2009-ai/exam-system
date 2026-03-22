@@ -220,21 +220,31 @@
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
     
-    // 1. Authenticate Guard: Check for Student JWT Token
+    // 1. Authenticate Guard: DIAGNOSTIC MODE
     const studentName = localStorage.getItem("userName");
     const role = localStorage.getItem("userRole");
-    
-    // 🔥 FIX: Changed this back to "adminToken" to match your login.html exactly!
-    const token = localStorage.getItem("adminToken"); 
+    const token = localStorage.getItem("adminToken"); // From your login.html
 
-    if (!studentName || !role || role.toLowerCase() !== "student" || !token) {
-        console.error("⛔ Student ACCESS DENIED: Redirecting to login...");
-        alert("Unauthorized! Please login as Student.");
+    // Let's build an error message to see exactly what is failing
+    let errorMsg = "";
+    if (!token || token === "undefined" || token === "null") {
+        errorMsg += "❌ Token is missing.\n";
+    }
+    if (!role || role === "undefined" || role === "null" || role.toLowerCase() !== "student") {
+        errorMsg += `❌ Role is wrong (Currently says: "${role}").\n`;
+    }
+    if (!studentName || studentName === "undefined" || studentName === "null") {
+        errorMsg += "❌ Student Name is missing.\n";
+    }
+
+    if (errorMsg !== "") {
+        console.error("Debug Auth Data:", { studentName, role, token });
+        alert("⛔ Security Guard Blocked You Because:\n\n" + errorMsg + "\nRedirecting to login...");
         localStorage.clear();
         window.location.href = "login.html";
     }
 
-    // Set Welcome Name globally
+    // Set Welcome Name globally (if it passed the check)
     document.getElementById("welcomeText").innerText = `👨‍🎓 ${studentName}`;
 
     // Global variable to store fetched past results data
