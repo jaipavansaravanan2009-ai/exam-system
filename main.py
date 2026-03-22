@@ -18,6 +18,7 @@ from fastapi import UploadFile, File, HTTPException, Depends
 import zipfile
 import mimetypes
 import traceback
+from PIL import Image
 
 # Load Environment Variables
 load_dotenv()
@@ -163,7 +164,7 @@ async def create_exam(request: Request, user=Depends(authorize(["admin"]))):
     update_time, doc_ref = db.collection("exams").add(body)
     return {"message": "Exam created! ✅", "id": doc_ref.id}
 
-# --- 📦 BULLETPROOF BULK UPLOAD VIA ZIP ---
+# --- 📦 BULLETPROOF BULK UPLOAD VIA ZIP (WITH AUTO-COMPRESS) ---
 @app.post("/api/exams/{exam_id}/bulk-upload-zip")
 async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin"]))):
     if not file.filename.lower().endswith('.zip'):
@@ -177,14 +178,12 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         # 1. Unpack the ZIP file in memory 
         with zipfile.ZipFile(io.BytesIO(contents)) as z:
             for filename in z.namelist():
-                # 🔥 FIX: Properly ignore hidden OS files, even inside folders
                 base_name = filename.split('/')[-1]
                 if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
                     continue
                     
                 if filename.lower().endswith(".csv"):
                     raw_csv = z.read(filename)
-                    # Smart Decoding for Excel formats
                     try:
                         csv_data = raw_csv.decode('utf-8-sig')
                     except UnicodeDecodeError:
@@ -193,13 +192,35 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
                         except UnicodeDecodeError:
                             csv_data = raw_csv.decode('latin-1')
                             
-                elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                     img_bytes = z.read(filename)
-                    mime_type, _ = mimetypes.guess_type(filename)
-                    if not mime_type:
-                        mime_type = "image/jpeg"
-                    b64_str = base64.b64encode(img_bytes).decode('utf-8')
                     
+                    # 🔥 NEW: AUTOMATIC IMAGE COMPRESSION 🔥
+                    try:
+                        with Image.open(io.BytesIO(img_bytes)) as img:
+                            # Convert to RGB (removes transparent backgrounds, making files smaller)
+                            if img.mode in ("RGBA", "P"):
+                                img = img.convert("RGB")
+                            
+                            # Resize if it's a massive high-res photo
+                            max_width = 700
+                            if img.width > max_width:
+                                ratio = max_width / img.width
+                                new_height = int(img.height * ratio)
+                                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                
+                            # Compress heavily to 60% quality JPEG
+                            buffer = io.BytesIO()
+                            img.save(buffer, format="JPEG", quality=60)
+                            b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                            mime_type = "image/jpeg"
+                    except Exception as e:
+                        print(f"Image compression failed for {filename}, skipping compression.")
+                        # Fallback if image is weird but readable
+                        mime_type, _ = mimetypes.guess_type(filename)
+                        if not mime_type: mime_type = "image/jpeg"
+                        b64_str = base64.b64encode(img_bytes).decode('utf-8')
+
                     clean_name = base_name.lower().strip()
                     images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
 
@@ -259,11 +280,10 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
             added_count += 1
             
         exam_ref.update({"questions": questions})
-        return {"message": f"Successfully unpacked ZIP and added {added_count} questions! ✅"}
+        return {"message": f"Successfully unpacked ZIP, compressed images, and added {added_count} questions! ✅"}
 
     except Exception as e:
-        traceback.print_exc() # This prints the full error to your Render logs
-        # 🔥 UNMASK THE ERROR: This sends the actual crash reason back to the browser 🔥
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
     
 
