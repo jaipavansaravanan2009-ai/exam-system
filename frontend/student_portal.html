@@ -223,7 +223,9 @@
     // 1. Authenticate Guard: Check for Student JWT Token
     const studentName = localStorage.getItem("userName");
     const role = localStorage.getItem("userRole");
-    const token = localStorage.getItem("token"); // 🔥 FIX: Using standard "token" key
+    
+    // 🔥 FIX: Changed this back to "adminToken" to match your login.html exactly!
+    const token = localStorage.getItem("adminToken"); 
 
     if (!studentName || !role || role.toLowerCase() !== "student" || !token) {
         console.error("⛔ Student ACCESS DENIED: Redirecting to login...");
