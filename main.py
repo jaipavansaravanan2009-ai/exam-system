@@ -371,22 +371,35 @@ async def get_exam(exam_id: str):
 @app.get("/api/public/results/my-results")
 async def get_my_results(user = Depends(authorize(["student"]))):
     try:
-        # 🔥 Change to .get() so it doesn't crash if the name is weird
-        student_name = user.get("name") or user.get("email") 
+        student_name = user.get("name") or user.get("email")
         
-        query = db.collection("results").where("studentName", "==", student_name).order_by("submittedAt", direction=db.firestore.Query.DESCENDING).stream()
+        # 🔥 FIX 1: Removed order_by from the query so Firestore doesn't crash asking for an Index
+        query = db.collection("results").where("studentName", "==", student_name).stream()
         
         results_list = []
         for doc in query:
             data = doc.to_dict()
+            
+            # 🔥 FIX 2: Safely convert Python datetime to a string (Replacing Javascript's toJSON)
+            submitted_time = data.get("submittedAt")
+            if submitted_time and hasattr(submitted_time, 'isoformat'):
+                time_str = submitted_time.isoformat()
+            else:
+                time_str = str(submitted_time) if submitted_time else None
+
             results_list.append({
                 "id": doc.id,
-                "submittedAt": data["submittedAt"].toJSON() if data.get("submittedAt") else None,
+                "submittedAt": time_str,
                 **data
             })
             
+        # 🔥 FIX 3: We just sort the list in Python memory instead! (Newest first)
+        results_list.sort(key=lambda x: x.get("submittedAt") or "", reverse=True)
+            
         return results_list
+        
     except Exception as e:
+        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch your results: {str(e)}")
 
