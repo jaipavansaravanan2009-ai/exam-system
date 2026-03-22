@@ -147,6 +147,13 @@
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
     
+    // 🔥 SECURITY GUARD & TOKEN RETRIEVAL
+    const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+    if (!token) {
+        alert("Security Error: You must be logged in to take an exam.");
+        window.location.href = "login.html";
+    }
+    
     let examData = null;
     let currentIdx = -1;
     let currentSub = 'Physics';
@@ -402,7 +409,7 @@
         }, 1000);
     }
 
-// --- UPDATED SUBMIT FINAL FUNCTION: RICH BREAKDOWN ---
+    // --- UPDATED SUBMIT FINAL FUNCTION: RICH BREAKDOWN ---
     async function submitFinal() {
         if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
         
@@ -478,8 +485,7 @@
         try {
             const res = await fetch(`${BACKEND_URL}/api/public/submit`, {
                 method: "POST",
-                // Pass auth token as Bearer token [FIX]
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, // Add auth token!
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, // Uses token grabbed at the top!
                 body: JSON.stringify(payload)
             });
             
