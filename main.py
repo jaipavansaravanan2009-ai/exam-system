@@ -258,23 +258,32 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         for row in reader:
             if not any(row.values()): continue
 
+            # Get Images First
+            img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
+            img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
+            img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
+            img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
+            img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
+
+            # Logic: Only use "Option X" text if there is NO image and NO text provided
+            def smart_text(val, img, default):
+                val = val.strip()
+                if val: return val # Use user text if provided
+                if img: return ""  # If there's an image and no text, keep text empty
+                return default     # Fallback only if both are missing
+
+            opt_a_text = smart_text(get_val(row, ["OptionA", "Option A"]), img_a, "Option A")
+            opt_b_text = smart_text(get_val(row, ["OptionB", "Option B"]), img_b, "Option B")
+            opt_c_text = smart_text(get_val(row, ["OptionC", "Option C"]), img_c, "Option C")
+            opt_d_text = smart_text(get_val(row, ["OptionD", "Option D"]), img_d, "Option D")
+
             new_q = {
                 "subject": get_val(row, ["Subject", "subject"]) or "Physics",
                 "question": get_val(row, ["QuestionText", "Question", "question"]),
-                "questionImage": get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"]),
-                "options": [
-                    get_val(row, ["OptionA", "Option A"]) or "Option A",
-                    get_val(row, ["OptionB", "Option B"]) or "Option B",
-                    get_val(row, ["OptionC", "Option C"]) or "Option C",
-                    get_val(row, ["OptionD", "Option D"]) or "Option D"
-                ],
-                "optionImages": [
-                    get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"]),
-                    get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"]),
-                    get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"]),
-                    get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
-                ],
-                "correctAnswer": get_val(row, ["OptionA", "Option A"]) or "Option A"
+                "questionImage": img_q,
+                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text],
+                "optionImages": [img_a, img_b, img_c, img_d],
+                "correctAnswer": opt_a_text # This will match the text (even if empty)
             }
             questions.append(new_q)
             added_count += 1
