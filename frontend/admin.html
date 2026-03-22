@@ -35,50 +35,71 @@
             background: transparent;
             color: white;
             border: none;
-            padding: 12px;
+            padding: 15px 12px;
             text-align: left;
             width: 100%;
             cursor: pointer;
             border-radius: 6px;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             transition: 0.3s;
+            font-size: 15px;
         }
 
-        .nav-btn:hover { background: var(--secondary); }
+        .nav-btn:hover { background: rgba(255, 255, 255, 0.1); }
+        
+        /* Active Tab Styling */
+        .nav-btn.active {
+            background: var(--secondary);
+            font-weight: bold;
+            border-left: 4px solid #f39c12;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
 
-        .logout-btn { margin-top: auto; background: var(--danger); }
+        .logout-btn { margin-top: auto; background: var(--danger); border-left: none !important; }
+        .logout-btn:hover { background: #c0392b; }
 
         /* Main Content */
         .main-content { margin-left: 260px; flex: 1; padding: 30px; }
 
-        .header-strip { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .header-strip { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 15px;}
+
+        /* Tab Views */
+        .view-section {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .view-section.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
         .card {
             background: white;
             border-radius: 12px;
-            padding: 20px;
+            padding: 25px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             margin-bottom: 25px;
+            border-top: 4px solid var(--secondary);
         }
 
-        h3 { color: var(--primary); margin-bottom: 15px; font-size: 18px; }
+        h3 { color: var(--primary); margin-bottom: 15px; font-size: 18px; display: flex; align-items: center; gap: 8px;}
 
         /* Inputs & Buttons */
         input[type="text"], input[type="password"], input[type="email"], select {
-            padding: 10px 15px;
+            padding: 12px 15px;
             border: 1px solid #ddd;
             border-radius: 6px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             outline: none;
             width: 100%;
+            font-size: 15px;
         }
 
-        /* ONLY for the CSV uploader now */
-        input[type="file"] {
-            font-size: 12px;
-            color: #666;
-            width: 100%;
-        }
+        input[type="file"] { font-size: 12px; color: #666; width: 100%; }
 
         .opt-container {
             background: #fff;
@@ -90,20 +111,21 @@
         }
 
         .btn {
-            padding: 10px 20px;
+            padding: 12px 20px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
             transition: 0.3s;
+            font-size: 14px;
         }
 
         .btn-primary { background: var(--secondary); color: white; }
+        .btn-primary:hover { background: #1a5276; }
         .btn-success { background: var(--success); color: white; }
+        .btn-success:hover { background: #1e8449; }
         .btn-outline { border: 1px solid var(--primary); color: var(--primary); background: transparent; }
-
-        /* Grid Layout for Management */
-        .dashboard-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+        .btn-outline:hover { background: var(--primary); color: white; }
 
         /* Exam List Cards */
         .exam-item {
@@ -112,13 +134,18 @@
             align-items: center;
             padding: 15px;
             border-bottom: 1px solid #eee;
+            background: #fdfdfd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
 
         /* Modal Styling */
         #editorModal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); display: none; 
+            background: rgba(0,0,0,0.8); display: none; 
             justify-content: center; align-items: center; z-index: 2000;
+            backdrop-filter: blur(4px);
         }
         .modal-content {
             background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 900px;
@@ -127,101 +154,89 @@
 
         /* 📸 Smart Image Paste Zones */
         .paste-zone {
-            border: 2px dashed #bdc3c7;
-            padding: 15px;
-            text-align: center;
-            border-radius: 6px;
-            color: #7f8c8d;
-            cursor: pointer;
-            transition: 0.3s;
-            margin-bottom: 10px;
-            font-size: 12px;
-            background: #fafafa;
-            position: relative;
+            border: 2px dashed #bdc3c7; padding: 15px; text-align: center; border-radius: 6px; color: #7f8c8d; cursor: pointer; transition: 0.3s; margin-bottom: 10px; font-size: 12px; background: #fafafa; position: relative;
         }
-        .paste-zone:hover, .paste-zone:focus {
-            border-color: var(--secondary);
-            background: #ebf5fb;
-            outline: none;
-        }
-        .img-preview {
-            max-width: 100%;
-            max-height: 80px;
-            display: none;
-            margin-top: 10px;
-            border-radius: 4px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .clear-img-btn {
-            position: absolute;
-            top: 5px; right: 5px;
-            background: var(--danger);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 20px; height: 20px;
-            font-size: 10px;
-            cursor: pointer;
-            display: none;
-        }
-
+        .paste-zone:hover, .paste-zone:focus { border-color: var(--secondary); background: #ebf5fb; outline: none; }
+        .img-preview { max-width: 100%; max-height: 80px; display: none; margin-top: 10px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .clear-img-btn { position: absolute; top: 5px; right: 5px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; cursor: pointer; display: none; }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
     <h2>👑 Admin Portal</h2>
-    <button class="nav-btn" onclick="scrollToSec('exams')">📚 Manage Exams</button>
-    <button class="nav-btn" onclick="scrollToSec('users')">👥 User Accounts</button>
-    <button class="nav-btn" onclick="scrollToSec('results')">🏆 Exam Results</button>
+    <button class="nav-btn active" onclick="switchTab('view-exams', this)">📚 Manage Exams</button>
+    <button class="nav-btn" onclick="switchTab('view-users', this)">👥 User Accounts</button>
+    <button class="nav-btn" onclick="switchTab('view-results', this)">🏆 Exam Results</button>
     <button class="nav-btn logout-btn" onclick="logout()">Logout</button>
 </div>
 
 <div class="main-content">
     <div class="header-strip">
-        <h1>Dashboard Overview</h1>
-        <p id="adminName">Welcome, Administrator</p>
+        <h1 id="pageTitle">Manage Exams</h1>
+        <p id="adminName" style="font-weight: bold; color: var(--secondary);">Welcome, Administrator</p>
     </div>
 
-    <div class="dashboard-grid">
-        <div class="left-col">
-            <div class="card" id="exams">
-                <h3>📝 Create New Exam</h3>
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" id="title" placeholder="Exam Title (e.g. JEE Mock Sept)">
-                    <button class="btn btn-success" onclick="createExam()">Create</button>
-                </div>
-            </div>
-
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3>📚 Active Exams</h3>
-                    <button class="btn btn-outline" onclick="loadExams()">Refresh</button>
-                </div>
-                <div id="examList">Loading exams...</div>
+    <div id="view-exams" class="view-section active">
+        <div class="card">
+            <h3>📝 Create New Exam</h3>
+            <div style="display: flex; gap: 15px;">
+                <input type="text" id="title" placeholder="Exam Title (e.g. JEE Mock Sept - Full Syllabus)" style="margin-bottom: 0;">
+                <button class="btn btn-success" onclick="createExam()" style="min-width: 120px;">Create Exam</button>
             </div>
         </div>
 
-        <div class="right-col">
-            <div class="card" id="users">
-                <h3>👥 Add System User</h3>
-                <input type="text" id="userName" placeholder="Full Name">
-                <input type="email" id="userEmail" placeholder="Email Address">
-                <input type="password" id="userPass" placeholder="Set Password">
-                <select id="userRole">
-                    <option value="student">Student</option>
-                    <option value="setter">Paper Setter</option>
-                    <option value="admin">Admin</option>
-                </select>
-                <button class="btn btn-primary" style="width:100%" onclick="createUser()">Generate & Save User</button>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>📚 Active Exams</h3>
+                <button class="btn btn-outline" onclick="loadExams()">🔄 Refresh List</button>
             </div>
-
-            <div class="card" id="results">
-                <h3>🏆 Latest Results</h3>
-                <div id="resultsList" style="font-size: 14px;"></div>
-            </div>
+            <div id="examList">Loading exams...</div>
         </div>
     </div>
+
+    <div id="view-users" class="view-section">
+        <div class="card" style="max-width: 600px; margin: 0 auto; border-top-color: var(--success);">
+            <h3>👥 Add System User</h3>
+            <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Create a new account for a student, paper setter, or co-administrator.</p>
+            
+            <label style="font-size: 13px; font-weight: bold; color: #555;">Full Name</label>
+            <input type="text" id="userName" placeholder="e.g. Rahul Kumar">
+            
+            <label style="font-size: 13px; font-weight: bold; color: #555;">Email Address</label>
+            <input type="email" id="userEmail" placeholder="e.g. rahul@example.com">
+            
+            <label style="font-size: 13px; font-weight: bold; color: #555;">Secure Password</label>
+            <input type="password" id="userPass" placeholder="Set Password">
+            
+            <label style="font-size: 13px; font-weight: bold; color: #555;">Account Role</label>
+            <select id="userRole">
+                <option value="student">Student</option>
+                <option value="setter">Paper Setter</option>
+                <option value="admin">Admin</option>
+            </select>
+            
+            <button class="btn btn-primary" style="width:100%; margin-top: 10px;" onclick="createUser()">Generate & Save User</button>
+        </div>
+    </div>
+
+    <div id="view-results" class="view-section">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>🏆 Global Exam Results</h3>
+                <button class="btn btn-outline" onclick="loadResults()">🔄 Refresh Data</button>
+            </div>
+            
+            <div style="display: flex; padding: 10px 15px; background: var(--primary); color: white; border-radius: 6px 6px 0 0; font-weight: bold;">
+                <div style="flex: 2;">Student Name</div>
+                <div style="flex: 3;">Exam Title</div>
+                <div style="flex: 1; text-align: right;">Final Score</div>
+            </div>
+            
+            <div id="resultsList" style="font-size: 15px;"></div>
+        </div>
+    </div>
+
 </div>
 
 <div id="editorModal">
@@ -331,30 +346,49 @@
 
     let currentEditingExamId = null;
 
+    // --- TAB SWITCHER LOGIC ---
+    function switchTab(tabId, btnElement) {
+        // 1. Hide all views
+        document.querySelectorAll('.view-section').forEach(sec => {
+            sec.classList.remove('active');
+        });
+        
+        // 2. Remove active state from all buttons
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+
+        // 3. Show target view and activate button
+        document.getElementById(tabId).classList.add('active');
+        btnElement.classList.add('active');
+
+        // 4. Update the Page Title text dynamically
+        const titleText = btnElement.innerText.replace(/[^\w\s]/gi, '').trim(); // Strips emojis
+        document.getElementById('pageTitle').innerText = titleText;
+    }
+
     // --- 📸 SMART PASTE LOGIC ---
     let pastedImages = { qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null };
 
     document.addEventListener("paste", function(e) {
-        // Find out which paste-zone the user clicked on
         const activeElement = document.activeElement;
         if (!activeElement.classList.contains("paste-zone")) return;
 
-        const zoneId = activeElement.id.replace("zone-", ""); // e.g., "qImg" or "opt1Img"
+        const zoneId = activeElement.id.replace("zone-", ""); 
         const items = (e.clipboardData || e.originalEvent.clipboardData).items;
 
         for (let item of items) {
             if (item.type.indexOf("image") === 0) {
                 const file = item.getAsFile();
-                pastedImages[zoneId] = file; // Save the file to memory
+                pastedImages[zoneId] = file; 
 
-                // Show a preview to the user
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     const imgPreview = document.getElementById(`preview-${zoneId}`);
                     imgPreview.src = event.target.result;
                     imgPreview.style.display = "block";
                     activeElement.querySelector('.clear-img-btn').style.display = "block";
-                    activeElement.childNodes[0].nodeValue = ""; // Hide the instruction text
+                    activeElement.childNodes[0].nodeValue = ""; 
                 };
                 reader.readAsDataURL(file);
             }
@@ -362,7 +396,7 @@
     });
 
     function clearPasteZone(zoneId, event) {
-        if(event) event.stopPropagation(); // Stop the zone from being clicked when hitting the X
+        if(event) event.stopPropagation(); 
         pastedImages[zoneId] = null;
         document.getElementById(`preview-${zoneId}`).style.display = "none";
         document.getElementById(`preview-${zoneId}`).src = "";
@@ -373,7 +407,7 @@
     // --- HELPER: IMAGE COMPRESSOR ---
     function compressImage(file) {
         return new Promise((resolve) => {
-            if (!file) return resolve(null); // No file provided
+            if (!file) return resolve(null); 
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = event => {
@@ -469,10 +503,9 @@
         formData.append("file", file);
 
         try {
-            // Point to the new ZIP route
             const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload-zip`, {
                 method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }, // Form data handles its own boundaries
+                headers: { "Authorization": `Bearer ${token}` }, 
                 body: formData
             });
 
@@ -526,7 +559,6 @@
         try {
             const qText = document.getElementById("newQ").value.trim();
 
-            // 1. Compress images directly from the pastedImages memory
             const [qImage, o1Image, o2Image, o3Image, o4Image] = await Promise.all([
                 compressImage(pastedImages.qImg),
                 compressImage(pastedImages.opt1Img),
@@ -553,7 +585,7 @@
                 questionImage: qImage,
                 options: optTexts,
                 optionImages: [o1Image, o2Image, o3Image, o4Image],
-                correctAnswer: optTexts[0], // Option 1 is ALWAYS the correct answer
+                correctAnswer: optTexts[0], 
                 subject: document.getElementById("subjectSelect").value
             };
 
@@ -569,14 +601,12 @@
             if(res.ok) {
                 alert("Question added! Option A is saved as the correct answer. ✅");
                 
-                // Clear text inputs
                 document.getElementById("newQ").value = "";
                 document.getElementById("opt1").value = "";
                 document.getElementById("opt2").value = "";
                 document.getElementById("opt3").value = "";
                 document.getElementById("opt4").value = "";
                 
-                // Clear Paste Zones
                 clearPasteZone('qImg');
                 clearPasteZone('opt1Img');
                 clearPasteZone('opt2Img');
@@ -641,8 +671,8 @@
                             <small>${exam.questions ? exam.questions.length : 0} Questions</small>
                         </div>
                         <div>
-                            <button class="btn btn-outline" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Edit</button>
-                            <button class="btn btn-primary" style="background:#e74c3c" onclick="deleteExam('${exam.id}')">🗑️</button>
+                            <button class="btn btn-outline" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Manage Questions</button>
+                            <button class="btn btn-primary" style="background:#e74c3c; border: none; margin-left: 5px;" onclick="deleteExam('${exam.id}')">🗑️</button>
                         </div>
                     </div>`;
             });
@@ -668,18 +698,21 @@
                 const results = await res.json();
                 const list = document.getElementById("resultsList");
                 if(results.length === 0) {
-                    list.innerHTML = "<div>No results yet.</div>";
+                    list.innerHTML = "<div style='padding: 15px; text-align: center; color: #777;'>No results yet.</div>";
                 } else {
-                    list.innerHTML = results.map(r => `<div><strong>${r.studentName || 'Student'}</strong>: ${r.score} marks</div>`).join("");
+                    // Update the display to look like a clean table row
+                    list.innerHTML = results.map(r => `
+                        <div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;">
+                            <div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}</div>
+                            <div style="flex: 3; color: #555;">${r.examTitle}</div>
+                            <div style="flex: 1; text-align: right; font-weight: bold; color: ${r.score >= 0 ? 'var(--success)' : 'var(--danger)'};">${r.score}</div>
+                        </div>
+                    `).join("");
                 }
             } else {
                 document.getElementById("resultsList").innerHTML = "<div>Cannot fetch results.</div>";
             }
         } catch(e) { console.error("Could not load results:", e); }
-    }
-
-    function scrollToSec(id) { 
-        document.getElementById(id).scrollIntoView({behavior: 'smooth'}); 
     }
 
     if (token && role && role.toLowerCase() === "admin") {
