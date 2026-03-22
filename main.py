@@ -364,6 +364,80 @@ async def get_public_exams():
         
     return exams_list
 
+# [NEW]: GET LIVE DYNAMIC ANALYSIS & RANKING
+@app.get("/api/public/results/{result_id}/analysis")
+async def get_live_analysis(result_id: str, user = Depends(authorize(["student"]))):
+    try:
+        # 1. Get the specific result the student clicked on
+        result_doc = db.collection("results").document(result_id).get()
+        if not result_doc.exists:
+            raise HTTPException(status_code=404, detail="Result not found.")
+        
+        my_result = result_doc.to_dict()
+        
+        # Security: Ensure the student isn't looking at someone else's result ID
+        if my_result["studentName"] != user["name"]:
+            raise HTTPException(status_code=403, detail="Unauthorized to view this result.")
+            
+        exam_id = my_result["examId"]
+        my_total_score = my_result.get("totalScore", 0)
+        my_subjects = my_result.get("subjectWiseBreakdown", {})
+        
+        # 2. Fetch ALL results for this exact Exam to compare against
+        all_results_query = db.collection("results").where("examId", "==", exam_id).stream()
+        
+        total_scores = []
+        subject_scores = {} # e.g., {"Physics": [34, 45, 12], "Chemistry": [...]}
+        
+        for doc in all_results_query:
+            data = doc.to_dict()
+            total_scores.append(data.get("totalScore", 0))
+            
+            breakdown = data.get("subjectWiseBreakdown", {})
+            for sub, details in breakdown.items():
+                if sub not in subject_scores:
+                    subject_scores[sub] = []
+                subject_scores[sub].append(details.get("score", 0))
+                
+        # 3. Sort all lists from Highest to Lowest (for Ranking)
+        total_scores.sort(reverse=True)
+        for sub in subject_scores:
+            subject_scores[sub].sort(reverse=True)
+            
+        # 4. Calculate Live Metrics
+        total_students = len(total_scores)
+        
+        # .index() naturally handles ties perfectly! (e.g., 100, 100, 90 -> Ranks 1, 1, 3)
+        analysis = {
+            "totalStudents": total_students,
+            "overall": {
+                "myScore": my_total_score,
+                "rank": total_scores.index(my_total_score) + 1,
+                "avg": round(sum(total_scores) / total_students, 1) if total_students else 0,
+                "top": total_scores[0] if total_students else 0
+            },
+            "subjects": {}
+        }
+        
+        # Calculate ranks and averages for each subject
+        for sub, details in my_subjects.items():
+            my_sub_score = details.get("score", 0)
+            sub_list = subject_scores.get(sub, [my_sub_score])
+            
+            analysis["subjects"][sub] = {
+                "myScore": my_sub_score,
+                "rank": sub_list.index(my_sub_score) + 1,
+                "avg": round(sum(sub_list) / len(sub_list), 1) if sub_list else 0,
+                "top": sub_list[0] if sub_list else 0
+            }
+            
+        return analysis
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/public/exams/{exam_id}")
 async def get_exam(exam_id: str):
     doc = db.collection("exams").document(exam_id).get()
@@ -373,13 +447,6 @@ async def get_exam(exam_id: str):
     data = doc.to_dict()
     data["id"] = doc.id
     return data
-
-@app.post("/api/public/submit")
-async def submit_exam(request: Request):
-    body = await request.json()
-    body["submittedAt"] = datetime.now(timezone.utc)
-    db.collection("results").add(body)
-    return {"message": "Score recorded! ✅"}
 
 # 📂 SERVE FRONTEND FILES (Must be at the bottom)
 @app.get("/")
@@ -391,3 +458,112 @@ if os.path.exists("frontend"):
     app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 else:
     print("⚠️ WARNING: 'frontend' folder not found!")
+
+    # --- 🏆 AUTHENTICATED PUBLIC ROUTES (FOR STUDENTS) ---
+
+# [NEW]: GET FULL LIST OF Past Results for THE LOGGED IN STUDENT
+@app.get("/api/public/results/my-results")
+async def get_my_results(user = Depends(authorize(["student"]))):
+    try:
+        student_name = user["name"]
+        
+        # Filter by studentName and sort by newest first (descending timestamp)
+        query = db.collection("results").where("studentName", "==", student_name).order_by("submittedAt", direction=db.firestore.Query.DESCENDING).stream()
+        
+        results_list = []
+        for doc in query:
+            data = doc.to_dict()
+            results_list.append({
+                "id": doc.id,
+                # Convert Firestore Timestamp to readable format for frontend JSON deep-linking
+                "submittedAt": data["submittedAt"].toJSON() if data.get("submittedAt") else None,
+                **data
+            })
+            
+        return results_list
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch your results: {str(e)}")
+
+
+# [NEW/UPDATED]: Authenticated SUBMIT Exam Route with Enrichment and Verification
+@app.post("/api/public/submit")
+async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["student"]))):
+    student_name = user["name"]
+    exam_title = result_payload.get("examTitle")
+    exam_id = result_payload.get("examId")
+    rich_breakdown = result_payload.get("subjectWiseBreakdown")
+
+    if not all([exam_title, exam_id, rich_breakdown]):
+        raise HTTPException(status_code=400, detail="Incomplete results data.")
+
+    try:
+        # Fetch the original exam to verify and enrich
+        exam_doc = db.collection("exams").document(exam_id).get()
+        if not exam_doc.exists:
+            raise HTTPException(status_code=404, detail="Exam associated with this result not found.")
+        exam_data = exam_doc.to_dict()
+        exam_questions = exam_data.get("questions", [])
+
+        # Calculate backend counts per subject and total questions
+        total_questions_count = len(exam_questions)
+        questions_count_per_subject = {}
+        for q in exam_questions:
+            subject = q["subject"]
+            questions_count_per_subject[subject] = questions_count_per_subject.get(subject, 0) + 1
+
+        # Enrich and Verify frontend breakdown
+        verified_breakdown = {}
+        calculated_total_score = 0
+        total_correct_count = 0
+        total_incorrect_count = 0
+        total_not_attempted_count = 0
+
+        for subject, frontend_section in rich_breakdown.items():
+            if subject not in questions_count_per_subject:
+                 # Should never happen if taking same exam. Security.
+                 raise HTTPException(status_code=400, detail=f"Subject '{subject}' found in breakdown but not in exam questions.")
+
+            section_total_available_marks = 4 * questions_count_per_subject[subject]
+            
+            # Rely on frontend counts for shuffled options, but backend recalculates score. Calculated score is trusted.
+            expected_score = (frontend_section['correct'] * 4) - (frontend_section['incorrect'] * 1)
+            
+            # if expected_score != frontend_section['score']:
+            #     print(f"Warning: Frontend score ({frontend_section['score']}) differs from backend ({expected_score}) for {subject}. Using backend.")
+
+            total_correct_count += frontend_section['correct']
+            total_incorrect_count += frontend_section['incorrect']
+            total_not_attempted_count += frontend_section['notAttempted']
+            calculated_total_score += expected_score
+
+            # Create enriched section object
+            verified_section = {
+                "score": expected_score,
+                "correct": frontend_section['correct'],
+                "incorrect": frontend_section['incorrect'],
+                "notAttempted": frontend_section['notAttempted'],
+                "markedForReviewCount": frontend_section.get('markedForReviewCount', 0), 
+                "subjectTotalMarks": section_total_available_marks,
+                "subjectQuestionsCount": questions_count_per_subject[subject]
+            }
+            verified_breakdown[subject] = verified_section
+
+        # Trust frontend counts, verify backend score.
+
+        new_result_doc = {
+            "studentName": student_name,
+            "examTitle": exam_title,
+            "examId": exam_id,
+            "submittedAt": db.firestore.SERVER_TIMESTAMP,
+            "examQuestionsCount": total_questions_count,
+            "totalScore": calculated_total_score,
+            "subjectWiseBreakdown": verified_breakdown
+        }
+
+        db.collection("results").add(new_result_doc)
+        return {"message": "Exam submitted successfully!"}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to submit result: {str(e)}")

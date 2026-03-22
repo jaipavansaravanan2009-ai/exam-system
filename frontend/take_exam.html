@@ -395,34 +395,99 @@
         }, 1000);
     }
 
+// --- UPDATED SUBMIT FINAL FUNCTION: RICH BREAKDOWN ---
     async function submitFinal() {
         if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
         
-        let score = 0;
-        examData.questions.forEach((q, i) => {
-            if (studentAnswers[i] === q.correctAnswer) {
-                score += 4; 
-            } else if (studentAnswers[i]) {
-                score -= 1; 
+        // Final "visited" status for current question if it was just left empty
+        if (currentIdx !== -1 && !studentAnswers[currentIdx]) {
+            statusMap[currentIdx] = 'visited';
+        }
+        
+        // Logic to disable exam UI to prevent further interaction
+        document.getElementById("examUI").style.pointerEvents = "none";
+        document.getElementById("qText").innerText = "Submitting exam, please wait... ⏳";
+        document.getElementById("optionsList").innerHTML = "";
+        
+        // CALCULATE RICH BREAKDOWN DATA
+        const subjectWiseData = {};
+        let totalScore = 0;
+        
+        // Count questions per subject
+        if (examData && examData.questions) {
+            examData.questions.forEach((q, i) => {
+                const subject = q.subject || "Unknown";
+                
+                // Initialize subject data if not exists
+                if (!subjectWiseData[subject]) {
+                    subjectWiseData[subject] = {
+                        score: 0,
+                        correct: 0,
+                        incorrect: 0,
+                        notAttempted: 0,
+                        markedForReviewCount: 0 // Optional flag
+                    };
+                }
+                
+                const studentAns = studentAnswers[i];
+                const correctAns = q.correctAnswer;
+                const status = statusMap[i] || 'unvisited'; 
+
+                // Track marked for review status
+                if(status === 'review' || status === 'review-answered'){
+                     subjectWiseData[subject].markedForReviewCount++;
+                }
+                
+                if (studentAns) {
+                    // Attempted
+                    if (studentAns === correctAns) {
+                        subjectWiseData[subject].correct++;
+                        subjectWiseData[subject].score += 4;
+                    } else {
+                        subjectWiseData[subject].incorrect++;
+                        subjectWiseData[subject].score -= 1;
+                    }
+                } else {
+                    // Not Attempted
+                    subjectWiseData[subject].notAttempted++;
+                }
+                
+            });
+            
+            // Calculate total score from breakdown
+            for (const subject in subjectWiseData) {
+                totalScore += subjectWiseData[subject].score;
             }
-        });
+        }
+        
+        // Build enriched payload
+        const payload = { 
+            studentName: localStorage.getItem("userName") || "Guest Student", 
+            examTitle: examData.title, 
+            examId: new URLSearchParams(window.location.search).get('id'), // Explicitly get examId
+            subjectWiseBreakdown: subjectWiseData 
+        };
         
         try {
-            await fetch(`${BACKEND_URL}/api/public/submit`, {
+            const res = await fetch(`${BACKEND_URL}/api/public/submit`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    studentName: localStorage.getItem("userName") || "Guest Student", 
-                    examTitle: examData.title, 
-                    score: score 
-                })
+                // Pass auth token as Bearer token [FIX]
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, // Add auth token!
+                body: JSON.stringify(payload)
             });
-            alert("Exam Submitted Successfully! Your Score: " + score);
-            window.location.href = "student_portal.html";
+            
+            if (res.ok) {
+                 alert("Exam Submitted Successfully! Total Score: " + totalScore);
+                 window.location.href = "student_portal.html";
+            } else {
+                 throw new Error("API call failed");
+            }
         } catch (e) {
+            console.error(e);
             alert("Error submitting exam. Please check your internet connection.");
         }
     }
+    
 </script>
 </body>
 </html>

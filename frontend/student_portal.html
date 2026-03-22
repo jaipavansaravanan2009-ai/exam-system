@@ -8,281 +8,538 @@
         :root {
             --primary: #1e3d59;
             --secondary: #2e86c1;
-            --accent: #f39c12;
-            --success: #27ae60;
             --danger: #e74c3c;
+            --success: #27ae60;
             --bg: #f4f7f6;
-            --text-main: #2c3e50;
-            --text-muted: #7f8c8d;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
 
-        body { background: var(--bg); color: var(--text-main); }
+        body { background: var(--bg); display: flex; min-height: 100vh; }
 
-        /* Navbar */
-        .navbar {
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 260px;
             background: var(--primary);
             color: white;
-            padding: 15px 30px;
+            padding: 20px;
             display: flex;
-            justify-content: space-between;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 1000;
+        }
+
+        .sidebar h2 { font-size: 20px; margin-bottom: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
+        
+        .nav-btn {
+            background: transparent;
+            color: white;
+            border: none;
+            padding: 15px 12px;
+            text-align: left;
+            width: 100%;
+            cursor: pointer;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            transition: 0.3s;
+            font-size: 15px;
+            display: flex;
             align-items: center;
+            gap: 10px;
+        }
+
+        .nav-btn:hover { background: rgba(255, 255, 255, 0.1); }
+        
+        /* Active Tab Styling */
+        .nav-btn.active {
+            background: var(--secondary);
+            font-weight: bold;
+            border-left: 4px solid #f39c12;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
 
-        .navbar .logo { font-size: 22px; font-weight: bold; display: flex; align-items: center; gap: 10px; }
-        
-        .user-controls { display: flex; align-items: center; gap: 20px; }
-        .user-name { font-weight: 600; font-size: 15px; }
-        
-        .logout-btn {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            padding: 8px 15px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: 0.3s;
-            font-weight: bold;
+        .logout-btn { margin-top: auto; background: var(--danger); border-left: none !important; margin-bottom: 0px;}
+        .logout-btn:hover { background: #c0392b; }
+
+        /* Main Content */
+        .main-content { margin-left: 260px; flex: 1; padding: 30px; }
+
+        .header-strip { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 15px;}
+
+        /* Tab Views */
+        .view-section {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+            max-width: 1100px;
+            margin: 0 auto;
         }
-        .logout-btn:hover { background: var(--danger); border-color: var(--danger); }
+        .view-section.active { display: block; }
 
-        /* Main Container */
-        .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
-
-        /* Welcome Banner */
-        .welcome-banner {
-            background: linear-gradient(135deg, var(--secondary), #1a5276);
-            color: white;
-            padding: 30px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 20px rgba(46, 134, 193, 0.2);
-        }
-        .welcome-banner h1 { font-size: 28px; margin-bottom: 10px; }
-        .welcome-banner p { font-size: 15px; opacity: 0.9; line-height: 1.5; }
-
-        /* Layout Grid */
-        .dashboard-layout {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 25px;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .section-title {
-            font-size: 20px;
-            color: var(--primary);
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            border-bottom: 2px solid #ddd;
-            padding-bottom: 10px;
-        }
-
-        /* Exam Cards */
-        .exam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        
-        .exam-card {
+        .card {
             background: white;
-            border-radius: 10px;
+            border-radius: 12px;
             padding: 25px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 25px;
             border-top: 4px solid var(--secondary);
-            display: flex;
-            flex-direction: column;
+        }
+
+        h3 { color: var(--primary); margin-bottom: 15px; font-size: 18px; display: flex; align-items: center; gap: 8px;}
+
+        /* Inputs & Buttons */
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.3s; font-size: 14px; text-decoration: none; display: inline-block; text-align: center;}
+        .btn-primary { background: var(--secondary); color: white; }
+        .btn-primary:hover { background: #1a5276; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:hover { background: #1e8449; }
+        .btn-outline { border: 1px solid var(--primary); color: var(--primary); background: transparent; }
+        .btn-outline:hover { background: var(--primary); color: white; }
+
+        /* Exam Grid Layout */
+        .exam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+        
+        /* Exam Card Styling */
+        .exam-card {
+            background: white; border-radius: 10px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s; border-top: 4px solid var(--secondary); display: flex; flex-direction: column;
         }
         .exam-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
-        
         .exam-title { font-size: 18px; font-weight: bold; color: var(--primary); margin-bottom: 15px; }
-        
         .exam-meta {
-            display: flex;
-            justify-content: space-between;
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-bottom: 20px;
-            background: #f8f9f9;
-            padding: 10px;
-            border-radius: 6px;
+            display: flex; justify-content: space-between; font-size: 13px; color: #7f8c8d; margin-bottom: 20px; background: #f8f9f9; padding: 10px; border-radius: 6px;
+        }
+        .start-btn { width: 100%; margin-top: auto;}
+
+        /* Result List Cards */
+        .result-item {
+            display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee; background: #fdfdfd; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
 
-        .start-btn {
-            background: var(--success);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 15px;
-            cursor: pointer;
-            transition: 0.3s;
-            text-align: center;
-            text-decoration: none;
-            margin-top: auto;
+        /* Modal Styling */
+        #resultAnalysisModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; 
+            justify-content: center; align-items: center; z-index: 2000;
+            backdrop-filter: blur(4px);
         }
-        .start-btn:hover { background: #219a52; }
-        .start-btn.disabled { background: #bdc3c7; cursor: not-allowed; }
+        .modal-content {
+            background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 950px;
+            max-height: 90vh; overflow-y: auto;
+        }
 
-        /* Sidebar Info */
-        .info-card {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        /* Simplified Analysis UI Components */
+        .analysis-subject-card {
+             background: white; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 15px; border-left: 5px solid var(--secondary);
         }
-        .info-list { list-style: none; margin-top: 15px; }
-        .info-list li {
-            margin-bottom: 15px;
-            font-size: 14px;
-            line-height: 1.5;
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
+        .subject-title { font-weight: bold; color: var(--primary); font-size: 16px; margin-bottom: 15px; }
+        
+        /* Gauge Simplified */
+        .marks-summary-flex {
+            display: flex; align-items: center; gap: 20px; margin-bottom: 15px;
         }
-        .info-badge {
-            background: #e8f8f5;
-            color: var(--success);
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 12px;
+        .progress-circle-simplified {
+            width: 80px; height: 80px; border-radius: 50%; border: 6px solid #e1e8ed; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative;
         }
-        .danger-badge { background: #fdedec; color: var(--danger); }
+        /* Dynamic filling would be CSS/JS, but simplifying. Just show numbers. */
+        .circle-filling-simplified {
+            border: 6px solid var(--success); border-color: var(--success) #e1e8ed #e1e8ed #e1e8ed;
+        }
+        .progress-text { font-size: 18px; font-weight: bold; color: var(--success); }
+        .total-available-text { font-size: 11px; color: #777; margin-top: 2px;}
 
-        /* Loader */
-        .loader { text-align: center; padding: 40px; color: var(--text-muted); font-style: italic; }
+        /* Detailed Q/C/I summary flex */
+        .answers-summary-box {
+            display: flex; gap: 20px; font-size: 14px; background: #fdfdfd; padding: 10px; border-radius: 6px; border: 1px solid #f0f0f0;
+        }
+        .summary-item { display: flex; align-items: center; gap: 8px; font-weight: bold; color: #555;}
     </style>
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="logo">🚀 JEE Mock Portal</div>
-        <div class="user-controls">
-            <div class="user-name" id="displayUserName">Student</div>
-            <button class="logout-btn" onclick="logout()">Logout</button>
+<div class="sidebar">
+    <h2>🚀 JEE Portal</h2>
+    <button class="nav-btn active" onclick="switchTab('view-exams', this)">📚 My Available Exams</button>
+    <button class="nav-btn" onclick="switchTab('view-past-results', this)">🏆 My Past Results</button>
+    <button class="nav-btn logout-btn" onclick="logout()">Logout</button>
+</div>
+
+<div class="main-content">
+    <div class="header-strip">
+        <h1 id="pageTitle">My Available Exams</h1>
+        <p id="welcomeText" style="font-weight: bold; color: var(--secondary); font-size: 15px;"></p>
+    </div>
+
+    <div id="view-exams" class="view-section active">
+        <div class="card welcome-banner" style="background: linear-gradient(135deg, var(--secondary), #1a5276); color: white; border: none;">
+             <p style="font-size: 15px; opacity: 0.9; line-height: 1.5; padding: 10px 0;">Select a mock test below to begin your practice. Make sure you are in a quiet environment and have 3 hours of uninterrupted time before starting an exam.</p>
         </div>
-    </nav>
 
-    <div class="container">
-        <div class="welcome-banner">
-            <h1 id="welcomeText">Welcome back!</h1>
-            <p>Select a mock test below to begin your practice. Make sure you are in a quiet environment and have 3 hours of uninterrupted time before starting an exam.</p>
-        </div>
-
-        <div class="dashboard-layout">
-            <div>
-                <h2 class="section-title">📚 Available Mock Exams</h2>
-                <div id="examGrid" class="exam-grid">
-                    <div class="loader">Fetching your exams...</div>
-                </div>
-            </div>
-
-            <div>
-                <div class="info-card">
-                    <h3 style="color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 10px;">📋 Exam Guidelines</h3>
-                    <ul class="info-list">
-                        <li>
-                            <span class="info-badge">⏱️ Time</span> 
-                            <div>The standard duration for JEE Mock tests is <b>180 minutes</b>. The timer cannot be paused once started.</div>
-                        </li>
-                        <li>
-                            <span class="info-badge" style="background: #ebf5fb; color: var(--secondary);">📝 Pattern</span> 
-                            <div>Questions are divided into Physics, Chemistry, and Mathematics sections.</div>
-                        </li>
-                        <li>
-                            <span class="info-badge">✔️ Correct</span> 
-                            <div>You will be awarded <b>+4 marks</b> for every correct answer.</div>
-                        </li>
-                        <li>
-                            <span class="info-badge danger-badge">❌ Incorrect</span> 
-                            <div>A penalty of <b>-1 mark</b> will be applied for every incorrect answer.</div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
+        <h2 style="font-size: 20px; color: var(--primary); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">📚 Available Mock Exams</h2>
+        <div id="examGrid" class="exam-grid">
+            <div style="text-align: center; padding: 40px; color: #7f8c8d; font-style: italic;">Fetching available exams...</div>
         </div>
     </div>
 
-    <script>
-        // Ensure this matches your active Render URL
-        const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
+    <div id="view-past-results" class="view-section">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>🏆 My Past Exam Results</h3>
+                <button class="btn btn-outline" onclick="loadPastResults()">🔄 Refresh List</button>
+            </div>
+            
+            <div style="display: flex; padding: 12px 15px; background: var(--primary); color: white; border-radius: 6px 6px 0 0; font-weight: bold;">
+                <div style="flex: 4;">Exam Title</div>
+                <div style="flex: 3; text-align: center;">Submitted At</div>
+                <div style="flex: 1; text-align: right;">Final Score</div>
+                <div style="width: 150px; text-align: right;">Action</div> </div>
+            
+            <div id="resultsLoader" style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic; display: none;">Fetching your past results...</div>
+            <div id="pastResultsList" style="font-size: 15px;"></div>
+        </div>
+    </div>
 
-        // 1. Check Authentication
-        const studentName = localStorage.getItem("userName");
-        const role = localStorage.getItem("userRole");
+</div>
 
-        // Guard: If not logged in, kick to login page
-        if (!studentName || !role) {
-            window.location.href = "login.html";
+<div id="resultAnalysisModal">
+    <div class="modal-content">
+        <button class="btn btn-outline" style="float:right; border-color: #333; color: #333;" onclick="closeResultAnalysis()">Close X</button>
+        <h2 id="modalResultTitle">Exam Result Analysis</h2>
+        <p id="modalResultDate" style="color: #777; font-size: 14px; margin-top: 5px; margin-bottom: 15px;"></p>
+        <hr style="margin: 20px 0;">
+        
+        <div id="analysisLoader" style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic; display: none;">Loading result analysis...</div>
+        <div id="analysisContainer"></div>
+    </div>
+</div>
+
+<script>
+    const BACKEND_URL = "https://jee-mock-portal.onrender.com"; 
+    
+    // 1. Authenticate Guard: Check for Student JWT Token
+    const studentName = localStorage.getItem("userName");
+    const role = localStorage.getItem("userRole");
+    const token = localStorage.getItem("studentToken"); // [NEW] assume studentToken key.
+
+    if (!studentName || !role || role.toLowerCase() !== "student" || !token) {
+        console.error("⛔ Student ACCESS DENIED: Redirecting to login...");
+        alert("Unauthorized! Please login as Student.");
+        localStorage.clear();
+        window.location.href = "login.html";
+    }
+
+    // Set Welcome Name globally
+    document.getElementById("welcomeText").innerText = `👨‍🎓 ${studentName}`;
+
+    // Global variable to store fetched past results data
+    let myResultsData = [];
+
+
+    // --- TAB SWITCHER LOGIC ---
+    function switchTab(tabId, btnElement) {
+        // 1. Hide all views
+        document.querySelectorAll('.view-section').forEach(sec => {
+            sec.classList.remove('active');
+        });
+        
+        // 2. Remove active state from all buttons
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+
+        // 3. Show target view and activate button
+        document.getElementById(tabId).classList.add('active');
+        btnElement.classList.add('active');
+
+        // 4. Update the Page Title text dynamically
+        const titleText = btnElement.innerText.replace(/[^\w\s]/gi, '').trim(); // Strips emojis
+        document.getElementById('pageTitle').innerText = titleText;
+        
+        // Trigger tab-specific logic
+        if (tabId === 'view-exams') {
+            loadAvailableExams();
+        } else if (tabId === 'view-past-results') {
+            loadPastResults();
         }
+    }
 
-        // Set personalized text
-        document.getElementById("displayUserName").innerText = `👨‍🎓 ${studentName}`;
-        document.getElementById("welcomeText").innerText = `Ready to ace it, ${studentName.split(' ')[0]}?`;
+    // --- HELPER SCROLL ---
+    // function scrollToSec(id) { document.getElementById(id).scrollIntoView({behavior: 'smooth'}); }
 
-        // 2. Fetch Exams using the new `questionCount` feature
-        async function loadAvailableExams() {
-            const grid = document.getElementById("examGrid");
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/public/exams`);
-                if (!res.ok) throw new Error("Failed to fetch");
+
+    // ============================================
+    // TAB 1: MY AVAILABLE EXAMS LOGIC (ADAPTED)
+    // ============================================
+    async function loadAvailableExams() {
+        const grid = document.getElementById("examGrid");
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #7f8c8d; font-style: italic;">Fetching available exams...</div>';
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams`);
+            if (!res.ok) throw new Error("Failed to fetch");
+            
+            const exams = await res.json();
+            grid.innerHTML = ""; // Clear fetcher text
+
+            if (exams.length === 0) {
+                grid.innerHTML = `<div style="grid-column: 1/-1; background: white; padding: 40px; border-radius: 8px; text-align: center; color: #7f8c8d; font-style: italic;">No exams are currently active. Please check back later!</div>`;
+                return;
+            }
+
+            // Fetch this student's PAST attempts full list
+            const pastResultsRes = await fetch(`${BACKEND_URL}/api/public/results/my-results`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            const attemptedExamsList = await pastResultsRes.json();
+            const attemptedCountMap = {}; // examId -> count
+
+            // Revision of API call structure: Backend sends full enriched payload.
+            // Traverse attemptedExamsList. Data structure is list of enriched results.
+            attemptedExamsList.forEach(result => {
+                const examId = result.examId;
+                attemptedCountMap[examId] = (attemptedCountMap[examId] || 0) + 1;
+            });
+
+            exams.forEach(exam => {
+                const qCount = exam.questionCount || 0;
+                const isReady = qCount > 0;
                 
-                const exams = await res.json();
-                
-                if (exams.length === 0) {
-                    grid.innerHTML = `<div style="grid-column: 1/-1; background: white; padding: 30px; border-radius: 8px; text-align: center; color: #7f8c8d;">No exams are currently active. Please check back later!</div>`;
-                    return;
+                // [FIX]: If student has attempts on this exam, mark as attempted.
+                const attemptsOnThis = attemptedCountMap[exam.id] || 0;
+                const isAttempted = attemptsOnThis > 0;
+
+                // [FIX]: Skip rendering if attempted.
+                if (isAttempted) {
+                    return; // Continue with next exam
                 }
 
-                grid.innerHTML = ""; // Clear loader
-                
-                exams.forEach(exam => {
-                    // Make sure questionCount exists, default to 0 if not
-                    const qCount = exam.questionCount || 0;
-                    
-                    // Logic to disable exams that have no questions added to them yet
-                    const isReady = qCount > 0;
-                    const btnClass = isReady ? "start-btn" : "start-btn disabled";
-                    const btnText = isReady ? "Start Mock Test ▶" : "Exam Not Ready";
-                    const btnAction = isReady ? `onclick="startExam('${exam.id}')"` : "disabled";
+                const btnClass = isReady ? "start-btn btn-success" : "start-btn disabled";
+                const btnText = isReady ? "Start Mock Test ▶" : "Exam Not Ready";
+                const btnAction = isReady ? `onclick="startExam('${exam.id}')"` : "disabled";
 
-                    grid.innerHTML += `
-                        <div class="exam-card">
-                            <div class="exam-title">${exam.title}</div>
-                            <div class="exam-meta">
-                                <span><b>Questions:</b> ${qCount}</span>
-                                <span><b>Marks:</b> ${qCount * 4}</span>
+                grid.innerHTML += `
+                    <div class="exam-card">
+                        <div class="exam-title">${exam.title}</div>
+                        <div class="exam-meta">
+                            <span><b>Questions:</b> ${qCount}</span>
+                            <span><b>Total Marks:</b> ${qCount * 4}</span>
+                        </div>
+                        <button class="btn ${btnClass}" ${btnAction}>${btnText}</button>
+                    </div>
+                `;
+            });
+
+        } catch (error) {
+            console.error("Error:", error);
+            grid.innerHTML = `<div style="grid-column: 1/-1; background: #fdedec; color: #c0392b; padding: 20px; border-radius: 8px; text-align: center;">Unable to connect to the exam server. Please ensure your internet is active.</div>`;
+        }
+    }
+
+    // --- Navigate to Exam Interface (unchanged) ---
+    function startExam(examId) {
+        if(confirm("Are you sure you want to start this exam? The 3-hour timer will begin immediately.")) {
+            window.location.href = `take_exam.html?id=${examId}`;
+        }
+    }
+
+
+    // ============================================
+    // TAB 2: MY PAST RESULTS LOGIC (NEW)
+    // ============================================
+    async function loadPastResults() {
+        const resultsList = document.getElementById("pastResultsList");
+        const loader = document.getElementById("resultsLoader");
+        
+        resultsList.innerHTML = "";
+        loader.style.display = "block";
+
+        try {
+            // Call the NEW authenticated list route
+            const res = await fetch(`${BACKEND_URL}/api/public/results/my-results`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            if (!res.ok) throw new Error("Failed to fetch past results");
+            
+            // Wait, this student's results list returned by API contains full detailed breakdown.
+            // Save full detailed data globally for deep linking.
+            myResultsData = await res.json();
+            const results = myResultsData;
+            
+            loader.style.display = "none";
+
+            if (results.length === 0) {
+                resultsList.innerHTML = "<div style='padding: 25px; text-align: center; color: #7f8c8d; font-style: italic; background: white; border-radius: 0 0 6px 6px; border: 1px solid #eee;'>You haven't attempted any mock exams yet. Start one from the available list!</div>";
+                return;
+            }
+
+            // Render result cards with rich detail button
+            results.forEach(result => {
+                // Format Firestore Timestamp (or raw string if conversion happened in backend)
+                let dateDisplay = "Unknown Date";
+                if(result.submittedAt) {
+                    const date = new Date(result.submittedAt);
+                    dateDisplay = date.toLocaleDateString() + " " + date.toLocaleTimeString().substring(0,5);
+                }
+
+                resultsList.innerHTML += `
+                    <div class="result-item">
+                        <div style="flex: 4; font-weight: bold; color: var(--primary);">${result.examTitle}</div>
+                        <div style="flex: 3; text-align: center; color: #777;">${dateDisplay}</div>
+                        <div style="flex: 1; text-align: right; font-weight: bold; font-size: 16px; color: ${result.totalScore >= 0 ? 'var(--success)' : 'var(--danger)'};">${result.totalScore}</div>
+                        <div style="width: 150px; text-align: right;">
+                             <button class="btn btn-primary" onclick="viewResultAnalysis('${result.id}')">View Detailed Analysis 📊</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+        } catch (e) {
+            console.error("Could not load past results:", e);
+            loader.style.display = "none";
+            resultsList.innerHTML = "<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to connect to results server. Please check your internet connection.</div>";
+        }
+    }
+
+    
+   // ============================================
+    // MODAL: RESULT ANALYSIS LOGIC (UPGRADED DYNAMIC RANKING)
+    // ============================================
+    async function viewResultAnalysis(resultId) {
+        // Find the basic static data
+        const resultData = myResultsData.find(r => r.id === resultId);
+        if(!resultData) return alert("Result data not found.");
+
+        document.getElementById("modalResultTitle").innerText = `Analysis: ${resultData.examTitle}`;
+        
+        let dateDisplay = "Unknown Date";
+        if(resultData.submittedAt) {
+            const date = new Date(resultData.submittedAt);
+            dateDisplay = date.toLocaleDateString() + " " + date.toLocaleTimeString().substring(0,5);
+        }
+        document.getElementById("modalResultDate").innerText = `Submitted: ${dateDisplay} | Total Questions: ${resultData.examQuestionsCount}`;
+
+        const container = document.getElementById("analysisContainer");
+        const loader = document.getElementById("analysisLoader");
+        
+        container.innerHTML = "";
+        loader.style.display = "block";
+        document.getElementById("resultAnalysisModal").style.display = "flex";
+
+        try {
+            // 🔥 FETCH LIVE RANKING DATA FROM PYTHON 🔥
+            const res = await fetch(`${BACKEND_URL}/api/public/results/${resultId}/analysis`, {
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            if (!res.ok) throw new Error("Failed to fetch live ranking data");
+            const liveData = await res.json();
+
+            loader.style.display = "none";
+
+            // 1. Build the Top "RANK CARD" (Inspired by your screenshot)
+            let rankHtml = `
+                <div style="background: #f4f6f9; border-radius: 10px; padding: 20px; margin-bottom: 25px; border: 1px solid #e1e8ed;">
+                    <h3 style="text-align: center; color: var(--primary); margin-bottom: 15px; font-size: 16px;">
+                        🏆 OVERALL RANK <span style="color: #777; font-size: 14px;">(${liveData.totalStudents} STUDENTS)</span>
+                    </h3>
+                    <div style="display: flex; justify-content: space-around; text-align: center;">
+                        <div>
+                            <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; text-transform: uppercase;">Total Score</div>
+                            <div style="font-size: 24px; font-weight: bold; color: var(--primary);">${liveData.overall.myScore}</div>
+                        </div>
+                        <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                            <div style="font-size: 12px; color: #e67e22; font-weight: bold; text-transform: uppercase;">Your Rank</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #d35400;">#${liveData.overall.rank}</div>
+                        </div>
+                        <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                            <div style="font-size: 12px; color: #27ae60; font-weight: bold; text-transform: uppercase;">Top Score</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #27ae60;">${liveData.overall.top}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML += rankHtml;
+
+            // 2. Build the "SUBJECT WISE ANALYSIS" Cards
+            if (resultData.subjectWiseBreakdown) {
+                for (const subject in resultData.subjectWiseBreakdown) {
+                    const staticStats = resultData.subjectWiseBreakdown[subject];
+                    const dynamicStats = liveData.subjects[subject] || { rank: "-", avg: 0, top: 0, myScore: staticStats.score };
+                    
+                    const totalMarks = staticStats.subjectTotalMarks || 1;
+                    
+                    // Calculate widths for the comparative progress bars
+                    const youWidth = Math.max(5, (dynamicStats.myScore / totalMarks) * 100);
+                    const avgWidth = Math.max(5, (dynamicStats.avg / totalMarks) * 100);
+                    const topWidth = Math.max(5, (dynamicStats.top / totalMarks) * 100);
+
+                    // Choose color based on subject (Optional flair)
+                    let subColor = "var(--secondary)"; // Blue
+                    if(subject.toLowerCase().includes("chem")) subColor = "var(--success)"; // Green
+                    if(subject.toLowerCase().includes("math")) subColor = "#8e44ad"; // Purple
+
+                    container.innerHTML += `
+                        <div style="background: white; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 15px; border-left: 5px solid ${subColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div style="font-weight: bold; color: ${subColor}; font-size: 18px;">${subject}</div>
+                                <div style="font-size: 14px; font-weight: bold; background: #fdf2e9; color: #d35400; padding: 4px 10px; border-radius: 4px;">Subject Rank: #${dynamicStats.rank}</div>
                             </div>
-                            <button class="${btnClass}" ${btnAction}>${btnText}</button>
+                            
+                            <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+                                <div style="width: 80px; height: 80px; border-radius: 50%; border: 6px solid ${subColor}; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                                    <span style="font-size: 20px; font-weight: bold; color: ${subColor};">${dynamicStats.myScore}</span>
+                                    <span style="font-size: 10px; color: #777;">out of ${totalMarks}</span>
+                                </div>
+                                
+                                <div style="flex: 1; font-size: 13px;">
+                                    <div style="margin-bottom: 8px;">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                            <span><b>You</b></span><span>${dynamicStats.myScore}</span>
+                                        </div>
+                                        <div style="background: #eee; height: 8px; border-radius: 4px; width: 100%;">
+                                            <div style="background: ${subColor}; height: 8px; border-radius: 4px; width: ${youWidth}%;"></div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-bottom: 8px;">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                            <span style="color: #7f8c8d;">Average</span><span style="color: #7f8c8d;">${dynamicStats.avg}</span>
+                                        </div>
+                                        <div style="background: #eee; height: 6px; border-radius: 3px; width: 100%;">
+                                            <div style="background: #bdc3c7; height: 6px; border-radius: 3px; width: ${avgWidth}%;"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                            <span style="color: #27ae60;">Top Score</span><span style="color: #27ae60;">${dynamicStats.top}</span>
+                                        </div>
+                                        <div style="background: #eee; height: 6px; border-radius: 3px; width: 100%;">
+                                            <div style="background: #2ecc71; height: 6px; border-radius: 3px; width: ${topWidth}%;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 20px; font-size: 13px; background: #fdfdfd; padding: 10px; border-radius: 6px; border: 1px solid #f0f0f0;">
+                                <div style="color: #555;"><b>✅ Correct:</b> ${staticStats.correct}</div>
+                                <div style="color: var(--danger);"><b>❌ Incorrect:</b> ${staticStats.incorrect}</div>
+                                <div style="color: #8e44ad;"><b>⚪ Skipped:</b> ${staticStats.notAttempted}</div>
+                            </div>
                         </div>
                     `;
-                });
-
-            } catch (error) {
-                console.error("Error:", error);
-                grid.innerHTML = `<div style="grid-column: 1/-1; background: #fdedec; color: #c0392b; padding: 20px; border-radius: 8px; text-align: center;">Unable to connect to the exam server. Please ensure your internet is active.</div>`;
+                }
             }
-        }
 
-        // 3. Navigate to Exam Interface
-        function startExam(examId) {
-            // Confirm before burning an attempt
-            if(confirm("Are you sure you want to start this exam? The 3-hour timer will begin immediately.")) {
-                window.location.href = `take_exam.html?id=${examId}`;
-            }
+        } catch(e) {
+            console.error(e);
+            loader.style.display = "none";
+            container.innerHTML = `<div style="padding: 20px; color: #c0392b; background: #fdedec; text-align: center; border-radius: 6px;">Failed to load live ranking data. Check your internet connection.</div>`;
         }
+    }
 
-        // 4. Logout
-        function logout() {
-            localStorage.clear();
-            window.location.href = "login.html";
-        }
+</script>
 
-        // Initialize
-        loadAvailableExams();
-    </script>
 </body>
 </html>
