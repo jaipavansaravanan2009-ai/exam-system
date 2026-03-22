@@ -17,6 +17,7 @@ import io
 from fastapi import UploadFile, File, HTTPException, Depends
 import zipfile
 import mimetypes
+import traceback
 
 # Load Environment Variables
 load_dotenv()
@@ -173,22 +174,24 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         csv_data = None
         images_data = {}
         
-        # 1. Unpack the ZIP file in memory (Case-insensitive & Encoding-Proof)
+        # 1. Unpack the ZIP file in memory 
         with zipfile.ZipFile(io.BytesIO(contents)) as z:
             for filename in z.namelist():
-                if filename.startswith("__MACOSX") or filename.startswith(".") or filename.endswith("/"):
+                # 🔥 FIX: Properly ignore hidden OS files, even inside folders
+                base_name = filename.split('/')[-1]
+                if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
                     continue
                     
                 if filename.lower().endswith(".csv"):
                     raw_csv = z.read(filename)
-                    # 🔥 SMART DECODING: Try UTF-8 first, fallback to Excel Windows formats
+                    # Smart Decoding for Excel formats
                     try:
                         csv_data = raw_csv.decode('utf-8-sig')
                     except UnicodeDecodeError:
                         try:
-                            csv_data = raw_csv.decode('cp1252') # Windows Excel Default
+                            csv_data = raw_csv.decode('cp1252')
                         except UnicodeDecodeError:
-                            csv_data = raw_csv.decode('latin-1') # Universal Fallback
+                            csv_data = raw_csv.decode('latin-1')
                             
                 elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                     img_bytes = z.read(filename)
@@ -197,15 +200,18 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
                         mime_type = "image/jpeg"
                     b64_str = base64.b64encode(img_bytes).decode('utf-8')
                     
-                    base_name = filename.replace('\\', '/').split('/')[-1].lower().strip()
-                    images_data[base_name] = f"data:{mime_type};base64,{b64_str}"
+                    clean_name = base_name.lower().strip()
+                    images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
 
         if not csv_data:
-            raise HTTPException(status_code=400, detail="Could not find a .csv file inside the ZIP. Did you save it as .xlsx?")
+            raise HTTPException(status_code=400, detail="Could not find a valid .csv file inside the ZIP.")
 
-        # 2. Parse the CSV and clean headers
+        # 2. Parse the CSV
         reader = csv.DictReader(io.StringIO(csv_data))
-        reader.fieldnames = [field.strip() for field in reader.fieldnames] # Remove accidental spaces in headers
+        if not reader.fieldnames:
+             raise HTTPException(status_code=400, detail="CSV file is completely empty or missing headers.")
+             
+        reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field] 
         
         exam_ref = db.collection("exams").document(exam_id)
         doc = exam_ref.get()
@@ -215,26 +221,20 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         data = doc.to_dict()
         questions = data.get("questions", [])
         
-        # Helper 1: Get text value safely checking multiple possible header names
         def get_val(row, possible_keys):
             for k in possible_keys:
-                if k in row: return row[k].strip()
+                if k in row and row[k]: return str(row[k]).strip()
             return ""
 
-        # Helper 2: Get Image safely using fuzzy matching
         def get_img(row, possible_keys):
             img_name = get_val(row, possible_keys)
             if not img_name: return None
-            if img_name.startswith("http"): return img_name # If it's a web link, keep it
-            
-            # Fuzzy match: lowercase and strip spaces
-            clean_name = img_name.lower().strip()
-            return images_data.get(clean_name, None)
+            if img_name.startswith("http"): return img_name
+            return images_data.get(img_name.lower().strip(), None)
 
         # 3. Build Questions
         added_count = 0
         for row in reader:
-            # Skip completely empty rows
             if not any(row.values()): continue
 
             new_q = {
@@ -262,8 +262,9 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         return {"message": f"Successfully unpacked ZIP and added {added_count} questions! ✅"}
 
     except Exception as e:
-        print(f"Bulk upload ZIP error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process ZIP. Ensure it contains a CSV and images.")
+        traceback.print_exc() # This prints the full error to your Render logs
+        # 🔥 UNMASK THE ERROR: This sends the actual crash reason back to the browser 🔥
+        raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
     
 
 # --- 🔥 NEW: DELETE ENTIRE EXAM ROUTE 🔥 ---
