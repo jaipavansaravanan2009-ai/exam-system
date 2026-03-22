@@ -2,6 +2,11 @@
 <html>
 <head>
     <title>JEE Mains Mock - Official Interface</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
     <style>
         :root { --nta-blue: #1e3d59; --green: #27ae60; --red: #e74c3c; --purple: #8e44ad; --gray: #bdc3c7; }
         body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -281,6 +286,8 @@
         }
         document.getElementById("qText").innerHTML = qContent;
 
+        renderMath();
+
         // 2. Render Options with openZoom
         const optDiv = document.getElementById("optionsList");
         if (q.options && q.options.length > 1) {
@@ -485,6 +492,22 @@
         } catch (e) {
             console.error(e);
             alert("Error submitting exam. Please check your internet connection.");
+        }
+    }
+
+    // --- 🧮 KaTeX Math Rendering Engine ---
+    function renderMath() {
+        if (window.renderMathInElement) {
+            // We use document.body so it scans the whole page (Question, Options, and Sidebar)
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false
+            });
         }
     }
     
