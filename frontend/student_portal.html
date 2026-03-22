@@ -223,7 +223,7 @@
     // 1. Authenticate Guard: Check for Student JWT Token
     const studentName = localStorage.getItem("userName");
     const role = localStorage.getItem("userRole");
-    const token = localStorage.getItem("studentToken"); // [NEW] assume studentToken key.
+    const token = localStorage.getItem("token"); // 🔥 FIX: Using standard "token" key
 
     if (!studentName || !role || role.toLowerCase() !== "student" || !token) {
         console.error("⛔ Student ACCESS DENIED: Redirecting to login...");
@@ -267,12 +267,9 @@
         }
     }
 
-    // --- HELPER SCROLL ---
-    // function scrollToSec(id) { document.getElementById(id).scrollIntoView({behavior: 'smooth'}); }
-
 
     // ============================================
-    // TAB 1: MY AVAILABLE EXAMS LOGIC (ADAPTED)
+    // TAB 1: MY AVAILABLE EXAMS LOGIC
     // ============================================
     async function loadAvailableExams() {
         const grid = document.getElementById("examGrid");
@@ -283,22 +280,20 @@
             if (!res.ok) throw new Error("Failed to fetch");
             
             const exams = await res.json();
-            grid.innerHTML = ""; // Clear fetcher text
+            grid.innerHTML = ""; 
 
             if (exams.length === 0) {
                 grid.innerHTML = `<div style="grid-column: 1/-1; background: white; padding: 40px; border-radius: 8px; text-align: center; color: #7f8c8d; font-style: italic;">No exams are currently active. Please check back later!</div>`;
                 return;
             }
 
-            // Fetch this student's PAST attempts full list
+            // Fetch this student's PAST attempts to filter them out
             const pastResultsRes = await fetch(`${BACKEND_URL}/api/public/results/my-results`, { 
                 headers: { "Authorization": `Bearer ${token}` } 
             });
             const attemptedExamsList = await pastResultsRes.json();
-            const attemptedCountMap = {}; // examId -> count
+            const attemptedCountMap = {}; 
 
-            // Revision of API call structure: Backend sends full enriched payload.
-            // Traverse attemptedExamsList. Data structure is list of enriched results.
             attemptedExamsList.forEach(result => {
                 const examId = result.examId;
                 attemptedCountMap[examId] = (attemptedCountMap[examId] || 0) + 1;
@@ -308,13 +303,12 @@
                 const qCount = exam.questionCount || 0;
                 const isReady = qCount > 0;
                 
-                // [FIX]: If student has attempts on this exam, mark as attempted.
                 const attemptsOnThis = attemptedCountMap[exam.id] || 0;
                 const isAttempted = attemptsOnThis > 0;
 
-                // [FIX]: Skip rendering if attempted.
+                // Skip rendering if attempted.
                 if (isAttempted) {
-                    return; // Continue with next exam
+                    return; 
                 }
 
                 const btnClass = isReady ? "start-btn btn-success" : "start-btn disabled";
@@ -339,7 +333,6 @@
         }
     }
 
-    // --- Navigate to Exam Interface (unchanged) ---
     function startExam(examId) {
         if(confirm("Are you sure you want to start this exam? The 3-hour timer will begin immediately.")) {
             window.location.href = `take_exam.html?id=${examId}`;
@@ -348,7 +341,7 @@
 
 
     // ============================================
-    // TAB 2: MY PAST RESULTS LOGIC (NEW)
+    // TAB 2: MY PAST RESULTS LOGIC
     // ============================================
     async function loadPastResults() {
         const resultsList = document.getElementById("pastResultsList");
@@ -358,14 +351,11 @@
         loader.style.display = "block";
 
         try {
-            // Call the NEW authenticated list route
             const res = await fetch(`${BACKEND_URL}/api/public/results/my-results`, { 
                 headers: { "Authorization": `Bearer ${token}` } 
             });
             if (!res.ok) throw new Error("Failed to fetch past results");
             
-            // Wait, this student's results list returned by API contains full detailed breakdown.
-            // Save full detailed data globally for deep linking.
             myResultsData = await res.json();
             const results = myResultsData;
             
@@ -376,9 +366,7 @@
                 return;
             }
 
-            // Render result cards with rich detail button
             results.forEach(result => {
-                // Format Firestore Timestamp (or raw string if conversion happened in backend)
                 let dateDisplay = "Unknown Date";
                 if(result.submittedAt) {
                     const date = new Date(result.submittedAt);
@@ -406,10 +394,9 @@
 
     
    // ============================================
-    // MODAL: RESULT ANALYSIS LOGIC (UPGRADED DYNAMIC RANKING)
+    // MODAL: RESULT ANALYSIS LOGIC
     // ============================================
     async function viewResultAnalysis(resultId) {
-        // Find the basic static data
         const resultData = myResultsData.find(r => r.id === resultId);
         if(!resultData) return alert("Result data not found.");
 
@@ -430,7 +417,6 @@
         document.getElementById("resultAnalysisModal").style.display = "flex";
 
         try {
-            // 🔥 FETCH LIVE RANKING DATA FROM PYTHON 🔥
             const res = await fetch(`${BACKEND_URL}/api/public/results/${resultId}/analysis`, {
                 headers: { "Authorization": `Bearer ${token}` } 
             });
@@ -439,7 +425,6 @@
 
             loader.style.display = "none";
 
-            // 1. Build the Top "RANK CARD" (Inspired by your screenshot)
             let rankHtml = `
                 <div style="background: #f4f6f9; border-radius: 10px; padding: 20px; margin-bottom: 25px; border: 1px solid #e1e8ed;">
                     <h3 style="text-align: center; color: var(--primary); margin-bottom: 15px; font-size: 16px;">
@@ -463,7 +448,6 @@
             `;
             container.innerHTML += rankHtml;
 
-            // 2. Build the "SUBJECT WISE ANALYSIS" Cards
             if (resultData.subjectWiseBreakdown) {
                 for (const subject in resultData.subjectWiseBreakdown) {
                     const staticStats = resultData.subjectWiseBreakdown[subject];
@@ -471,15 +455,13 @@
                     
                     const totalMarks = staticStats.subjectTotalMarks || 1;
                     
-                    // Calculate widths for the comparative progress bars
                     const youWidth = Math.max(5, (dynamicStats.myScore / totalMarks) * 100);
                     const avgWidth = Math.max(5, (dynamicStats.avg / totalMarks) * 100);
                     const topWidth = Math.max(5, (dynamicStats.top / totalMarks) * 100);
 
-                    // Choose color based on subject (Optional flair)
-                    let subColor = "var(--secondary)"; // Blue
-                    if(subject.toLowerCase().includes("chem")) subColor = "var(--success)"; // Green
-                    if(subject.toLowerCase().includes("math")) subColor = "#8e44ad"; // Purple
+                    let subColor = "var(--secondary)"; 
+                    if(subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
+                    if(subject.toLowerCase().includes("math")) subColor = "#8e44ad"; 
 
                     container.innerHTML += `
                         <div style="background: white; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 15px; border-left: 5px solid ${subColor};">
@@ -539,6 +521,19 @@
         }
     }
 
+    function closeResultAnalysis() { 
+        document.getElementById("resultAnalysisModal").style.display = "none"; 
+    }
+
+    function logout() {
+        localStorage.clear();
+        window.location.href = "login.html";
+    }
+
+    // 🔥 FIX: Check `token` here at the bottom to load the exams properly on start
+    if (token) {
+        loadAvailableExams();
+    }
 </script>
 
 </body>
