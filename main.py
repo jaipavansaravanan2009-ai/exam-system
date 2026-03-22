@@ -173,15 +173,23 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         csv_data = None
         images_data = {}
         
-        # 1. Unpack the ZIP file in memory (Case-insensitive matching)
+        # 1. Unpack the ZIP file in memory (Case-insensitive & Encoding-Proof)
         with zipfile.ZipFile(io.BytesIO(contents)) as z:
             for filename in z.namelist():
-                # Ignore macOS hidden files and folders
                 if filename.startswith("__MACOSX") or filename.startswith(".") or filename.endswith("/"):
                     continue
                     
                 if filename.lower().endswith(".csv"):
-                    csv_data = z.read(filename).decode('utf-8-sig') 
+                    raw_csv = z.read(filename)
+                    # 🔥 SMART DECODING: Try UTF-8 first, fallback to Excel Windows formats
+                    try:
+                        csv_data = raw_csv.decode('utf-8-sig')
+                    except UnicodeDecodeError:
+                        try:
+                            csv_data = raw_csv.decode('cp1252') # Windows Excel Default
+                        except UnicodeDecodeError:
+                            csv_data = raw_csv.decode('latin-1') # Universal Fallback
+                            
                 elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                     img_bytes = z.read(filename)
                     mime_type, _ = mimetypes.guess_type(filename)
@@ -189,12 +197,11 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
                         mime_type = "image/jpeg"
                     b64_str = base64.b64encode(img_bytes).decode('utf-8')
                     
-                    # Store image name in pure lowercase with no spaces for foolproof matching
                     base_name = filename.replace('\\', '/').split('/')[-1].lower().strip()
                     images_data[base_name] = f"data:{mime_type};base64,{b64_str}"
 
         if not csv_data:
-            raise HTTPException(status_code=400, detail="Could not find a .csv file inside the ZIP.")
+            raise HTTPException(status_code=400, detail="Could not find a .csv file inside the ZIP. Did you save it as .xlsx?")
 
         # 2. Parse the CSV and clean headers
         reader = csv.DictReader(io.StringIO(csv_data))
