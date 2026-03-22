@@ -285,8 +285,6 @@
         }
         document.getElementById("qText").innerHTML = qContent;
 
-        renderMath();
-
         const optDiv = document.getElementById("optionsList");
         if (q.options && q.options.length > 1) {
             let optionsHTML = "";
@@ -313,6 +311,7 @@
         }
         
         renderPalette();
+        renderMath();
     }
 
     function renderPalette() {
