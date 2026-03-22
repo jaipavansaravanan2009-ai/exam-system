@@ -172,7 +172,7 @@
 
     function changeZoom(amount) {
         imgZoomLevel += amount;
-        if (imgZoomLevel < 50) imgZoomLevel = 100;   // Minimum 50%
+        if (imgZoomLevel < 50) imgZoomLevel = 50;   // Minimum 50%
         if (imgZoomLevel > 500) imgZoomLevel = 500; // Maximum 500% zoom
         updateZoomCSS();
     }
@@ -210,6 +210,31 @@
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`);
             examData = await res.json();
             
+            // 🔥 SHUFFLE LOGIC: Randomize options for the student 🔥
+            if (examData.questions) {
+                examData.questions.forEach(q => {
+                    if (q.options && q.options.length > 1) {
+                        // 1. Pair the text and images together so they don't get separated
+                        let pairs = q.options.map((text, idx) => ({
+                            text: text,
+                            img: (q.optionImages && q.optionImages.length > idx) ? q.optionImages[idx] : null
+                        }));
+                        
+                        // 2. Fisher-Yates Shuffle Algorithm
+                        for (let i = pairs.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+                        }
+                        
+                        // 3. Unpack them back into the question
+                        q.options = pairs.map(p => p.text);
+                        if (q.optionImages) {
+                            q.optionImages = pairs.map(p => p.img);
+                        }
+                    }
+                });
+            }
+
             document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
             document.getElementById("examUI").style.display = "flex";
             

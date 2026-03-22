@@ -199,7 +199,8 @@ async def bulk_upload_questions(exam_id: str, file: UploadFile = File(...), user
                     row.get("OptionC_ImageURL", "").strip() or None,
                     row.get("OptionD_ImageURL", "").strip() or None
                 ],
-                "correctAnswer": row.get("CorrectAnswer", "").strip()
+                # 🔥 AUTOMATICALLY SET OPTION A AS CORRECT 🔥
+                "correctAnswer": row.get("OptionA", "").strip()
             }
             questions.append(new_q)
             added_count += 1

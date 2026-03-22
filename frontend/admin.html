@@ -474,101 +474,88 @@
         } catch(e) { console.error(e); }
     }
 
-    // --- SUBMIT NEW QUESTION WITH IMAGES & RADIO BTNS ---
-    async function submitNewQuestion() {
-        const btn = document.getElementById("addQuestionBtn");
-        btn.innerText = "Processing Images... ⏳";
-        btn.disabled = true;
+    // --- SUBMIT NEW QUESTION WITH AUTO-OPTION-A ---
+        async function submitNewQuestion() {
+            const btn = document.getElementById("addQuestionBtn");
+            btn.innerText = "Processing Images... ⏳";
+            btn.disabled = true;
 
-        try {
-            const qText = document.getElementById("newQ").value.trim();
-            const correctRadio = document.querySelector('input[name="correctOpt"]:checked');
+            try {
+                const qText = document.getElementById("newQ").value.trim();
 
-            // 1. Compress images
-            const [qImage, o1Image, o2Image, o3Image, o4Image] = await Promise.all([
-                compressImage(document.getElementById("qImg").files[0]),
-                compressImage(document.getElementById("opt1Img").files[0]),
-                compressImage(document.getElementById("opt2Img").files[0]),
-                compressImage(document.getElementById("opt3Img").files[0]),
-                compressImage(document.getElementById("opt4Img").files[0])
-            ]);
+                // 1. Compress images
+                const [qImage, o1Image, o2Image, o3Image, o4Image] = await Promise.all([
+                    compressImage(document.getElementById("qImg").files[0]),
+                    compressImage(document.getElementById("opt1Img").files[0]),
+                    compressImage(document.getElementById("opt2Img").files[0]),
+                    compressImage(document.getElementById("opt3Img").files[0]),
+                    compressImage(document.getElementById("opt4Img").files[0])
+                ]);
 
-            // Validation: Must have Question Text OR Question Image
-            if (!qText && !qImage) {
+                // Validation: Must have Question Text OR Question Image
+                if (!qText && !qImage) {
+                    btn.innerText = "Add Question ✅";
+                    btn.disabled = false;
+                    return alert("You must provide either Question Text or a Question Image.");
+                }
+
+                // Create Option Texts (Default to "Option A/B/C/D" if left blank)
+                const optTexts = [
+                    document.getElementById("opt1").value.trim() || "Option A",
+                    document.getElementById("opt2").value.trim() || "Option B",
+                    document.getElementById("opt3").value.trim() || "Option C",
+                    document.getElementById("opt4").value.trim() || "Option D"
+                ];
+
+                // 2. Build the payload (🔥 Option 1 is ALWAYS the correct answer 🔥)
+                const payload = {
+                    question: qText,
+                    questionImage: qImage,
+                    options: optTexts,
+                    optionImages: [o1Image, o2Image, o3Image, o4Image],
+                    correctAnswer: optTexts[0], // Sets the first option as the correct one automatically
+                    subject: document.getElementById("subjectSelect").value
+                };
+
+                // 3. Send to Python Backend
+                const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json", 
+                        "Authorization": `Bearer ${token}` 
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if(res.ok) {
+                    alert("Question added! Option A is saved as the correct answer. ✅");
+                    
+                    // Clear text inputs
+                    document.getElementById("newQ").value = "";
+                    document.getElementById("opt1").value = "";
+                    document.getElementById("opt2").value = "";
+                    document.getElementById("opt3").value = "";
+                    document.getElementById("opt4").value = "";
+                    
+                    // Clear file inputs
+                    document.getElementById("qImg").value = "";
+                    document.getElementById("opt1Img").value = "";
+                    document.getElementById("opt2Img").value = "";
+                    document.getElementById("opt3Img").value = "";
+                    document.getElementById("opt4Img").value = "";
+
+                    refreshQuestionList(currentEditingExamId);
+                } else {
+                    alert("Failed to add question.");
+                }
+            } catch(e) { 
+                console.error(e); 
+                alert("Error uploading question.");
+            } finally {
                 btn.innerText = "Add Question ✅";
                 btn.disabled = false;
-                return alert("You must provide either Question Text or a Question Image.");
             }
-
-            // Validation: Must have selected a correct answer
-            if (!correctRadio) {
-                btn.innerText = "Add Question ✅";
-                btn.disabled = false;
-                return alert("Please mark one of the options as the Correct Answer!");
-            }
-
-            // Create Option Texts (Default to "Option A/B/C/D" if left blank so it has a value in the backend)
-            const optTexts = [
-                document.getElementById("opt1").value.trim() || "Option A",
-                document.getElementById("opt2").value.trim() || "Option B",
-                document.getElementById("opt3").value.trim() || "Option C",
-                document.getElementById("opt4").value.trim() || "Option D"
-            ];
-
-            const correctIndex = parseInt(correctRadio.value);
-
-            // 2. Build the payload
-            const payload = {
-                question: qText,
-                questionImage: qImage,
-                options: optTexts,
-                optionImages: [o1Image, o2Image, o3Image, o4Image],
-                correctAnswer: optTexts[correctIndex], // Set automatically by the radio button
-                subject: document.getElementById("subjectSelect").value
-            };
-
-            // 3. Send to Python Backend
-            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, {
-                method: "POST",
-                headers: { 
-                    "Content-Type": "application/json", 
-                    "Authorization": `Bearer ${token}` 
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if(res.ok) {
-                alert("Question added successfully! ✅");
-                
-                // Clear text inputs
-                document.getElementById("newQ").value = "";
-                document.getElementById("opt1").value = "";
-                document.getElementById("opt2").value = "";
-                document.getElementById("opt3").value = "";
-                document.getElementById("opt4").value = "";
-                
-                // Clear file inputs
-                document.getElementById("qImg").value = "";
-                document.getElementById("opt1Img").value = "";
-                document.getElementById("opt2Img").value = "";
-                document.getElementById("opt3Img").value = "";
-                document.getElementById("opt4Img").value = "";
-
-                // Uncheck radio buttons
-                document.querySelectorAll('input[name="correctOpt"]').forEach(r => r.checked = false);
-
-                refreshQuestionList(currentEditingExamId);
-            } else {
-                alert("Failed to add question.");
-            }
-        } catch(e) { 
-            console.error(e); 
-            alert("Error uploading question.");
-        } finally {
-            btn.innerText = "Add Question ✅";
-            btn.disabled = false;
         }
-    }
 
     // --- REFRESH QUESTION LIST ---
     async function refreshQuestionList(examId) {
