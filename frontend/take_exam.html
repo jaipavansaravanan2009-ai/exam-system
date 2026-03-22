@@ -199,21 +199,17 @@
         const canvas = document.getElementById("zoomCanvas");
         
         if (imgZoomLevel === 100) {
-            // Default fit-to-screen
             img.style.maxWidth = "90%";
             img.style.maxHeight = "85vh";
             img.style.width = "auto";
             canvas.style.alignItems = "center";
         } else {
-            // Unbound width for zooming (enables scrolling)
             img.style.maxWidth = "none";
             img.style.maxHeight = "none";
             img.style.width = imgZoomLevel + "%";
-            // If zoomed in large, we align top-left so scrolling works naturally
             canvas.style.alignItems = imgZoomLevel > 100 ? "flex-start" : "center";
         }
     }
-    // ------------------
 
     window.onload = async () => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -222,23 +218,20 @@
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`);
             examData = await res.json();
             
-            // 🔥 SHUFFLE LOGIC: Randomize options for the student 🔥
+            // 🔥 SHUFFLE LOGIC
             if (examData.questions) {
                 examData.questions.forEach(q => {
                     if (q.options && q.options.length > 1) {
-                        // 1. Pair the text and images together so they don't get separated
                         let pairs = q.options.map((text, idx) => ({
                             text: text,
                             img: (q.optionImages && q.optionImages.length > idx) ? q.optionImages[idx] : null
                         }));
                         
-                        // 2. Fisher-Yates Shuffle Algorithm
                         for (let i = pairs.length - 1; i > 0; i--) {
                             const j = Math.floor(Math.random() * (i + 1));
                             [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
                         }
                         
-                        // 3. Unpack them back into the question
                         q.options = pairs.map(p => p.text);
                         if (q.optionImages) {
                             q.optionImages = pairs.map(p => p.img);
@@ -286,7 +279,6 @@
         const q = examData.questions[index];
         document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
         
-        // 1. Render Question Image with openZoom
         let qContent = q.question;
         if (q.questionImage) {
             qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Question Graphic">`;
@@ -295,7 +287,6 @@
 
         renderMath();
 
-        // 2. Render Options with openZoom
         const optDiv = document.getElementById("optionsList");
         if (q.options && q.options.length > 1) {
             let optionsHTML = "";
@@ -343,7 +334,7 @@
         if (currentIdx === -1) return;
         
         const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
-        if (sel && sel.value) {
+        if (sel && sel.value !== "") {
             studentAnswers[currentIdx] = sel.value;
             statusMap[currentIdx] = 'answered';
         } else {
@@ -356,7 +347,7 @@
         if (currentIdx === -1) return;
         
         const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
-        if (sel && sel.value) {
+        if (sel && sel.value !== "") {
             studentAnswers[currentIdx] = sel.value;
             statusMap[currentIdx] = 'review-answered';
         } else {
@@ -409,37 +400,32 @@
         }, 1000);
     }
 
-    // --- UPDATED SUBMIT FINAL FUNCTION: RICH BREAKDOWN ---
+    // --- 🔥 BULLETPROOF SUBMIT FINAL FUNCTION 🔥 ---
     async function submitFinal() {
         if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
         
-        // Final "visited" status for current question if it was just left empty
-        if (currentIdx !== -1 && !studentAnswers[currentIdx]) {
+        // Final "visited" status for current question if left empty
+        if (currentIdx !== -1 && studentAnswers[currentIdx] === undefined) {
             statusMap[currentIdx] = 'visited';
         }
         
-        // Logic to disable exam UI to prevent further interaction
+        // 1. Lock the UI
         document.getElementById("examUI").style.pointerEvents = "none";
-        document.getElementById("qText").innerText = "Submitting exam, please wait... ⏳";
+        document.getElementById("qText").innerHTML = "<h3 style='text-align:center; color: var(--nta-blue); margin-top: 50px;'>Submitting your exam, please wait... ⏳</h3>";
         document.getElementById("optionsList").innerHTML = "";
         
-        // CALCULATE RICH BREAKDOWN DATA
         const subjectWiseData = {};
         let totalScore = 0;
         
-        // Count questions per subject
+        // 2. Safely Calculate Data
         if (examData && examData.questions) {
             examData.questions.forEach((q, i) => {
-                const subject = q.subject || "Unknown";
+                // Safety: Default to Physics if DB is missing the subject
+                const subject = q.subject || "Physics"; 
                 
-                // Initialize subject data if not exists
                 if (!subjectWiseData[subject]) {
                     subjectWiseData[subject] = {
-                        score: 0,
-                        correct: 0,
-                        incorrect: 0,
-                        notAttempted: 0,
-                        markedForReviewCount: 0 // Optional flag
+                        score: 0, correct: 0, incorrect: 0, notAttempted: 0, markedForReviewCount: 0
                     };
                 }
                 
@@ -447,13 +433,12 @@
                 const correctAns = q.correctAnswer;
                 const status = statusMap[i] || 'unvisited'; 
 
-                // Track marked for review status
                 if(status === 'review' || status === 'review-answered'){
                      subjectWiseData[subject].markedForReviewCount++;
                 }
                 
-                if (studentAns) {
-                    // Attempted
+                // Safety: Explicit undefined/null check to handle empty string options properly
+                if (studentAns !== undefined && studentAns !== null) {
                     if (studentAns === correctAns) {
                         subjectWiseData[subject].correct++;
                         subjectWiseData[subject].score += 4;
@@ -462,30 +447,27 @@
                         subjectWiseData[subject].score -= 1;
                     }
                 } else {
-                    // Not Attempted
                     subjectWiseData[subject].notAttempted++;
                 }
-                
             });
             
-            // Calculate total score from breakdown
             for (const subject in subjectWiseData) {
                 totalScore += subjectWiseData[subject].score;
             }
         }
         
-        // Build enriched payload
+        // 3. Build Safe Payload
         const payload = { 
             studentName: localStorage.getItem("userName") || "Guest Student", 
-            examTitle: examData.title, 
-            examId: new URLSearchParams(window.location.search).get('id'), // Explicitly get examId
+            examTitle: examData.title || "Untitled Exam", // Safety: Prevent Python 400 error
+            examId: new URLSearchParams(window.location.search).get('id'), 
             subjectWiseBreakdown: subjectWiseData 
         };
         
         try {
             const res = await fetch(`${BACKEND_URL}/api/public/submit`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, // Uses token grabbed at the top!
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(payload)
             });
             
@@ -493,18 +475,30 @@
                  alert("Exam Submitted Successfully! Total Score: " + totalScore);
                  window.location.href = "student_portal.html";
             } else {
-                 throw new Error("API call failed");
+                 // Try to pull exact error from Python
+                 let errorMsg = "API call failed";
+                 try {
+                     const errData = await res.json();
+                     errorMsg = errData.detail || errData.message || errorMsg;
+                 } catch(parseErr) {}
+                 throw new Error(errorMsg);
             }
         } catch (e) {
             console.error(e);
-            alert("Error submitting exam. Please check your internet connection.");
+            alert("Submission Error: " + e.message);
+            
+            // 🔥 CRITICAL RECOVERY: Un-brick the UI so the student can try again
+            document.getElementById("examUI").style.pointerEvents = "auto";
+            if(currentIdx !== -1) {
+                showQuestion(currentIdx); // Restores question text and options
+            } else {
+                document.getElementById("qText").innerHTML = "<h3 style='color: var(--red);'>Submission failed. Please try again.</h3>";
+            }
         }
     }
 
-    // --- 🧮 KaTeX Math Rendering Engine ---
     function renderMath() {
         if (window.renderMathInElement) {
-            // We use document.body so it scans the whole page (Question, Options, and Sidebar)
             renderMathInElement(document.body, {
                 delimiters: [
                     {left: '$$', right: '$$', display: true},
