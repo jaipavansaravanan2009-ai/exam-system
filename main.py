@@ -162,7 +162,7 @@ async def create_exam(request: Request, user=Depends(authorize(["admin"]))):
     update_time, doc_ref = db.collection("exams").add(body)
     return {"message": "Exam created! ✅", "id": doc_ref.id}
 
-# --- 📦 BULK UPLOAD VIA ZIP (CSV + IMAGES) ---
+# --- 📦 BULLETPROOF BULK UPLOAD VIA ZIP ---
 @app.post("/api/exams/{exam_id}/bulk-upload-zip")
 async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin"]))):
     if not file.filename.lower().endswith('.zip'):
@@ -170,11 +170,10 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
 
     try:
         contents = await file.read()
-        
         csv_data = None
-        images_data = {} # Dictionary to hold filename -> Base64 string
+        images_data = {}
         
-        # 1. Unpack the ZIP file in memory
+        # 1. Unpack the ZIP file in memory (Case-insensitive matching)
         with zipfile.ZipFile(io.BytesIO(contents)) as z:
             for filename in z.namelist():
                 # Ignore macOS hidden files and folders
@@ -182,23 +181,24 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
                     continue
                     
                 if filename.lower().endswith(".csv"):
-                    csv_data = z.read(filename).decode('utf-8-sig') # sig handles Excel formatting
-                elif filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    # Read image and convert directly to Base64
+                    csv_data = z.read(filename).decode('utf-8-sig') 
+                elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                     img_bytes = z.read(filename)
                     mime_type, _ = mimetypes.guess_type(filename)
                     if not mime_type:
                         mime_type = "image/jpeg"
                     b64_str = base64.b64encode(img_bytes).decode('utf-8')
-                    # Save it using just the base filename (ignoring folder paths)
-                    base_name = filename.split('/')[-1]
+                    
+                    # Store image name in pure lowercase with no spaces for foolproof matching
+                    base_name = filename.replace('\\', '/').split('/')[-1].lower().strip()
                     images_data[base_name] = f"data:{mime_type};base64,{b64_str}"
 
         if not csv_data:
             raise HTTPException(status_code=400, detail="Could not find a .csv file inside the ZIP.")
 
-        # 2. Parse the CSV
+        # 2. Parse the CSV and clean headers
         reader = csv.DictReader(io.StringIO(csv_data))
+        reader.fieldnames = [field.strip() for field in reader.fieldnames] # Remove accidental spaces in headers
         
         exam_ref = db.collection("exams").document(exam_id)
         doc = exam_ref.get()
@@ -208,35 +208,45 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         data = doc.to_dict()
         questions = data.get("questions", [])
         
-        # Helper to match CSV filename to the actual unzipped image
-        def get_img(col_name, row_data):
-            img_name = row_data.get(col_name, "").strip()
+        # Helper 1: Get text value safely checking multiple possible header names
+        def get_val(row, possible_keys):
+            for k in possible_keys:
+                if k in row: return row[k].strip()
+            return ""
+
+        # Helper 2: Get Image safely using fuzzy matching
+        def get_img(row, possible_keys):
+            img_name = get_val(row, possible_keys)
             if not img_name: return None
-            # If they put a full web link, just use it
-            if img_name.startswith("http"): return img_name
-            # Find the image in our extracted dictionary
-            return images_data.get(img_name, None)
+            if img_name.startswith("http"): return img_name # If it's a web link, keep it
+            
+            # Fuzzy match: lowercase and strip spaces
+            clean_name = img_name.lower().strip()
+            return images_data.get(clean_name, None)
 
         # 3. Build Questions
         added_count = 0
         for row in reader:
+            # Skip completely empty rows
+            if not any(row.values()): continue
+
             new_q = {
-                "subject": row.get("Subject", "Physics").strip(),
-                "question": row.get("QuestionText", "").strip(),
-                "questionImage": get_img("QuestionImage", row),
+                "subject": get_val(row, ["Subject", "subject"]) or "Physics",
+                "question": get_val(row, ["QuestionText", "Question", "question"]),
+                "questionImage": get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"]),
                 "options": [
-                    row.get("OptionA", "").strip() or "Option A",
-                    row.get("OptionB", "").strip() or "Option B",
-                    row.get("OptionC", "").strip() or "Option C",
-                    row.get("OptionD", "").strip() or "Option D"
+                    get_val(row, ["OptionA", "Option A"]) or "Option A",
+                    get_val(row, ["OptionB", "Option B"]) or "Option B",
+                    get_val(row, ["OptionC", "Option C"]) or "Option C",
+                    get_val(row, ["OptionD", "Option D"]) or "Option D"
                 ],
                 "optionImages": [
-                    get_img("OptionA_Image", row),
-                    get_img("OptionB_Image", row),
-                    get_img("OptionC_Image", row),
-                    get_img("OptionD_Image", row)
+                    get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"]),
+                    get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"]),
+                    get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"]),
+                    get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
                 ],
-                "correctAnswer": row.get("OptionA", "").strip() or "Option A" # Always Option A!
+                "correctAnswer": get_val(row, ["OptionA", "Option A"]) or "Option A"
             }
             questions.append(new_q)
             added_count += 1
@@ -246,9 +256,9 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
 
     except Exception as e:
         print(f"Bulk upload ZIP error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to process ZIP. Ensure it contains a CSV and images.")
     
-    
+
 # --- 🔥 NEW: DELETE ENTIRE EXAM ROUTE 🔥 ---
 @app.delete("/api/exams/{exam_id}")
 async def delete_exam(exam_id: str, user=Depends(authorize(["admin"]))):
