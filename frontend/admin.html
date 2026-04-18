@@ -171,6 +171,25 @@
     <button class="nav-btn logout-btn" onclick="logout()">Logout</button>
 </div>
 
+<div style="margin-bottom: 15px;">
+    <label><b>Exam Title:</b></label><br>
+    <input type="text" id="newExamTitle" placeholder="e.g., Grand Mock Test 1" style="width: 100%; padding: 8px;">
+</div>
+
+<div style="margin-bottom: 15px;">
+    <label><b>Exam Type:</b></label><br>
+    <select id="newExamType" style="width: 100%; padding: 8px;">
+        <option value="Practice">Practice (Topic-wise)</option>
+        <option value="Mains">JEE Mains</option>
+        <option value="Advance">JEE Advance</option>
+    </select>
+</div>
+
+<div style="margin-bottom: 15px;">
+    <label><b>Timer Duration (in minutes):</b></label><br>
+    <input type="number" id="newExamTimer" placeholder="e.g., 180" value="180" style="width: 100%; padding: 8px;">
+</div>
+
 <div class="main-content">
     <div class="header-strip">
         <h1 id="pageTitle">Manage Exams</h1>
@@ -439,25 +458,42 @@
         window.location.href = "login.html";
     }
 
-    async function createExam() {
-        const title = document.getElementById("title").value.trim();
-        if (!title) return alert("Please enter an exam title.");
+    async function createNewExam() {
+        const title = document.getElementById("newExamTitle").value;
+        const type = document.getElementById("newExamType").value;
+        const timer = parseInt(document.getElementById("newExamTimer").value) || 180; // Defaults to 3 hours
+
+        if (!title) {
+            alert("Please enter an Exam Title!");
+            return;
+        }
+
+        const payload = {
+            title: title,
+            examType: type,
+            timerMinutes: timer,
+            questions: [] // Starts empty until you upload the ZIP!
+        };
 
         try {
             const res = await fetch(`${BACKEND_URL}/api/exams`, {
                 method: "POST",
                 headers: { 
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}` 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${localStorage.getItem("adminToken")}` 
                 },
-                body: JSON.stringify({ title: title, questions: [] })
+                body: JSON.stringify(payload)
             });
+
             if (res.ok) {
-                alert("Exam created successfully! ✅");
-                document.getElementById("title").value = "";
-                loadExams();
-            } else { alert("Failed to create exam."); }
-        } catch (error) { console.error("Error creating exam:", error); }
+                alert("Exam created! Now you can upload the ZIP file.");
+                // Refresh your exam list here...
+            } else {
+            alert("Failed to create exam.");
+            }
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     async function createUser() {

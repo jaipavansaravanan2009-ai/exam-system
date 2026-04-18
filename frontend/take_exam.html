@@ -240,6 +240,13 @@
                 });
             }
 
+            // 🔥 DYNAMIC TIMER & TITLE UPDATE 🔥
+            document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
+            
+            // Read the timer from the database, or default to 180 mins if it's an old exam
+            const allocatedMinutes = examData.timerMinutes || 180; 
+            timeLeft = allocatedMinutes * 60; // Convert to seconds for the countdown
+
             document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
             document.getElementById("examUI").style.display = "flex";
             
