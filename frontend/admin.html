@@ -89,7 +89,7 @@
         h3 { color: var(--primary); margin-bottom: 15px; font-size: 18px; display: flex; align-items: center; gap: 8px;}
 
         /* Inputs & Buttons */
-        input[type="text"], input[type="password"], input[type="email"], select {
+        input[type="text"], input[type="password"], input[type="email"], select, input[type="number"] {
             padding: 12px 15px;
             border: 1px solid #ddd;
             border-radius: 6px;
@@ -97,6 +97,7 @@
             outline: none;
             width: 100%;
             font-size: 15px;
+            box-sizing: border-box;
         }
 
         input[type="file"] { font-size: 12px; color: #666; width: 100%; }
@@ -171,25 +172,6 @@
     <button class="nav-btn logout-btn" onclick="logout()">Logout</button>
 </div>
 
-<div style="margin-bottom: 15px;">
-    <label><b>Exam Title:</b></label><br>
-    <input type="text" id="newExamTitle" placeholder="e.g., Grand Mock Test 1" style="width: 100%; padding: 8px;">
-</div>
-
-<div style="margin-bottom: 15px;">
-    <label><b>Exam Type:</b></label><br>
-    <select id="newExamType" style="width: 100%; padding: 8px;">
-        <option value="Practice">Practice (Topic-wise)</option>
-        <option value="Mains">JEE Mains</option>
-        <option value="Advance">JEE Advance</option>
-    </select>
-</div>
-
-<div style="margin-bottom: 15px;">
-    <label><b>Timer Duration (in minutes):</b></label><br>
-    <input type="number" id="newExamTimer" placeholder="e.g., 180" value="180" style="width: 100%; padding: 8px;">
-</div>
-
 <div class="main-content">
     <div class="header-strip">
         <h1 id="pageTitle">Manage Exams</h1>
@@ -197,12 +179,29 @@
     </div>
 
     <div id="view-exams" class="view-section active">
-        <div class="card">
-            <h3>📝 Create New Exam</h3>
-            <div style="display: flex; gap: 15px;">
-                <input type="text" id="title" placeholder="Exam Title (e.g. JEE Mock Sept - Full Syllabus)" style="margin-bottom: 0;">
-                <button class="btn btn-success" onclick="createExam()" style="min-width: 120px;">Create Exam</button>
+        <div class="card" style="padding-bottom: 30px;">
+            <h3 style="margin-top: 0; color: #1e3d59;">📝 Create New Exam</h3>
+            
+            <div style="margin-bottom: 5px;">
+                <label style="font-weight: bold; font-size: 14px; color: #555;">Exam Title:</label><br>
+                <input type="text" id="newExamTitle" placeholder="e.g., Grand Mock Test 1" style="margin-top: 5px;">
             </div>
+
+            <div style="margin-bottom: 5px;">
+                <label style="font-weight: bold; font-size: 14px; color: #555;">Exam Type:</label><br>
+                <select id="newExamType" style="margin-top: 5px;">
+                    <option value="Practice">Practice (Topic-wise)</option>
+                    <option value="Mains">JEE Mains</option>
+                    <option value="Advance">JEE Advance</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: bold; font-size: 14px; color: #555;">Timer Duration (in minutes):</label><br>
+                <input type="number" id="newExamTimer" placeholder="e.g., 180" value="180" style="margin-top: 5px;">
+            </div>
+
+            <button onclick="createNewExam()" class="btn btn-success" style="width: 100%; font-size: 16px;">Create Exam</button>
         </div>
 
         <div class="card">
@@ -487,9 +486,11 @@
 
             if (res.ok) {
                 alert("Exam created! Now you can upload the ZIP file.");
-                // Refresh your exam list here...
+                // Clean the input box so you can make another if needed
+                document.getElementById("newExamTitle").value = "";
+                loadExams(); // Refresh the active exams list
             } else {
-            alert("Failed to create exam.");
+                alert("Failed to create exam.");
             }
         } catch (err) {
             console.error(err);
@@ -700,11 +701,15 @@
             list.innerHTML = "";
             
             exams.forEach(exam => {
+                // Determine display formatting based on Exam Type & Timer
+                const examTypeStr = exam.examType ? `<span style="background:var(--secondary); color:white; padding:2px 8px; border-radius:12px; font-size:11px; margin-left:8px;">${exam.examType}</span>` : '';
+                const examTimerStr = exam.timerMinutes ? ` | ⏱️ ${exam.timerMinutes} mins` : ' | ⏱️ 180 mins';
+
                 list.innerHTML += `
                     <div class="exam-item">
                         <div>
-                            <strong>${exam.title}</strong><br>
-                            <small>${exam.questions ? exam.questions.length : 0} Questions</small>
+                            <strong>${exam.title}</strong> ${examTypeStr}<br>
+                            <small>${exam.questions ? exam.questions.length : 0} Questions ${examTimerStr}</small>
                         </div>
                         <div>
                             <button class="btn btn-outline" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Manage Questions</button>
