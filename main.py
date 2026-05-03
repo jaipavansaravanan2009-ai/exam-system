@@ -195,7 +195,23 @@ async def add_question(exam_id: str, request: Request, user=Depends(authorize(["
     exam_ref.update({"questions": questions})
     return {"message": "Question added successfully! ✅"}
 
-# 🔥 NEW: Route to completely update a specific question in an exam array
+# 🔥 NEW: Route to bulk import questions from Question Bank to an Exam
+@app.post("/api/exams/{exam_id}/import-questions")
+async def import_questions(exam_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
+    questions_to_add = await request.json()
+    exam_ref = db.collection("exams").document(exam_id)
+    doc = exam_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    data = doc.to_dict()
+    questions = data.get("questions", [])
+    questions.extend(questions_to_add) # Appends all imported questions
+    
+    exam_ref.update({"questions": questions})
+    return {"message": f"{len(questions_to_add)} questions imported successfully! ✅"}
+
 @app.put("/api/exams/{exam_id}/questions/{index}")
 async def update_question(exam_id: str, index: int, request: Request, user=Depends(authorize(["admin", "setter"]))):
     updated_question = await request.json()
@@ -209,7 +225,7 @@ async def update_question(exam_id: str, index: int, request: Request, user=Depen
     questions = data.get("questions", [])
     
     if 0 <= index < len(questions):
-        questions[index] = updated_question # Replace old question with new map
+        questions[index] = updated_question 
         exam_ref.update({"questions": questions})
         return {"message": "Question updated successfully! ✅"}
         
@@ -380,12 +396,11 @@ async def add_qb_question(request: Request, user=Depends(authorize(["admin", "se
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add question: {str(e)}")
 
-# 🔥 NEW: Route to update an existing question document in the bank
 @app.put("/api/question_bank/{q_id}")
 async def update_qb_question(q_id: str, request: Request, user=Depends(authorize(["admin"]))):
     try:
         body = await request.json()
-        body["updatedAt"] = datetime.now(timezone.utc) # Track when it was edited
+        body["updatedAt"] = datetime.now(timezone.utc) 
         db.collection("question_bank").document(q_id).update(body)
         return {"message": "Question updated in bank! ✅"}
     except Exception as e:
@@ -467,7 +482,7 @@ async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authoriz
             return images_data.get(img_name.lower().strip(), None)
 
         added_count = 0
-        batch = db.batch() # Use firestore batch writing for bulk inserts
+        batch = db.batch() 
         qb_ref = db.collection("question_bank")
 
         for row in reader:

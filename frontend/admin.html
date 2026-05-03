@@ -122,7 +122,7 @@
         .btn-success:hover { background: #1e8449; }
         .btn-outline { border: 1px solid var(--primary); color: var(--primary); background: transparent; }
         .btn-outline:hover { background: var(--primary); color: white; }
-        .btn-small { padding: 4px 8px; font-size: 11px; margin-left: 5px;} /* 🔥 NEW: Small Button Style */
+        .btn-small { padding: 4px 8px; font-size: 11px; margin-left: 5px;} 
 
         .exam-item, .qb-item {
             display: flex;
@@ -156,7 +156,6 @@
         
         .qb-badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: white; margin-right: 5px; }
         
-        /* 🔥 NEW: Styles for the view-details container */
         .q-details-box { display:none; margin-top:10px; font-size: 13px; background:#f4f7f6; padding: 15px; border-radius:6px; border: 1px solid #ddd; }
         .q-details-box img { max-width: 150px; max-height: 100px; border-radius: 4px; margin: 5px 0; border: 1px solid #ccc;}
     </style>
@@ -275,6 +274,42 @@
     <div class="modal-content">
         <button class="btn" style="float:right; background:#333; color:white;" onclick="closeEditor()">Close</button>
         <h2 id="modalExamTitle">Manage Questions</h2>
+        
+        <!-- 🔥 NEW: Question Bank Import Box -->
+        <hr style="margin: 20px 0;">
+        <h4 style="color: var(--primary); margin-bottom: 10px;">🗄️ Import from Question Bank</h4>
+        <div style="background: #f4f7f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <select id="importFilterType">
+                    <option value="">All Exam Types</option>
+                    <option value="Practice type">Practice type</option>
+                    <option value="CBSE type">CBSE type</option>
+                    <option value="JEE mains type">JEE mains type</option>
+                    <option value="JEE advance type">JEE advance type</option>
+                </select>
+                <select id="importFilterSubject">
+                    <option value="">All Subjects</option>
+                    <option value="Physics">Physics</option>
+                    <option value="Chemistry">Chemistry</option>
+                    <option value="Maths">Maths</option>
+                </select>
+                <select id="importFilterSection">
+                    <option value="">All Sections</option>
+                    <option value="Single correct answer">Single correct answer</option>
+                    <option value="Multiple correct answer">Multiple correct answer</option>
+                    <option value="Match the following">Match the following</option>
+                    <option value="Integer based question">Integer based question</option>
+                </select>
+                <input type="text" id="importFilterTopic" placeholder="Search Topics..." style="margin-bottom: 0;">
+            </div>
+            <button class="btn btn-outline" onclick="searchQBForExam()" style="width: 100%; margin-bottom: 10px;">🔍 Search Question Bank</button>
+            
+            <div id="importQBResults" style="max-height: 250px; overflow-y: auto; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; display: none;">
+                <!-- Filtered results populate here -->
+            </div>
+            <button class="btn btn-success" id="btnImportSelected" onclick="importSelectedQBQuestions()" style="width: 100%; margin-top: 10px; display: none;">📥 Import Selected Questions</button>
+        </div>
+
         <hr style="margin: 20px 0;">
         
         <div style="background: #fdf2e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #e67e22;">
@@ -286,7 +321,6 @@
         </div>
             
         <hr style="margin: 20px 0;">
-        <!-- 🔥 NEW: Dynamic Title for Form -->
         <h4 id="examFormTitle">Add Individual Question to Paper</h4><br>
         
         <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted)">
@@ -344,11 +378,12 @@
             <option value="Chemistry">Chemistry</option>
             <option value="Maths">Maths</option>
         </select>
-        <!-- 🔥 NEW: Extra Button to Cancel Edit Mode -->
+
         <button class="btn" id="cancelExamEditBtn" onclick="resetExamForm()" style="display:none; width: 100%; margin-top: 10px; background: #95a5a6; color: white;">Cancel Edit</button>
         <button class="btn btn-success" id="addQuestionBtn" onclick="submitNewQuestion()" style="width: 100%; margin-top: 10px;">Add Question ✅</button>
         
-        <h3 style="margin-top: 30px;">Current Question Bank</h3>
+        <!-- 🔥 NEW: Changed title to be accurate -->
+        <h3 style="margin-top: 30px;">Questions in this Exam</h3>
         <div id="existingQuestionsList"></div>
     </div>
 </div>
@@ -357,7 +392,7 @@
 <div id="qbEditorModal">
     <div class="modal-content">
         <button class="btn" style="float:right; background:#333; color:white;" onclick="closeQBEditor()">Close</button>
-        <h2 id="qbFormTitle">Add to Question Bank</h2> <!-- 🔥 NEW: Dynamic title -->
+        <h2 id="qbFormTitle">Add to Question Bank</h2> 
         <hr style="margin: 20px 0;">
         
         <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #1abc9c;">
@@ -468,7 +503,6 @@
             <button class="clear-img-btn" onclick="clearPasteZone('qbSolImg', event)">✖</button>
         </div>
 
-        <!-- 🔥 NEW: Cancel Edit button -->
         <button class="btn" id="cancelQBEditBtn" onclick="resetQBForm()" style="display:none; width: 100%; margin-top: 10px; background: #95a5a6; color: white;">Cancel Edit</button>
         <button class="btn btn-success" id="addQBBtn" onclick="submitNewQBQuestion()" style="width: 100%; margin-top: 10px;">Add to Question Bank ✅</button>
     </div>
@@ -490,13 +524,15 @@
     const adminName = localStorage.getItem("userName");
     if(adminName) { document.getElementById("adminName").innerText = "Welcome, " + adminName; }
 
-    // 🔥 NEW: State variables to track if we are Editing or Creating
     let currentEditingExamId = null;
     let editingQuestionIndex = null;
     let currentExamQuestions = [];
     
     let editingQBId = null;
     let currentQBQuestions = [];
+    
+    // 🔥 NEW: Cache for the Import search feature
+    let qbCacheForImport = [];
 
     // --- TAB SWITCHER LOGIC ---
     function switchTab(tabId, btnElement) {
@@ -514,7 +550,6 @@
         qbQImg: null, qbOpt1Img: null, qbOpt2Img: null, qbOpt3Img: null, qbOpt4Img: null, qbSolImg: null
     };
 
-    // 🔥 NEW: Store originally loaded images from DB during Edit mode
     let loadedExamImages = { qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null };
     let loadedQBImages = { qbQImg: null, qbOpt1Img: null, qbOpt2Img: null, qbOpt3Img: null, qbOpt4Img: null, qbSolImg: null };
 
@@ -528,7 +563,7 @@
         for (let item of items) {
             if (item.type.indexOf("image") === 0) {
                 const file = item.getAsFile();
-                pastedImages[zoneId] = file; // Register new file
+                pastedImages[zoneId] = file; 
 
                 const reader = new FileReader();
                 reader.onload = function(event) {
@@ -545,9 +580,8 @@
 
     function clearPasteZone(zoneId, event) {
         if(event) event.stopPropagation();
-        pastedImages[zoneId] = null; // Clear pasted memory
+        pastedImages[zoneId] = null; 
         
-        // 🔥 NEW: Also clear DB loaded memory if user explicitly deletes it
         if(loadedExamImages.hasOwnProperty(zoneId)) loadedExamImages[zoneId] = null;
         if(loadedQBImages.hasOwnProperty(zoneId)) loadedQBImages[zoneId] = null;
 
@@ -557,7 +591,6 @@
         document.querySelector(`#zone-${zoneId} .paste-text`).style.display = "inline";
     }
 
-    // Helper: programmatically inject an existing DB image into the paste zone
     function preloadImageZone(zoneId, imgBase64, memoryStore) {
         if(imgBase64) {
             document.getElementById(`preview-${zoneId}`).src = imgBase64;
@@ -674,7 +707,6 @@
         loadQuestionBank();
     }
 
-    // 🔥 NEW: Reset Question Bank Form
     function resetQBForm() {
         editingQBId = null;
         document.getElementById("qbFormTitle").innerText = "Add to Question Bank";
@@ -697,7 +729,7 @@
         try {
             const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
             const qbList = await res.json();
-            currentQBQuestions = qbList; // Track for editing
+            currentQBQuestions = qbList; 
             const listDiv = document.getElementById("qbList");
             listDiv.innerHTML = "";
             
@@ -738,13 +770,11 @@
         } catch(e) { console.error("Could not load Question Bank:", e); }
     }
 
-    // 🔥 NEW: Helper to toggle the view details box
     function toggleView(divId) {
         const el = document.getElementById(divId);
         el.style.display = el.style.display === 'none' ? 'block' : 'none';
     }
 
-    // 🔥 NEW: Load QB Question into Editor Modal
     function loadEditQBQuestion(id) {
         if(role.toLowerCase() !== "admin") return alert("Only Admins can edit question bank.");
         editingQBId = id;
@@ -760,7 +790,7 @@
         document.getElementById("qbSection").value = q.section || "Single correct answer";
         document.getElementById("qbTopics").value = (q.topics || []).join(', ');
         
-        handleSectionChange(); // Render correct input type
+        handleSectionChange(); 
 
         document.getElementById("qbQText").value = q.question || "";
         document.getElementById("qbHint").value = q.hint || "";
@@ -780,7 +810,6 @@
             });
         }
 
-        // Preload Images
         preloadImageZone('qbQImg', q.questionImage, loadedQBImages);
         preloadImageZone('qbOpt1Img', q.optionImages ? q.optionImages[0] : null, loadedQBImages);
         preloadImageZone('qbOpt2Img', q.optionImages ? q.optionImages[1] : null, loadedQBImages);
@@ -808,7 +837,6 @@
             const section = document.getElementById("qbSection").value;
             const qText = document.getElementById("qbQText").value.trim();
 
-            // 🔥 NEW: Check pasted images FIRST, fallback to DB loaded memory if unchanged
             const finalQImage = pastedImages.qbQImg ? await compressImage(pastedImages.qbQImg) : loadedQBImages.qbQImg;
             const finalO1Img = pastedImages.qbOpt1Img ? await compressImage(pastedImages.qbOpt1Img) : loadedQBImages.qbOpt1Img;
             const finalO2Img = pastedImages.qbOpt2Img ? await compressImage(pastedImages.qbOpt2Img) : loadedQBImages.qbOpt2Img;
@@ -846,7 +874,6 @@
             let endpoint = `${BACKEND_URL}/api/question_bank`;
             let method = "POST";
 
-            // 🔥 NEW: If editing, switch to PUT route
             if(editingQBId !== null) {
                 endpoint = `${BACKEND_URL}/api/question_bank/${editingQBId}`;
                 method = "PUT";
@@ -865,7 +892,7 @@
         } finally { btn.innerText = "Add to Question Bank ✅"; btn.disabled = false; }
     }
 
-    async function uploadQBZIP() { /* Intentionally identical to previous logic */
+    async function uploadQBZIP() { 
         const fileInput = document.getElementById('qbZipFile');
         const file = fileInput.files[0];
         const btn = document.getElementById('qbZipUploadBtn');
@@ -885,9 +912,120 @@
         finally { btn.innerText = "Upload ZIP"; btn.disabled = false; }
     }
 
-    // --- INDIVIDUAL EXAM EDITOR LOGIC ---
+    // --- 🔥 NEW: IMPORT FROM QB TO EXAM LOGIC ---
+    async function searchQBForExam() {
+        const btn = document.querySelector('button[onclick="searchQBForExam()"]');
+        btn.innerText = "Searching... ⏳";
+        
+        try {
+            if(qbCacheForImport.length === 0) {
+                const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
+                qbCacheForImport = await res.json();
+            }
+            
+            const fType = document.getElementById("importFilterType").value;
+            const fSub = document.getElementById("importFilterSubject").value;
+            const fSec = document.getElementById("importFilterSection").value;
+            const fTopic = document.getElementById("importFilterTopic").value.toLowerCase();
+            
+            const filtered = qbCacheForImport.filter(q => {
+                const matchType = !fType || q.exam_type === fType;
+                const matchSub = !fSub || q.subject === fSub;
+                const matchSec = !fSec || q.section === fSec;
+                const matchTopic = !fTopic || (q.topics && q.topics.some(t => t.toLowerCase().includes(fTopic)));
+                return matchType && matchSub && matchSec && matchTopic;
+            });
+            
+            const resDiv = document.getElementById("importQBResults");
+            const importBtn = document.getElementById("btnImportSelected");
+            
+            resDiv.style.display = "block";
+            resDiv.innerHTML = "";
+            
+            if(filtered.length === 0) {
+                resDiv.innerHTML = "<div style='color:#777; text-align:center;'>No questions match your filters.</div>";
+                importBtn.style.display = "none";
+            } else {
+                filtered.forEach(q => {
+                    const qText = q.question ? q.question.substring(0, 80) + '...' : '<i>[Image Only]</i>';
+                    resDiv.innerHTML += `
+                        <div style="display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #eee;">
+                            <input type="checkbox" class="qb-import-cb" value="${q.id}" style="margin-right: 10px; width: auto;">
+                            <div style="flex: 1;">
+                                <span class="qb-badge" style="background:var(--success); font-size:10px;">${q.subject}</span>
+                                <span class="qb-badge" style="background:#8e44ad; font-size:10px;">${q.section}</span>
+                                <span style="font-size: 13px; margin-left: 5px;">${qText}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                importBtn.style.display = "block";
+            }
+        } catch(e) {
+            console.error(e);
+            alert("Error loading Question Bank.");
+        } finally {
+            btn.innerText = "🔍 Search Question Bank";
+        }
+    }
 
-    // 🔥 NEW: Reset Exam Form to empty add state
+    async function importSelectedQBQuestions() {
+        const checkboxes = document.querySelectorAll('.qb-import-cb:checked');
+        if(checkboxes.length === 0) return alert("Select at least one question to import.");
+        
+        const btn = document.getElementById("btnImportSelected");
+        btn.innerText = "Importing... ⏳";
+        btn.disabled = true;
+        
+        try {
+            const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+            const questionsToAdd = [];
+            
+            selectedIds.forEach(id => {
+                const q = qbCacheForImport.find(x => x.id === id);
+                if(q) {
+                    const examQ = {
+                        subject: q.subject || "Physics",
+                        question: q.question || "",
+                        questionImage: q.questionImage || null,
+                        options: q.options || [],
+                        optionImages: q.optionImages || [],
+                        correctAnswer: (q.correctAnswers && q.correctAnswers.length > 0) ? q.correctAnswers[0] : "", 
+                        correctAnswers: q.correctAnswers || [], 
+                        section: q.section || "Single correct answer",
+                        hint: q.hint || "",
+                        solution: q.solution || "",
+                        solutionImage: q.solutionImage || null,
+                        topics: q.topics || []
+                    };
+                    questionsToAdd.push(examQ);
+                }
+            });
+            
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/import-questions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify(questionsToAdd)
+            });
+            
+            if(res.ok) {
+                alert(`${questionsToAdd.length} questions imported successfully! ✅`);
+                document.getElementById("importQBResults").style.display = "none";
+                btn.style.display = "none";
+                refreshQuestionList(currentEditingExamId);
+            } else {
+                alert("Failed to import questions.");
+            }
+        } catch(e) {
+            console.error(e);
+            alert("Connection error during import.");
+        } finally {
+            btn.innerText = "📥 Import Selected Questions";
+            btn.disabled = false;
+        }
+    }
+
+    // --- INDIVIDUAL EXAM EDITOR LOGIC ---
     function resetExamForm() {
         editingQuestionIndex = null;
         document.getElementById("examFormTitle").innerText = "Add Individual Question to Paper";
@@ -902,7 +1040,6 @@
         clearPasteZone('opt3Img'); clearPasteZone('opt4Img');
     }
 
-    // 🔥 NEW: Load specific Exam Question to Edit
     function loadEditQuestion(index) {
         editingQuestionIndex = index;
         const q = currentExamQuestions[index];
@@ -919,14 +1056,12 @@
         document.getElementById("opt4").value = q.options[3] || "";
         document.getElementById("subjectSelect").value = q.subject || "Physics";
 
-        // Preload existing images
         preloadImageZone('qImg', q.questionImage, loadedExamImages);
         preloadImageZone('opt1Img', q.optionImages ? q.optionImages[0] : null, loadedExamImages);
         preloadImageZone('opt2Img', q.optionImages ? q.optionImages[1] : null, loadedExamImages);
         preloadImageZone('opt3Img', q.optionImages ? q.optionImages[2] : null, loadedExamImages);
         preloadImageZone('opt4Img', q.optionImages ? q.optionImages[3] : null, loadedExamImages);
 
-        // Scroll to form
         document.getElementById("newQ").scrollIntoView({behavior: "smooth"});
     }
 
@@ -937,7 +1072,6 @@
         try {
             const qText = document.getElementById("newQ").value.trim();
             
-            // 🔥 NEW: Check pasted images FIRST, fallback to DB loaded memory if unchanged
             const finalQImage = pastedImages.qImg ? await compressImage(pastedImages.qImg) : loadedExamImages.qImg;
             const finalO1Img = pastedImages.opt1Img ? await compressImage(pastedImages.opt1Img) : loadedExamImages.opt1Img;
             const finalO2Img = pastedImages.opt2Img ? await compressImage(pastedImages.opt2Img) : loadedExamImages.opt2Img;
@@ -963,7 +1097,6 @@
             let endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`;
             let method = "POST";
 
-            // 🔥 NEW: Switch to PUT if updating an existing index
             if(editingQuestionIndex !== null) {
                 endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions/${editingQuestionIndex}`;
                 method = "PUT";
@@ -988,7 +1121,7 @@
             list.innerHTML = "";
             
             if (exam && exam.questions) {
-                currentExamQuestions = exam.questions; // Keep memory copy
+                currentExamQuestions = exam.questions; 
                 
                 exam.questions.forEach((q, i) => {
                     const hasImg = q.questionImage ? '🖼️ [Image Attached]' : '';
@@ -1004,7 +1137,6 @@
                                 <small style="color: var(--success);"><b>Correct:</b> ${q.correctAnswer}</small>
                             </div>
                             <div>
-                                <!-- 🔥 NEW: View Details and Edit button -->
                                 <button class="btn btn-outline btn-small" onclick="toggleView('q-details-${i}')">👁️ View</button>
                                 <button class="btn btn-outline btn-small" onclick="loadEditQuestion(${i})">✏️ Edit</button>
                                 <button class="btn btn-primary btn-small" style="background:#ff7675; border:none;" onclick="deleteQuestion('${examId}', ${i})">🗑️ Delete</button>
@@ -1020,7 +1152,6 @@
         } catch(e) { console.error(e); }
     }
 
-    // Existing unchanged routines...
     async function uploadZIP() {
         const fileInput = document.getElementById('zipFile'); const file = fileInput.files[0]; const btn = document.getElementById('zipUploadBtn');
         if (!file) return alert("Please select a .zip file first!"); if (!currentEditingExamId) return alert("No exam selected.");
@@ -1042,6 +1173,11 @@
         currentEditingExamId = id; resetExamForm();
         document.getElementById("modalExamTitle").innerText = `Editing: ${title}`;
         document.getElementById("editorModal").style.display = "flex";
+        
+        // Clear old import data when opening a new exam
+        document.getElementById("importQBResults").style.display = "none";
+        document.getElementById("btnImportSelected").style.display = "none";
+        
         refreshQuestionList(id);
     }
 
