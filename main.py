@@ -195,7 +195,6 @@ async def add_question(exam_id: str, request: Request, user=Depends(authorize(["
     exam_ref.update({"questions": questions})
     return {"message": "Question added successfully! ✅"}
 
-# 🔥 NEW: Route to bulk import questions from Question Bank to an Exam
 @app.post("/api/exams/{exam_id}/import-questions")
 async def import_questions(exam_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
     questions_to_add = await request.json()
@@ -207,7 +206,7 @@ async def import_questions(exam_id: str, request: Request, user=Depends(authoriz
 
     data = doc.to_dict()
     questions = data.get("questions", [])
-    questions.extend(questions_to_add) # Appends all imported questions
+    questions.extend(questions_to_add) 
     
     exam_ref.update({"questions": questions})
     return {"message": f"{len(questions_to_add)} questions imported successfully! ✅"}
@@ -354,14 +353,25 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
             opt_b_text = smart_text(get_val(row, ["OptionB", "Option B"]), img_b, "Option B")
             opt_c_text = smart_text(get_val(row, ["OptionC", "Option C"]), img_c, "Option C")
             opt_d_text = smart_text(get_val(row, ["OptionD", "Option D"]), img_d, "Option D")
+            
+            # 🔥 NEW: Extract Section and Numerical fields
+            section_type = get_val(row, ["Section", "section"]) or "Single correct answer"
+            numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
+
+            correct_ans = opt_a_text
+            # 🔥 NEW: Logic to override option A if it's a numerical question
+            if "integer" in section_type.lower() or "numerical" in section_type.lower():
+                correct_ans = numerical_ans
+                opt_a_text, opt_b_text, opt_c_text, opt_d_text = "", "", "", "" # Erase multiple choice options
 
             new_q = {
                 "subject": get_val(row, ["Subject", "subject"]) or "Physics",
+                "section": section_type,
                 "question": get_val(row, ["QuestionText", "Question", "question"]),
                 "questionImage": img_q,
-                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text],
-                "optionImages": [img_a, img_b, img_c, img_d],
-                "correctAnswer": opt_a_text
+                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
+                "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
+                "correctAnswer": correct_ans
             }
             questions.append(new_q)
             added_count += 1
@@ -499,16 +509,25 @@ async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authoriz
             opt_b_text = get_val(row, ["OptionB", "Option B"])
             opt_c_text = get_val(row, ["OptionC", "Option C"])
             opt_d_text = get_val(row, ["OptionD", "Option D"])
+            
+            # 🔥 NEW: Extract Section and Numerical Answer
+            section_val = get_val(row, ["Section", "section"]) or "Single correct answer"
+            numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
+
+            # 🔥 NEW: Handle numerical override for correct answer array
+            correct_ans_list = [opt_a_text] if opt_a_text else []
+            if "integer" in section_val.lower() or "numerical" in section_val.lower():
+                correct_ans_list = [numerical_ans] if numerical_ans else []
 
             new_q = {
                 "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
                 "subject": get_val(row, ["Subject", "subject"]) or "Physics",
-                "section": get_val(row, ["Section", "section"]) or "Single correct answer",
+                "section": section_val,
                 "question": get_val(row, ["QuestionText", "Question", "question"]),
                 "questionImage": img_q,
-                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if opt_a_text else [],
-                "optionImages": [img_a, img_b, img_c, img_d],
-                "correctAnswers": [opt_a_text],
+                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
+                "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
+                "correctAnswers": correct_ans_list,
                 "hint": get_val(row, ["Hint", "hint"]),
                 "solution": get_val(row, ["Solution", "solution"]),
                 "solutionImage": img_sol,

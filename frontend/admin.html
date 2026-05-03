@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard | JEE Portal</title>
+    
+    <!-- 🔥 NEW: MathJax for LaTeX Rendering in Admin Panel -->
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            startup: { typeset: false } // We will trigger manually after DOM updates
+        };
+    </script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
     <style>
         :root {
             --primary: #1e3d59;
@@ -275,7 +286,6 @@
         <button class="btn" style="float:right; background:#333; color:white;" onclick="closeEditor()">Close</button>
         <h2 id="modalExamTitle">Manage Questions</h2>
         
-        <!-- 🔥 NEW: Question Bank Import Box -->
         <hr style="margin: 20px 0;">
         <h4 style="color: var(--primary); margin-bottom: 10px;">🗄️ Import from Question Bank</h4>
         <div style="background: #f4f7f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd;">
@@ -314,6 +324,11 @@
         
         <div style="background: #fdf2e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #e67e22;">
             <h4 style="color: #d35400; margin-bottom: 10px;">📦 Bulk Upload via ZIP File</h4>
+            <!-- 🔥 NEW: Updated instruction text for Numerical Answer CSV mapping -->
+            <p style="font-size: 11px; color: #555; margin-bottom: 10px;">
+                Headers: Subject, Section, QuestionText, NumericalAnswer, OptionA, OptionA_Image... <br>
+                <em>If 'NumericalAnswer' has a value and Section is 'Integer', options will be bypassed!</em>
+            </p>
             <div style="display: flex; gap: 10px;">
                 <input type="file" id="zipFile" accept=".zip" style="margin-bottom: 0;">
                 <button class="btn btn-primary" style="background:#d35400; border:none;" onclick="uploadZIP()" id="zipUploadBtn">Upload ZIP</button>
@@ -323,7 +338,7 @@
         <hr style="margin: 20px 0;">
         <h4 id="examFormTitle">Add Individual Question to Paper</h4><br>
         
-        <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted)">
+        <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted, supports LaTeX with $...$)">
         
         <div class="paste-zone" id="zone-qImg" tabindex="0">
             <span class="paste-text">📸 Click here & press <b>Ctrl+V</b> to paste Question Image</span>
@@ -331,17 +346,22 @@
             <button class="clear-img-btn" onclick="clearPasteZone('qImg', event)">✖</button>
         </div>
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+        <!-- 🔥 NEW: Exam section dropdown to support numerical directly from the exam editor -->
+        <select id="examQuestionSection" style="margin-top: 10px;" onchange="handleExamSectionChange()">
+            <option value="Single correct answer">Single correct answer</option>
+            <option value="Integer based question">Integer based question</option>
+        </select>
+
+        <div id="examOptionsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
             <div class="opt-container" style="border: 2px solid var(--success);">
                 <div style="font-size: 11px; font-weight: bold; color: var(--success); margin-bottom: 5px;">✅ Correct Answer (Option A)</div>
-                <input type="text" id="opt1" placeholder="Option A Text">
+                <input type="text" id="opt1" placeholder="Option A Text (Supports LaTeX)">
                 <div class="paste-zone" id="zone-opt1Img" tabindex="0">
                     <span class="paste-text">📸 Click & Ctrl+V</span>
                     <img id="preview-opt1Img" class="img-preview">
                     <button class="clear-img-btn" onclick="clearPasteZone('opt1Img', event)">✖</button>
                 </div>
             </div>
-
             <div class="opt-container">
                 <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option B)</div>
                 <input type="text" id="opt2" placeholder="Option B Text">
@@ -351,7 +371,6 @@
                     <button class="clear-img-btn" onclick="clearPasteZone('opt2Img', event)">✖</button>
                 </div>
             </div>
-
             <div class="opt-container">
                 <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option C)</div>
                 <input type="text" id="opt3" placeholder="Option C Text">
@@ -361,7 +380,6 @@
                     <button class="clear-img-btn" onclick="clearPasteZone('opt3Img', event)">✖</button>
                 </div>
             </div>
-
             <div class="opt-container">
                 <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option D)</div>
                 <input type="text" id="opt4" placeholder="Option D Text">
@@ -373,6 +391,12 @@
             </div>
         </div>
 
+        <div id="examIntegerContainer" style="display: none; background: #fff; padding: 15px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
+            <label style="font-size: 12px; font-weight: bold;">Numerical Answer * (Decimals supported)</label>
+            <!-- 🔥 NEW: changed step="1" to step="any" to support decimals -->
+            <input type="number" id="examIntInput" step="any" placeholder="Enter numerical answer...">
+        </div>
+
         <select id="subjectSelect" style="margin-top: 15px;">
             <option value="Physics">Physics</option>
             <option value="Chemistry">Chemistry</option>
@@ -382,7 +406,6 @@
         <button class="btn" id="cancelExamEditBtn" onclick="resetExamForm()" style="display:none; width: 100%; margin-top: 10px; background: #95a5a6; color: white;">Cancel Edit</button>
         <button class="btn btn-success" id="addQuestionBtn" onclick="submitNewQuestion()" style="width: 100%; margin-top: 10px;">Add Question ✅</button>
         
-        <!-- 🔥 NEW: Changed title to be accurate -->
         <h3 style="margin-top: 30px;">Questions in this Exam</h3>
         <div id="existingQuestionsList"></div>
     </div>
@@ -438,7 +461,8 @@
         <input type="text" id="qbTopics" placeholder="e.g. Integration by substitution, Kirchhoffs law">
 
         <label style="font-size: 12px; font-weight: bold;">Question Statement *</label>
-        <input type="text" id="qbQText" placeholder="Question Text (Optional if Image is pasted)">
+        <!-- 🔥 NEW: Hint to admins about LaTeX support -->
+        <input type="text" id="qbQText" placeholder="Question Text (LaTeX supported with $...$)">
         <div class="paste-zone" id="zone-qbQImg" tabindex="0">
             <span class="paste-text">📸 Click here & press <b>Ctrl+V</b> to paste Question Image</span>
             <img id="preview-qbQImg" class="img-preview">
@@ -488,8 +512,9 @@
         </div>
 
         <div id="qbIntegerContainer" style="display: none; background: #fff; padding: 15px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px;">
-            <label style="font-size: 12px; font-weight: bold;">Integer Answer *</label>
-            <input type="number" id="qbIntInput" step="1" placeholder="Enter integer answer...">
+            <label style="font-size: 12px; font-weight: bold;">Numerical Answer * (Decimals supported)</label>
+            <!-- 🔥 NEW: step="any" for decimals -->
+            <input type="number" id="qbIntInput" step="any" placeholder="Enter numerical answer...">
         </div>
 
         <label style="font-size: 12px; font-weight: bold;">Hint (Optional)</label>
@@ -531,10 +556,15 @@
     let editingQBId = null;
     let currentQBQuestions = [];
     
-    // 🔥 NEW: Cache for the Import search feature
     let qbCacheForImport = [];
 
-    // --- TAB SWITCHER LOGIC ---
+    // 🔥 NEW: Helper to force MathJax to re-render DOM sections securely
+    function reRenderMathJax() {
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
+        }
+    }
+
     function switchTab(tabId, btnElement) {
         document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
         document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
@@ -544,7 +574,6 @@
         if(tabId === 'view-question-bank') loadQuestionBank();
     }
 
-    // --- 📸 SMART PASTE LOGIC WITH MEMORY PRESERVATION ---
     let pastedImages = { 
         qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null,
         qbQImg: null, qbOpt1Img: null, qbOpt2Img: null, qbOpt3Img: null, qbOpt4Img: null, qbSolImg: null
@@ -627,7 +656,6 @@
 
     function logout() { localStorage.clear(); window.location.href = "login.html"; }
 
-    // --- EXAM MANAGEMENT ---
     async function createNewExam() {
         if(role.toLowerCase() !== "admin") return alert("Only Admins can create exams.");
         const title = document.getElementById("newExamTitle").value;
@@ -666,6 +694,7 @@
                         </div>
                     </div>`;
             });
+            reRenderMathJax(); // Apply LaTeX format if any titles had it
         } catch(e) { console.error("Could not load exams:", e); }
     }
 
@@ -677,7 +706,6 @@
         } catch(e) { console.error(e); }
     }
 
-    // --- QUESTION BANK LOGIC ---
     function handleSectionChange() {
         const section = document.getElementById('qbSection').value;
         const optionsContainer = document.getElementById('qbOptionsContainer');
@@ -746,7 +774,7 @@
                                 <span class="qb-badge" style="background:var(--primary);">${q.exam_type || 'N/A'}</span>
                                 <span class="qb-badge" style="background:var(--success);">${q.subject || 'N/A'}</span>
                                 <span class="qb-badge" style="background:#8e44ad;">${q.section || 'N/A'}</span><br>
-                                <div style="margin-top: 8px;"><strong>Q:</strong> ${q.question ? q.question.substring(0,60)+'...' : '<i>[Image Only]</i>'}</div>
+                                <div style="margin-top: 8px;"><strong>Q:</strong> ${q.question ? q.question.substring(0,80)+'...' : '<i>[Image Only]</i>'}</div>
                                 <small style="color: #666;">Topics: ${q.topics && q.topics.length ? q.topics.join(', ') : 'None'}</small>
                             </div>
                             <div>
@@ -758,7 +786,7 @@
                         <div id="qb-details-${i}" class="q-details-box">
                             ${q.questionImage ? `<img src="${q.questionImage}">` : ''}
                             <p><b>Options:</b> 
-                                ${q.options && q.options.length ? q.options.join(' | ') : 'N/A (Integer)'}
+                                ${q.options && q.options.length ? q.options.join(' | ') : 'N/A (Numerical)'}
                             </p>
                             <p><b>Correct Answer:</b> <span style="color:var(--success)">${q.correctAnswers ? q.correctAnswers.join(', ') : 'None'}</span></p>
                             ${q.hint ? `<p><b>Hint:</b> ${q.hint}</p>` : ''}
@@ -767,12 +795,14 @@
                         </div>
                     </div>`;
             });
+            reRenderMathJax(); // Apply LaTeX format to generated lists
         } catch(e) { console.error("Could not load Question Bank:", e); }
     }
 
     function toggleView(divId) {
         const el = document.getElementById(divId);
         el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        reRenderMathJax(); // Sometime display:none breaks rendering
     }
 
     function loadEditQBQuestion(id) {
@@ -856,8 +886,8 @@
 
             if (section === 'Integer based question') {
                 const intAns = document.getElementById("qbIntInput").value;
-                if(intAns === "") return alert("Please provide an integer answer.");
-                payload.correctAnswers = [intAns];
+                if(intAns === "") return alert("Please provide a numerical answer.");
+                payload.correctAnswers = [intAns]; // Safe storage of decimal/integer string
             } else {
                 const optTexts = [
                     document.getElementById("qbOpt1").value.trim() || "Option A", document.getElementById("qbOpt2").value.trim() || "Option B",
@@ -912,7 +942,6 @@
         finally { btn.innerText = "Upload ZIP"; btn.disabled = false; }
     }
 
-    // --- 🔥 NEW: IMPORT FROM QB TO EXAM LOGIC ---
     async function searchQBForExam() {
         const btn = document.querySelector('button[onclick="searchQBForExam()"]');
         btn.innerText = "Searching... ⏳";
@@ -961,6 +990,7 @@
                 });
                 importBtn.style.display = "block";
             }
+            reRenderMathJax(); // Support LaTeX in search results
         } catch(e) {
             console.error(e);
             alert("Error loading Question Bank.");
@@ -1026,6 +1056,21 @@
     }
 
     // --- INDIVIDUAL EXAM EDITOR LOGIC ---
+    // 🔥 NEW: Manage visibility for Exam Editor Sections
+    function handleExamSectionChange() {
+        const sec = document.getElementById("examQuestionSection").value;
+        const optCon = document.getElementById("examOptionsContainer");
+        const intCon = document.getElementById("examIntegerContainer");
+        
+        if(sec === "Integer based question") {
+            optCon.style.display = "none";
+            intCon.style.display = "block";
+        } else {
+            optCon.style.display = "grid";
+            intCon.style.display = "none";
+        }
+    }
+
     function resetExamForm() {
         editingQuestionIndex = null;
         document.getElementById("examFormTitle").innerText = "Add Individual Question to Paper";
@@ -1035,7 +1080,10 @@
         document.getElementById("newQ").value = ""; 
         document.getElementById("opt1").value = ""; document.getElementById("opt2").value = "";
         document.getElementById("opt3").value = ""; document.getElementById("opt4").value = "";
+        document.getElementById("examIntInput").value = "";
+        document.getElementById("examQuestionSection").value = "Single correct answer";
         
+        handleExamSectionChange();
         clearPasteZone('qImg'); clearPasteZone('opt1Img'); clearPasteZone('opt2Img'); 
         clearPasteZone('opt3Img'); clearPasteZone('opt4Img');
     }
@@ -1050,11 +1098,21 @@
         document.getElementById("cancelExamEditBtn").style.display = "block";
 
         document.getElementById("newQ").value = q.question || "";
-        document.getElementById("opt1").value = q.options[0] || "";
-        document.getElementById("opt2").value = q.options[1] || "";
-        document.getElementById("opt3").value = q.options[2] || "";
-        document.getElementById("opt4").value = q.options[3] || "";
         document.getElementById("subjectSelect").value = q.subject || "Physics";
+        
+        // Handle Section Type correctly
+        const sec = q.section || "Single correct answer";
+        document.getElementById("examQuestionSection").value = sec;
+        handleExamSectionChange();
+
+        if (sec.includes("Integer") || sec.includes("numerical")) {
+            document.getElementById("examIntInput").value = q.correctAnswer || "";
+        } else {
+            document.getElementById("opt1").value = q.options[0] || "";
+            document.getElementById("opt2").value = q.options[1] || "";
+            document.getElementById("opt3").value = q.options[2] || "";
+            document.getElementById("opt4").value = q.options[3] || "";
+        }
 
         preloadImageZone('qImg', q.questionImage, loadedExamImages);
         preloadImageZone('opt1Img', q.optionImages ? q.optionImages[0] : null, loadedExamImages);
@@ -1071,6 +1129,7 @@
 
         try {
             const qText = document.getElementById("newQ").value.trim();
+            const secType = document.getElementById("examQuestionSection").value;
             
             const finalQImage = pastedImages.qImg ? await compressImage(pastedImages.qImg) : loadedExamImages.qImg;
             const finalO1Img = pastedImages.opt1Img ? await compressImage(pastedImages.opt1Img) : loadedExamImages.opt1Img;
@@ -1083,15 +1142,26 @@
                 return alert("You must provide either Question Text or a Question Image.");
             }
 
-            const optTexts = [
-                document.getElementById("opt1").value.trim() || "Option A", document.getElementById("opt2").value.trim() || "Option B",
-                document.getElementById("opt3").value.trim() || "Option C", document.getElementById("opt4").value.trim() || "Option D"
-            ];
+            let optTexts = [];
+            let finalAns = "";
+
+            // Handle Numerical vs Normal Exam Questions
+            if (secType === "Integer based question") {
+                finalAns = document.getElementById("examIntInput").value;
+                if(finalAns === "") return alert("Please enter a numerical answer.");
+            } else {
+                optTexts = [
+                    document.getElementById("opt1").value.trim() || "Option A", document.getElementById("opt2").value.trim() || "Option B",
+                    document.getElementById("opt3").value.trim() || "Option C", document.getElementById("opt4").value.trim() || "Option D"
+                ];
+                finalAns = optTexts[0];
+            }
 
             const payload = { 
                 question: qText, questionImage: finalQImage, options: optTexts, 
                 optionImages: [finalO1Img, finalO2Img, finalO3Img, finalO4Img], 
-                correctAnswer: optTexts[0], subject: document.getElementById("subjectSelect").value 
+                correctAnswer: finalAns, subject: document.getElementById("subjectSelect").value,
+                section: secType
             };
 
             let endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`;
@@ -1144,11 +1214,12 @@
                         </div>
                         <div id="q-details-${i}" class="q-details-box">
                             ${q.questionImage ? `<img src="${q.questionImage}">` : ''}
-                            <p><b>Options:</b> A: ${q.options[0]}, B: ${q.options[1]}, C: ${q.options[2]}, D: ${q.options[3]}</p>
+                            <p><b>Options:</b> ${q.options && q.options.length ? `A: ${q.options[0]}, B: ${q.options[1]}, C: ${q.options[2]}, D: ${q.options[3]}` : 'N/A (Numerical)'}</p>
                         </div>
                     </div>`;
                 });
             }
+            reRenderMathJax(); // Support LaTeX in individual questions
         } catch(e) { console.error(e); }
     }
 
@@ -1174,7 +1245,6 @@
         document.getElementById("modalExamTitle").innerText = `Editing: ${title}`;
         document.getElementById("editorModal").style.display = "flex";
         
-        // Clear old import data when opening a new exam
         document.getElementById("importQBResults").style.display = "none";
         document.getElementById("btnImportSelected").style.display = "none";
         
