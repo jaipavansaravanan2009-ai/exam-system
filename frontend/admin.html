@@ -5,10 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard | JEE Portal</title>
     
-    <!-- 🔥 NEW: MathJax for LaTeX Rendering in Admin Panel -->
     <script>
         window.MathJax = {
-            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            loader: {load: ['[tex]/mhchem']}, // Loads the chemistry extension
+            tex: { 
+                packages: {'[+]': ['mhchem']}, // Activates the extension
+                inlineMath: [['$', '$'], ['\\(', '\\)']], 
+                displayMath: [['$$', '$$'], ['\\[', '\\]']] 
+            },
             startup: { typeset: false } // We will trigger manually after DOM updates
         };
     </script>
@@ -280,7 +284,6 @@
 
 </div>
 
-<!-- EXAM EDITOR MODAL -->
 <div id="editorModal">
     <div class="modal-content">
         <button class="btn" style="float:right; background:#333; color:white;" onclick="closeEditor()">Close</button>
@@ -315,8 +318,7 @@
             <button class="btn btn-outline" onclick="searchQBForExam()" style="width: 100%; margin-bottom: 10px;">🔍 Search Question Bank</button>
             
             <div id="importQBResults" style="max-height: 250px; overflow-y: auto; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; display: none;">
-                <!-- Filtered results populate here -->
-            </div>
+                </div>
             <button class="btn btn-success" id="btnImportSelected" onclick="importSelectedQBQuestions()" style="width: 100%; margin-top: 10px; display: none;">📥 Import Selected Questions</button>
         </div>
 
@@ -324,7 +326,6 @@
         
         <div style="background: #fdf2e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #e67e22;">
             <h4 style="color: #d35400; margin-bottom: 10px;">📦 Bulk Upload via ZIP File</h4>
-            <!-- 🔥 NEW: Updated instruction text for Numerical Answer CSV mapping -->
             <p style="font-size: 11px; color: #555; margin-bottom: 10px;">
                 Headers: Subject, Section, QuestionText, NumericalAnswer, OptionA, OptionA_Image... <br>
                 <em>If 'NumericalAnswer' has a value and Section is 'Integer', options will be bypassed!</em>
@@ -338,7 +339,7 @@
         <hr style="margin: 20px 0;">
         <h4 id="examFormTitle">Add Individual Question to Paper</h4><br>
         
-        <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted, supports LaTeX with $...$)">
+        <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted, supports LaTeX with $...$ and \ce{})">
         
         <div class="paste-zone" id="zone-qImg" tabindex="0">
             <span class="paste-text">📸 Click here & press <b>Ctrl+V</b> to paste Question Image</span>
@@ -346,7 +347,6 @@
             <button class="clear-img-btn" onclick="clearPasteZone('qImg', event)">✖</button>
         </div>
         
-        <!-- 🔥 NEW: Exam section dropdown to support numerical directly from the exam editor -->
         <select id="examQuestionSection" style="margin-top: 10px;" onchange="handleExamSectionChange()">
             <option value="Single correct answer">Single correct answer</option>
             <option value="Integer based question">Integer based question</option>
@@ -393,7 +393,6 @@
 
         <div id="examIntegerContainer" style="display: none; background: #fff; padding: 15px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
             <label style="font-size: 12px; font-weight: bold;">Numerical Answer * (Decimals supported)</label>
-            <!-- 🔥 NEW: changed step="1" to step="any" to support decimals -->
             <input type="number" id="examIntInput" step="any" placeholder="Enter numerical answer...">
         </div>
 
@@ -411,7 +410,6 @@
     </div>
 </div>
 
-<!-- QUESTION BANK MODAL -->
 <div id="qbEditorModal">
     <div class="modal-content">
         <button class="btn" style="float:right; background:#333; color:white;" onclick="closeQBEditor()">Close</button>
@@ -461,8 +459,7 @@
         <input type="text" id="qbTopics" placeholder="e.g. Integration by substitution, Kirchhoffs law">
 
         <label style="font-size: 12px; font-weight: bold;">Question Statement *</label>
-        <!-- 🔥 NEW: Hint to admins about LaTeX support -->
-        <input type="text" id="qbQText" placeholder="Question Text (LaTeX supported with $...$)">
+        <input type="text" id="qbQText" placeholder="Question Text (LaTeX & Chemistry \ce{} supported)">
         <div class="paste-zone" id="zone-qbQImg" tabindex="0">
             <span class="paste-text">📸 Click here & press <b>Ctrl+V</b> to paste Question Image</span>
             <img id="preview-qbQImg" class="img-preview">
@@ -513,7 +510,6 @@
 
         <div id="qbIntegerContainer" style="display: none; background: #fff; padding: 15px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px;">
             <label style="font-size: 12px; font-weight: bold;">Numerical Answer * (Decimals supported)</label>
-            <!-- 🔥 NEW: step="any" for decimals -->
             <input type="number" id="qbIntInput" step="any" placeholder="Enter numerical answer...">
         </div>
 
@@ -558,7 +554,6 @@
     
     let qbCacheForImport = [];
 
-    // 🔥 NEW: Helper to force MathJax to re-render DOM sections securely
     function reRenderMathJax() {
         if (window.MathJax && window.MathJax.typesetPromise) {
             MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
@@ -694,7 +689,7 @@
                         </div>
                     </div>`;
             });
-            reRenderMathJax(); // Apply LaTeX format if any titles had it
+            reRenderMathJax(); 
         } catch(e) { console.error("Could not load exams:", e); }
     }
 
@@ -795,14 +790,14 @@
                         </div>
                     </div>`;
             });
-            reRenderMathJax(); // Apply LaTeX format to generated lists
+            reRenderMathJax(); 
         } catch(e) { console.error("Could not load Question Bank:", e); }
     }
 
     function toggleView(divId) {
         const el = document.getElementById(divId);
         el.style.display = el.style.display === 'none' ? 'block' : 'none';
-        reRenderMathJax(); // Sometime display:none breaks rendering
+        reRenderMathJax(); 
     }
 
     function loadEditQBQuestion(id) {
@@ -887,7 +882,7 @@
             if (section === 'Integer based question') {
                 const intAns = document.getElementById("qbIntInput").value;
                 if(intAns === "") return alert("Please provide a numerical answer.");
-                payload.correctAnswers = [intAns]; // Safe storage of decimal/integer string
+                payload.correctAnswers = [intAns]; 
             } else {
                 const optTexts = [
                     document.getElementById("qbOpt1").value.trim() || "Option A", document.getElementById("qbOpt2").value.trim() || "Option B",
@@ -990,7 +985,7 @@
                 });
                 importBtn.style.display = "block";
             }
-            reRenderMathJax(); // Support LaTeX in search results
+            reRenderMathJax(); 
         } catch(e) {
             console.error(e);
             alert("Error loading Question Bank.");
@@ -1055,8 +1050,6 @@
         }
     }
 
-    // --- INDIVIDUAL EXAM EDITOR LOGIC ---
-    // 🔥 NEW: Manage visibility for Exam Editor Sections
     function handleExamSectionChange() {
         const sec = document.getElementById("examQuestionSection").value;
         const optCon = document.getElementById("examOptionsContainer");
@@ -1100,7 +1093,6 @@
         document.getElementById("newQ").value = q.question || "";
         document.getElementById("subjectSelect").value = q.subject || "Physics";
         
-        // Handle Section Type correctly
         const sec = q.section || "Single correct answer";
         document.getElementById("examQuestionSection").value = sec;
         handleExamSectionChange();
@@ -1145,7 +1137,6 @@
             let optTexts = [];
             let finalAns = "";
 
-            // Handle Numerical vs Normal Exam Questions
             if (secType === "Integer based question") {
                 finalAns = document.getElementById("examIntInput").value;
                 if(finalAns === "") return alert("Please enter a numerical answer.");
@@ -1219,7 +1210,7 @@
                     </div>`;
                 });
             }
-            reRenderMathJax(); // Support LaTeX in individual questions
+            reRenderMathJax(); 
         } catch(e) { console.error(e); }
     }
 
