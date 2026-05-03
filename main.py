@@ -124,7 +124,7 @@ async def login(request: Request):
         "id": user_doc.id,
         "email": user_data.get("email") or input_user,
         "role": user_data.get("role"),
-        "name": user_data.get("name") or input_user, # 🔥 WE ADDED THIS LINE
+        "name": user_data.get("name") or input_user, 
         "exp": exp
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
@@ -194,6 +194,26 @@ async def add_question(exam_id: str, request: Request, user=Depends(authorize(["
     
     exam_ref.update({"questions": questions})
     return {"message": "Question added successfully! ✅"}
+
+# 🔥 NEW: Route to completely update a specific question in an exam array
+@app.put("/api/exams/{exam_id}/questions/{index}")
+async def update_question(exam_id: str, index: int, request: Request, user=Depends(authorize(["admin", "setter"]))):
+    updated_question = await request.json()
+    exam_ref = db.collection("exams").document(exam_id)
+    doc = exam_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    data = doc.to_dict()
+    questions = data.get("questions", [])
+    
+    if 0 <= index < len(questions):
+        questions[index] = updated_question # Replace old question with new map
+        exam_ref.update({"questions": questions})
+        return {"message": "Question updated successfully! ✅"}
+        
+    raise HTTPException(status_code=400, detail="Invalid index")
 
 @app.delete("/api/exams/{exam_id}/questions/{index}")
 async def delete_question(exam_id: str, index: int, user=Depends(authorize(["admin"]))):
@@ -338,9 +358,8 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
 
 # ==========================================
-# 🗄️ QUESTION BANK MANAGEMENT (NEW)
+# 🗄️ QUESTION BANK MANAGEMENT
 # ==========================================
-# 🔥 NEW: Get all questions from the bank
 @app.get("/api/question_bank")
 async def get_question_bank(user=Depends(authorize(["admin", "setter"]))):
     try:
@@ -349,7 +368,6 @@ async def get_question_bank(user=Depends(authorize(["admin", "setter"]))):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch question bank: {str(e)}")
 
-# 🔥 NEW: Add a single question to the bank
 @app.post("/api/question_bank")
 async def add_qb_question(request: Request, user=Depends(authorize(["admin", "setter"]))):
     try:
@@ -362,7 +380,17 @@ async def add_qb_question(request: Request, user=Depends(authorize(["admin", "se
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add question: {str(e)}")
 
-# 🔥 NEW: Delete a question from the bank (Admin Only)
+# 🔥 NEW: Route to update an existing question document in the bank
+@app.put("/api/question_bank/{q_id}")
+async def update_qb_question(q_id: str, request: Request, user=Depends(authorize(["admin"]))):
+    try:
+        body = await request.json()
+        body["updatedAt"] = datetime.now(timezone.utc) # Track when it was edited
+        db.collection("question_bank").document(q_id).update(body)
+        return {"message": "Question updated in bank! ✅"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update question: {str(e)}")
+
 @app.delete("/api/question_bank/{q_id}")
 async def delete_qb_question(q_id: str, user=Depends(authorize(["admin"]))):
     try:
@@ -371,7 +399,6 @@ async def delete_qb_question(q_id: str, user=Depends(authorize(["admin"]))):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to delete question")
 
-# 🔥 NEW: Bulk upload zip for Question Bank
 @app.post("/api/question_bank/bulk-upload-zip")
 async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authorize(["admin", "setter"]))):
     if not file.filename.lower().endswith('.zip'):
@@ -458,7 +485,6 @@ async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authoriz
             opt_c_text = get_val(row, ["OptionC", "Option C"])
             opt_d_text = get_val(row, ["OptionD", "Option D"])
 
-            # Map the new schema
             new_q = {
                 "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
                 "subject": get_val(row, ["Subject", "subject"]) or "Physics",
@@ -467,7 +493,7 @@ async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authoriz
                 "questionImage": img_q,
                 "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if opt_a_text else [],
                 "optionImages": [img_a, img_b, img_c, img_d],
-                "correctAnswers": [opt_a_text], # Defaulting to A for CSV uploads if not parsed dynamically
+                "correctAnswers": [opt_a_text],
                 "hint": get_val(row, ["Hint", "hint"]),
                 "solution": get_val(row, ["Solution", "solution"]),
                 "solutionImage": img_sol,
@@ -480,7 +506,6 @@ async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authoriz
             batch.set(new_doc_ref, new_q)
             added_count += 1
             
-            # Firestore batch limit is 500
             if added_count % 450 == 0:
                 batch.commit()
                 batch = db.batch()
@@ -527,14 +552,12 @@ async def get_my_results(user = Depends(authorize(["student"]))):
     try:
         student_name = user.get("name") or user.get("email")
         
-        # 🔥 FIX 1: Removed order_by from the query so Firestore doesn't crash asking for an Index
         query = db.collection("results").where("studentName", "==", student_name).stream()
         
         results_list = []
         for doc in query:
             data = doc.to_dict()
             
-            # 🔥 FIX 2: Safely convert Python datetime to a string (Replacing Javascript's toJSON)
             submitted_time = data.get("submittedAt")
             if submitted_time and hasattr(submitted_time, 'isoformat'):
                 time_str = submitted_time.isoformat()
@@ -547,7 +570,6 @@ async def get_my_results(user = Depends(authorize(["student"]))):
                 **data
             })
             
-        # 🔥 FIX 3: We just sort the list in Python memory instead! (Newest first)
         results_list.sort(key=lambda x: x.get("submittedAt") or "", reverse=True)
             
         return results_list
@@ -577,7 +599,6 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
         total_questions_count = len(exam_questions)
         questions_count_per_subject = {}
         for q in exam_questions:
-            # Safety fallback for older exams missing a subject
             subject = q.get("subject") or "Physics"
             questions_count_per_subject[subject] = questions_count_per_subject.get(subject, 0) + 1
 
@@ -585,7 +606,6 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
         calculated_total_score = 0
 
         for subject, frontend_section in rich_breakdown.items():
-            # Ultra-forgiving logic: If subjects mismatch, it won't crash anymore
             backend_q_count = questions_count_per_subject.get(subject, frontend_section.get('subjectQuestionsCount', 1))
             section_total_available_marks = 4 * backend_q_count
             
@@ -607,7 +627,7 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
             "studentName": student_name,
             "examTitle": exam_title,
             "examId": exam_id,
-            "submittedAt": firestore.SERVER_TIMESTAMP, # 🔥 THE FATAL TYPO IS FIXED HERE 🔥
+            "submittedAt": firestore.SERVER_TIMESTAMP, 
             "examQuestionsCount": total_questions_count,
             "totalScore": calculated_total_score,
             "subjectWiseBreakdown": verified_breakdown
@@ -688,10 +708,6 @@ async def get_live_analysis(result_id: str, user = Depends(authorize(["student"]
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==========================================
-# 📂 SERVE FRONTEND FILES
-# (This MUST remain at the absolute bottom!)
-# ==========================================
 @app.get("/")
 async def root():
     return FileResponse("frontend/login.html")

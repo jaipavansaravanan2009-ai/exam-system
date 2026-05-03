@@ -17,7 +17,6 @@
 
         body { background: var(--bg); display: flex; min-height: 100vh; }
 
-        /* Sidebar Navigation */
         .sidebar {
             width: 260px;
             background: var(--primary);
@@ -47,8 +46,6 @@
         }
 
         .nav-btn:hover { background: rgba(255, 255, 255, 0.1); }
-        
-        /* Active Tab Styling */
         .nav-btn.active {
             background: var(--secondary);
             font-weight: bold;
@@ -59,12 +56,10 @@
         .logout-btn { margin-top: auto; background: var(--danger); border-left: none !important; }
         .logout-btn:hover { background: #c0392b; }
 
-        /* Main Content */
         .main-content { margin-left: 260px; flex: 1; padding: 30px; }
 
         .header-strip { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 15px;}
 
-        /* Tab Views */
         .view-section {
             display: none;
             animation: fadeIn 0.3s ease-in-out;
@@ -89,7 +84,6 @@
 
         h3 { color: var(--primary); margin-bottom: 15px; font-size: 18px; display: flex; align-items: center; gap: 8px;}
 
-        /* Inputs & Buttons */
         input[type="text"], input[type="password"], input[type="email"], select, input[type="number"] {
             padding: 12px 15px;
             border: 1px solid #ddd;
@@ -128,8 +122,8 @@
         .btn-success:hover { background: #1e8449; }
         .btn-outline { border: 1px solid var(--primary); color: var(--primary); background: transparent; }
         .btn-outline:hover { background: var(--primary); color: white; }
+        .btn-small { padding: 4px 8px; font-size: 11px; margin-left: 5px;} /* 🔥 NEW: Small Button Style */
 
-        /* Exam List Cards */
         .exam-item, .qb-item {
             display: flex;
             justify-content: space-between;
@@ -142,7 +136,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
 
-        /* Modal Styling */
         #editorModal, #qbEditorModal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8); display: none;
@@ -154,7 +147,6 @@
             max-height: 90vh; overflow-y: auto;
         }
 
-        /* 📸 Smart Image Paste Zones */
         .paste-zone {
             border: 2px dashed #bdc3c7; padding: 15px; text-align: center; border-radius: 6px; color: #7f8c8d; cursor: pointer; transition: 0.3s; margin-bottom: 10px; font-size: 12px; background: #fafafa; position: relative;
         }
@@ -163,6 +155,10 @@
         .clear-img-btn { position: absolute; top: 5px; right: 5px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; cursor: pointer; display: none; }
         
         .qb-badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: white; margin-right: 5px; }
+        
+        /* 🔥 NEW: Styles for the view-details container */
+        .q-details-box { display:none; margin-top:10px; font-size: 13px; background:#f4f7f6; padding: 15px; border-radius:6px; border: 1px solid #ddd; }
+        .q-details-box img { max-width: 150px; max-height: 100px; border-radius: 4px; margin: 5px 0; border: 1px solid #ccc;}
     </style>
 </head>
 <body>
@@ -170,7 +166,6 @@
 <div class="sidebar">
     <h2>👑 Admin Portal</h2>
     <button class="nav-btn active" onclick="switchTab('view-exams', this)">📚 Manage Exams</button>
-    <!-- 🔥 NEW: Question Bank Tab -->
     <button class="nav-btn" onclick="switchTab('view-question-bank', this)">🗄️ Question Bank</button>
     <button class="nav-btn" onclick="switchTab('view-users', this)">👥 User Accounts</button>
     <button class="nav-btn" onclick="switchTab('view-results', this)">🏆 Exam Results</button>
@@ -218,7 +213,6 @@
         </div>
     </div>
 
-    <!-- 🔥 NEW: Question Bank View -->
     <div id="view-question-bank" class="view-section">
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -284,91 +278,86 @@
         <hr style="margin: 20px 0;">
         
         <div style="background: #fdf2e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #e67e22;">
-                <h4 style="color: #d35400; margin-bottom: 10px;">📦 Bulk Upload via ZIP File</h4>
-                <p style="font-size: 13px; color: #555; margin-bottom: 10px; line-height: 1.5;">
-                    1. Create a folder on your computer.<br>
-                    2. Put your images inside it (e.g., <i>q1.png, optA.jpg</i>).<br>
-                    3. Create a <b>.csv</b> file and put it in the same folder. Type the exact image filenames in the Image columns.<br>
-                    <i style="color: #d35400;">Headers: Subject, QuestionText, QuestionImage, OptionA, OptionB, OptionC, OptionD, OptionA_Image, OptionB_Image, OptionC_Image, OptionD_Image</i><br>
-                    4. <b>Compress/ZIP the folder</b> and upload it below.
-                </p>
-                <div style="display: flex; gap: 10px;">
-                    <input type="file" id="zipFile" accept=".zip" style="margin-bottom: 0;">
-                    <button class="btn btn-primary" style="background:#d35400; border:none;" onclick="uploadZIP()" id="zipUploadBtn">Upload ZIP</button>
-                </div>
+            <h4 style="color: #d35400; margin-bottom: 10px;">📦 Bulk Upload via ZIP File</h4>
+            <div style="display: flex; gap: 10px;">
+                <input type="file" id="zipFile" accept=".zip" style="margin-bottom: 0;">
+                <button class="btn btn-primary" style="background:#d35400; border:none;" onclick="uploadZIP()" id="zipUploadBtn">Upload ZIP</button>
             </div>
-            
-            <hr style="margin: 20px 0;">
-            <h4>Add Individual Question to Paper</h4><br>
-            
-            <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted)">
-            
-            <div class="paste-zone" id="zone-qImg" tabindex="0">
-                📸 Click here & press <b>Ctrl+V</b> to paste Question Image
-                <img id="preview-qImg" class="img-preview">
-                <button class="clear-img-btn" onclick="clearPasteZone('qImg', event)">✖</button>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                <div class="opt-container" style="border: 2px solid var(--success);">
-                    <div style="font-size: 11px; font-weight: bold; color: var(--success); margin-bottom: 5px;">✅ Correct Answer (Option A)</div>
-                    <input type="text" id="opt1" placeholder="Option A Text">
-                    <div class="paste-zone" id="zone-opt1Img" tabindex="0">
-                        📸 Click & Ctrl+V to paste image
-                        <img id="preview-opt1Img" class="img-preview">
-                        <button class="clear-img-btn" onclick="clearPasteZone('opt1Img', event)">✖</button>
-                    </div>
-                </div>
-
-                <div class="opt-container">
-                    <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option B)</div>
-                    <input type="text" id="opt2" placeholder="Option B Text">
-                    <div class="paste-zone" id="zone-opt2Img" tabindex="0">
-                        📸 Click & Ctrl+V to paste image
-                        <img id="preview-opt2Img" class="img-preview">
-                        <button class="clear-img-btn" onclick="clearPasteZone('opt2Img', event)">✖</button>
-                    </div>
-                </div>
-
-                <div class="opt-container">
-                    <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option C)</div>
-                    <input type="text" id="opt3" placeholder="Option C Text">
-                    <div class="paste-zone" id="zone-opt3Img" tabindex="0">
-                        📸 Click & Ctrl+V to paste image
-                        <img id="preview-opt3Img" class="img-preview">
-                        <button class="clear-img-btn" onclick="clearPasteZone('opt3Img', event)">✖</button>
-                    </div>
-                </div>
-
-                <div class="opt-container">
-                    <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option D)</div>
-                    <input type="text" id="opt4" placeholder="Option D Text">
-                    <div class="paste-zone" id="zone-opt4Img" tabindex="0">
-                        📸 Click & Ctrl+V to paste image
-                        <img id="preview-opt4Img" class="img-preview">
-                        <button class="clear-img-btn" onclick="clearPasteZone('opt4Img', event)">✖</button>
-                    </div>
-                </div>
-            </div>
-
-            <select id="subjectSelect" style="margin-top: 15px;">
-                <option value="Physics">Physics</option>
-                <option value="Chemistry">Chemistry</option>
-                <option value="Maths">Maths</option>
-            </select>
-            <button class="btn btn-success" id="addQuestionBtn" onclick="submitNewQuestion()" style="width: 100%; margin-top: 10px;">Add Question ✅</button>
         </div>
+            
+        <hr style="margin: 20px 0;">
+        <!-- 🔥 NEW: Dynamic Title for Form -->
+        <h4 id="examFormTitle">Add Individual Question to Paper</h4><br>
+        
+        <input type="text" id="newQ" placeholder="Question Statement (Optional if Image is pasted)">
+        
+        <div class="paste-zone" id="zone-qImg" tabindex="0">
+            <span class="paste-text">📸 Click here & press <b>Ctrl+V</b> to paste Question Image</span>
+            <img id="preview-qImg" class="img-preview">
+            <button class="clear-img-btn" onclick="clearPasteZone('qImg', event)">✖</button>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+            <div class="opt-container" style="border: 2px solid var(--success);">
+                <div style="font-size: 11px; font-weight: bold; color: var(--success); margin-bottom: 5px;">✅ Correct Answer (Option A)</div>
+                <input type="text" id="opt1" placeholder="Option A Text">
+                <div class="paste-zone" id="zone-opt1Img" tabindex="0">
+                    <span class="paste-text">📸 Click & Ctrl+V</span>
+                    <img id="preview-opt1Img" class="img-preview">
+                    <button class="clear-img-btn" onclick="clearPasteZone('opt1Img', event)">✖</button>
+                </div>
+            </div>
+
+            <div class="opt-container">
+                <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option B)</div>
+                <input type="text" id="opt2" placeholder="Option B Text">
+                <div class="paste-zone" id="zone-opt2Img" tabindex="0">
+                    <span class="paste-text">📸 Click & Ctrl+V</span>
+                    <img id="preview-opt2Img" class="img-preview">
+                    <button class="clear-img-btn" onclick="clearPasteZone('opt2Img', event)">✖</button>
+                </div>
+            </div>
+
+            <div class="opt-container">
+                <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option C)</div>
+                <input type="text" id="opt3" placeholder="Option C Text">
+                <div class="paste-zone" id="zone-opt3Img" tabindex="0">
+                    <span class="paste-text">📸 Click & Ctrl+V</span>
+                    <img id="preview-opt3Img" class="img-preview">
+                    <button class="clear-img-btn" onclick="clearPasteZone('opt3Img', event)">✖</button>
+                </div>
+            </div>
+
+            <div class="opt-container">
+                <div style="font-size: 11px; color: #777; margin-bottom: 5px;">Distractor (Option D)</div>
+                <input type="text" id="opt4" placeholder="Option D Text">
+                <div class="paste-zone" id="zone-opt4Img" tabindex="0">
+                    <span class="paste-text">📸 Click & Ctrl+V</span>
+                    <img id="preview-opt4Img" class="img-preview">
+                    <button class="clear-img-btn" onclick="clearPasteZone('opt4Img', event)">✖</button>
+                </div>
+            </div>
+        </div>
+
+        <select id="subjectSelect" style="margin-top: 15px;">
+            <option value="Physics">Physics</option>
+            <option value="Chemistry">Chemistry</option>
+            <option value="Maths">Maths</option>
+        </select>
+        <!-- 🔥 NEW: Extra Button to Cancel Edit Mode -->
+        <button class="btn" id="cancelExamEditBtn" onclick="resetExamForm()" style="display:none; width: 100%; margin-top: 10px; background: #95a5a6; color: white;">Cancel Edit</button>
+        <button class="btn btn-success" id="addQuestionBtn" onclick="submitNewQuestion()" style="width: 100%; margin-top: 10px;">Add Question ✅</button>
         
         <h3 style="margin-top: 30px;">Current Question Bank</h3>
         <div id="existingQuestionsList"></div>
     </div>
 </div>
 
-<!-- 🔥 NEW: QUESTION BANK MODAL -->
+<!-- QUESTION BANK MODAL -->
 <div id="qbEditorModal">
     <div class="modal-content">
         <button class="btn" style="float:right; background:#333; color:white;" onclick="closeQBEditor()">Close</button>
-        <h2>Add to Question Bank</h2>
+        <h2 id="qbFormTitle">Add to Question Bank</h2> <!-- 🔥 NEW: Dynamic title -->
         <hr style="margin: 20px 0;">
         
         <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #1abc9c;">
@@ -416,12 +405,11 @@
         <label style="font-size: 12px; font-weight: bold;">Question Statement *</label>
         <input type="text" id="qbQText" placeholder="Question Text (Optional if Image is pasted)">
         <div class="paste-zone" id="zone-qbQImg" tabindex="0">
-            📸 Click here & press <b>Ctrl+V</b> to paste Question Image
+            <span class="paste-text">📸 Click here & press <b>Ctrl+V</b> to paste Question Image</span>
             <img id="preview-qbQImg" class="img-preview">
             <button class="clear-img-btn" onclick="clearPasteZone('qbQImg', event)">✖</button>
         </div>
         
-        <!-- 🔥 DYNAMIC OPTIONS CONTAINER -->
         <div id="qbOptionsContainer">
             <div style="font-size: 12px; font-weight: bold; margin-bottom: 10px;">Select Correct Option(s) below:</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -429,7 +417,7 @@
                     <input type="radio" name="qbCorrectSelect" class="qb-selector" value="0" checked> Correct
                     <input type="text" id="qbOpt1" placeholder="Option A Text">
                     <div class="paste-zone" id="zone-qbOpt1Img" tabindex="0">
-                        📸 Paste image A
+                        <span class="paste-text">📸 Paste image A</span>
                         <img id="preview-qbOpt1Img" class="img-preview">
                         <button class="clear-img-btn" onclick="clearPasteZone('qbOpt1Img', event)">✖</button>
                     </div>
@@ -438,7 +426,7 @@
                     <input type="radio" name="qbCorrectSelect" class="qb-selector" value="1"> Correct
                     <input type="text" id="qbOpt2" placeholder="Option B Text">
                     <div class="paste-zone" id="zone-qbOpt2Img" tabindex="0">
-                        📸 Paste image B
+                        <span class="paste-text">📸 Paste image B</span>
                         <img id="preview-qbOpt2Img" class="img-preview">
                         <button class="clear-img-btn" onclick="clearPasteZone('qbOpt2Img', event)">✖</button>
                     </div>
@@ -447,7 +435,7 @@
                     <input type="radio" name="qbCorrectSelect" class="qb-selector" value="2"> Correct
                     <input type="text" id="qbOpt3" placeholder="Option C Text">
                     <div class="paste-zone" id="zone-qbOpt3Img" tabindex="0">
-                        📸 Paste image C
+                        <span class="paste-text">📸 Paste image C</span>
                         <img id="preview-qbOpt3Img" class="img-preview">
                         <button class="clear-img-btn" onclick="clearPasteZone('qbOpt3Img', event)">✖</button>
                     </div>
@@ -456,7 +444,7 @@
                     <input type="radio" name="qbCorrectSelect" class="qb-selector" value="3"> Correct
                     <input type="text" id="qbOpt4" placeholder="Option D Text">
                     <div class="paste-zone" id="zone-qbOpt4Img" tabindex="0">
-                        📸 Paste image D
+                        <span class="paste-text">📸 Paste image D</span>
                         <img id="preview-qbOpt4Img" class="img-preview">
                         <button class="clear-img-btn" onclick="clearPasteZone('qbOpt4Img', event)">✖</button>
                     </div>
@@ -464,7 +452,6 @@
             </div>
         </div>
 
-        <!-- 🔥 DYNAMIC INTEGER CONTAINER -->
         <div id="qbIntegerContainer" style="display: none; background: #fff; padding: 15px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px;">
             <label style="font-size: 12px; font-weight: bold;">Integer Answer *</label>
             <input type="number" id="qbIntInput" step="1" placeholder="Enter integer answer...">
@@ -476,11 +463,13 @@
         <label style="font-size: 12px; font-weight: bold;">Detailed Solution (Optional)</label>
         <input type="text" id="qbSolutionText" placeholder="Solution explanation">
         <div class="paste-zone" id="zone-qbSolImg" tabindex="0">
-            📸 Click here & press <b>Ctrl+V</b> to paste Solution Image
+            <span class="paste-text">📸 Click here & press <b>Ctrl+V</b> to paste Solution Image</span>
             <img id="preview-qbSolImg" class="img-preview">
             <button class="clear-img-btn" onclick="clearPasteZone('qbSolImg', event)">✖</button>
         </div>
 
+        <!-- 🔥 NEW: Cancel Edit button -->
+        <button class="btn" id="cancelQBEditBtn" onclick="resetQBForm()" style="display:none; width: 100%; margin-top: 10px; background: #95a5a6; color: white;">Cancel Edit</button>
         <button class="btn btn-success" id="addQBBtn" onclick="submitNewQBQuestion()" style="width: 100%; margin-top: 10px;">Add to Question Bank ✅</button>
     </div>
 </div>
@@ -492,7 +481,6 @@
     const token = localStorage.getItem("adminToken");
     const role = localStorage.getItem("userRole");
 
-    // Allow Admins and Setters
     if (!token || !role || (role.toLowerCase() !== "admin" && role.toLowerCase() !== "setter")) {
         console.error("⛔ ACCESS DENIED: Redirecting to login...");
         alert("Unauthorized! Please login.");
@@ -500,31 +488,35 @@
     }
 
     const adminName = localStorage.getItem("userName");
-    if(adminName) {
-        document.getElementById("adminName").innerText = "Welcome, " + adminName;
-    }
+    if(adminName) { document.getElementById("adminName").innerText = "Welcome, " + adminName; }
 
+    // 🔥 NEW: State variables to track if we are Editing or Creating
     let currentEditingExamId = null;
+    let editingQuestionIndex = null;
+    let currentExamQuestions = [];
+    
+    let editingQBId = null;
+    let currentQBQuestions = [];
 
     // --- TAB SWITCHER LOGIC ---
     function switchTab(tabId, btnElement) {
         document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
         document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-
         document.getElementById(tabId).classList.add('active');
         btnElement.classList.add('active');
-
-        const titleText = btnElement.innerText.replace(/[^\w\s]/gi, '').trim();
-        document.getElementById('pageTitle').innerText = titleText;
-        
+        document.getElementById('pageTitle').innerText = btnElement.innerText.replace(/[^\w\s]/gi, '').trim();
         if(tabId === 'view-question-bank') loadQuestionBank();
     }
 
-    // --- 📸 SMART PASTE LOGIC (Shared between Exam & QB Modal) ---
+    // --- 📸 SMART PASTE LOGIC WITH MEMORY PRESERVATION ---
     let pastedImages = { 
         qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null,
         qbQImg: null, qbOpt1Img: null, qbOpt2Img: null, qbOpt3Img: null, qbOpt4Img: null, qbSolImg: null
     };
+
+    // 🔥 NEW: Store originally loaded images from DB during Edit mode
+    let loadedExamImages = { qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null };
+    let loadedQBImages = { qbQImg: null, qbOpt1Img: null, qbOpt2Img: null, qbOpt3Img: null, qbOpt4Img: null, qbSolImg: null };
 
     document.addEventListener("paste", function(e) {
         const activeElement = document.activeElement;
@@ -536,7 +528,7 @@
         for (let item of items) {
             if (item.type.indexOf("image") === 0) {
                 const file = item.getAsFile();
-                pastedImages[zoneId] = file;
+                pastedImages[zoneId] = file; // Register new file
 
                 const reader = new FileReader();
                 reader.onload = function(event) {
@@ -544,7 +536,7 @@
                     imgPreview.src = event.target.result;
                     imgPreview.style.display = "block";
                     activeElement.querySelector('.clear-img-btn').style.display = "block";
-                    activeElement.childNodes[0].nodeValue = "";
+                    activeElement.querySelector('.paste-text').style.display = "none";
                 };
                 reader.readAsDataURL(file);
             }
@@ -553,14 +545,31 @@
 
     function clearPasteZone(zoneId, event) {
         if(event) event.stopPropagation();
-        pastedImages[zoneId] = null;
+        pastedImages[zoneId] = null; // Clear pasted memory
+        
+        // 🔥 NEW: Also clear DB loaded memory if user explicitly deletes it
+        if(loadedExamImages.hasOwnProperty(zoneId)) loadedExamImages[zoneId] = null;
+        if(loadedQBImages.hasOwnProperty(zoneId)) loadedQBImages[zoneId] = null;
+
         document.getElementById(`preview-${zoneId}`).style.display = "none";
         document.getElementById(`preview-${zoneId}`).src = "";
         document.querySelector(`#zone-${zoneId} .clear-img-btn`).style.display = "none";
-        document.getElementById(`zone-${zoneId}`).childNodes[0].nodeValue = "📸 Click here & press Ctrl+V to paste image";
+        document.querySelector(`#zone-${zoneId} .paste-text`).style.display = "inline";
     }
 
-    // --- HELPER: IMAGE COMPRESSOR ---
+    // Helper: programmatically inject an existing DB image into the paste zone
+    function preloadImageZone(zoneId, imgBase64, memoryStore) {
+        if(imgBase64) {
+            document.getElementById(`preview-${zoneId}`).src = imgBase64;
+            document.getElementById(`preview-${zoneId}`).style.display = "block";
+            document.querySelector(`#zone-${zoneId} .clear-img-btn`).style.display = "block";
+            document.querySelector(`#zone-${zoneId} .paste-text`).style.display = "none";
+            memoryStore[zoneId] = imgBase64;
+        } else {
+            clearPasteZone(zoneId);
+        }
+    }
+
     function compressImage(file) {
         return new Promise((resolve) => {
             if (!file) return resolve(null);
@@ -572,16 +581,9 @@
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     const MAX_WIDTH = 700;
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > MAX_WIDTH) {
-                        height = Math.round((height * MAX_WIDTH) / width);
-                        width = MAX_WIDTH;
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
+                    let width = img.width; let height = img.height;
+                    if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+                    canvas.width = width; canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
                     resolve(canvas.toDataURL('image/jpeg', 0.7));
@@ -590,34 +592,23 @@
         });
     }
 
-    function logout() {
-        localStorage.clear();
-        window.location.href = "login.html";
-    }
+    function logout() { localStorage.clear(); window.location.href = "login.html"; }
 
-    // --- EXISTING EXAM LOGIC ---
+    // --- EXAM MANAGEMENT ---
     async function createNewExam() {
         if(role.toLowerCase() !== "admin") return alert("Only Admins can create exams.");
         const title = document.getElementById("newExamTitle").value;
         const type = document.getElementById("newExamType").value;
         const timer = parseInt(document.getElementById("newExamTimer").value) || 180;
-
         if (!title) return alert("Please enter an Exam Title!");
-
-        const payload = { title: title, examType: type, timerMinutes: timer, questions: [] };
 
         try {
             const res = await fetch(`${BACKEND_URL}/api/exams`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify(payload)
+                method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ title: title, examType: type, timerMinutes: timer, questions: [] })
             });
-
-            if (res.ok) {
-                alert("Exam created!");
-                document.getElementById("newExamTitle").value = "";
-                loadExams();
-            } else alert("Failed to create exam.");
+            if (res.ok) { alert("Exam created!"); document.getElementById("newExamTitle").value = ""; loadExams(); } 
+            else alert("Failed to create exam.");
         } catch (err) { console.error(err); }
     }
 
@@ -631,17 +622,13 @@
             exams.forEach(exam => {
                 const examTypeStr = exam.examType ? `<span style="background:var(--secondary); color:white; padding:2px 8px; border-radius:12px; font-size:11px; margin-left:8px;">${exam.examType}</span>` : '';
                 const examTimerStr = exam.timerMinutes ? ` | ⏱️ ${exam.timerMinutes} mins` : ' | ⏱️ 180 mins';
-                
-                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary" style="background:#e74c3c; border: none; margin-left: 5px;" onclick="deleteExam('${exam.id}')">🗑️</button>` : "";
+                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border: none;" onclick="deleteExam('${exam.id}')">🗑️ Delete</button>` : "";
 
                 list.innerHTML += `
                     <div class="exam-item">
+                        <div><strong>${exam.title}</strong> ${examTypeStr}<br><small>${exam.questions ? exam.questions.length : 0} Questions ${examTimerStr}</small></div>
                         <div>
-                            <strong>${exam.title}</strong> ${examTypeStr}<br>
-                            <small>${exam.questions ? exam.questions.length : 0} Questions ${examTimerStr}</small>
-                        </div>
-                        <div>
-                            <button class="btn btn-outline" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Manage</button>
+                            <button class="btn btn-outline btn-small" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Manage</button>
                             ${delBtn}
                         </div>
                     </div>`;
@@ -657,61 +644,29 @@
         } catch(e) { console.error(e); }
     }
 
-    // --- USER MANAGEMENT (Admin Only) ---
-    async function createUser() {
-        if(role.toLowerCase() !== "admin") return alert("Only Admins can create users.");
-        const name = document.getElementById("userName").value.trim();
-        const email = document.getElementById("userEmail").value.trim();
-        const password = document.getElementById("userPass").value.trim();
-        const userRole = document.getElementById("userRole").value;
-
-        if (!name || !email || !password) return alert("Please fill all user fields.");
-
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/admin/users`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ name, email, password, role: userRole })
-            });
-            if (res.ok) {
-                alert(`User ${name} created successfully! ✅`);
-                document.getElementById("userName").value = ""; document.getElementById("userEmail").value = ""; document.getElementById("userPass").value = "";
-            } else alert("Failed to create user.");
-        } catch (error) { console.error("Error creating user:", error); }
-    }
-
-    // --- QUESTION BANK LOGIC (NEW) ---
-    
-    // Dynamic UI logic for Section changes
+    // --- QUESTION BANK LOGIC ---
     function handleSectionChange() {
         const section = document.getElementById('qbSection').value;
         const optionsContainer = document.getElementById('qbOptionsContainer');
         const integerContainer = document.getElementById('qbIntegerContainer');
 
-        optionsContainer.style.display = 'none';
-        integerContainer.style.display = 'none';
+        optionsContainer.style.display = 'none'; integerContainer.style.display = 'none';
 
         if (section === 'Integer based question') {
             integerContainer.style.display = 'block';
         } else if (section === 'Multiple correct answer') {
             optionsContainer.style.display = 'block';
-            document.querySelectorAll('.qb-selector').forEach(el => {
-                el.setAttribute('type', 'checkbox');
-                el.removeAttribute('name'); // Allow independent toggling
-            });
+            document.querySelectorAll('.qb-selector').forEach(el => { el.setAttribute('type', 'checkbox'); el.removeAttribute('name'); });
         } else {
-            // Single Correct or Match the following
             optionsContainer.style.display = 'block';
-            document.querySelectorAll('.qb-selector').forEach(el => {
-                el.setAttribute('type', 'radio');
-                el.setAttribute('name', 'qbCorrectSelect'); // Enforce single selection
-            });
+            document.querySelectorAll('.qb-selector').forEach(el => { el.setAttribute('type', 'radio'); el.setAttribute('name', 'qbCorrectSelect'); });
         }
     }
 
     function openQBEditor() {
+        resetQBForm();
         document.getElementById("qbEditorModal").style.display = "flex";
-        handleSectionChange(); // Initialize view
+        handleSectionChange();
     }
 
     function closeQBEditor() {
@@ -719,34 +674,122 @@
         loadQuestionBank();
     }
 
+    // 🔥 NEW: Reset Question Bank Form
+    function resetQBForm() {
+        editingQBId = null;
+        document.getElementById("qbFormTitle").innerText = "Add to Question Bank";
+        document.getElementById("addQBBtn").innerText = "Add to Question Bank ✅";
+        document.getElementById("cancelQBEditBtn").style.display = "none";
+        
+        document.getElementById("qbQText").value = ""; document.getElementById("qbTopics").value = "";
+        document.getElementById("qbOpt1").value = ""; document.getElementById("qbOpt2").value = "";
+        document.getElementById("qbOpt3").value = ""; document.getElementById("qbOpt4").value = "";
+        document.getElementById("qbHint").value = ""; document.getElementById("qbSolutionText").value = "";
+        document.getElementById("qbIntInput").value = "";
+        
+        document.querySelectorAll('.qb-selector').forEach((sel, i) => sel.checked = (i===0));
+        
+        clearPasteZone('qbQImg'); clearPasteZone('qbOpt1Img'); clearPasteZone('qbOpt2Img'); 
+        clearPasteZone('qbOpt3Img'); clearPasteZone('qbOpt4Img'); clearPasteZone('qbSolImg');
+    }
+
     async function loadQuestionBank() {
         try {
             const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
             const qbList = await res.json();
+            currentQBQuestions = qbList; // Track for editing
             const listDiv = document.getElementById("qbList");
             listDiv.innerHTML = "";
             
-            if(qbList.length === 0) {
-                listDiv.innerHTML = "<div style='padding: 15px; color: #777;'>Bank is empty. Add questions!</div>";
-                return;
-            }
+            if(qbList.length === 0) return listDiv.innerHTML = "<div style='padding: 15px; color: #777;'>Bank is empty. Add questions!</div>";
 
-            qbList.forEach(q => {
-                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary" style="background:#e74c3c; border:none; padding: 6px 12px; font-size: 12px;" onclick="deleteQBQuestion('${q.id}')">Delete</button>` : "";
-                
+            qbList.forEach((q, i) => {
+                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
+                const editBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-outline btn-small" onclick="loadEditQBQuestion('${q.id}')">✏️ Edit</button>` : "";
+
                 listDiv.innerHTML += `
-                    <div class="qb-item">
-                        <div>
-                            <span class="qb-badge" style="background:var(--primary);">${q.exam_type || 'N/A'}</span>
-                            <span class="qb-badge" style="background:var(--success);">${q.subject || 'N/A'}</span>
-                            <span class="qb-badge" style="background:#8e44ad;">${q.section || 'N/A'}</span><br>
-                            <div style="margin-top: 8px;"><strong>Q:</strong> ${q.question ? q.question.substring(0,60)+'...' : '<i>[Image Only]</i>'}</div>
-                            <small style="color: #666;">Topics: ${q.topics && q.topics.length ? q.topics.join(', ') : 'None'}</small>
+                    <div class="qb-item" style="flex-direction: column; align-items: stretch;">
+                        <div style="display:flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <span class="qb-badge" style="background:var(--primary);">${q.exam_type || 'N/A'}</span>
+                                <span class="qb-badge" style="background:var(--success);">${q.subject || 'N/A'}</span>
+                                <span class="qb-badge" style="background:#8e44ad;">${q.section || 'N/A'}</span><br>
+                                <div style="margin-top: 8px;"><strong>Q:</strong> ${q.question ? q.question.substring(0,60)+'...' : '<i>[Image Only]</i>'}</div>
+                                <small style="color: #666;">Topics: ${q.topics && q.topics.length ? q.topics.join(', ') : 'None'}</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')">👁️ View</button>
+                                ${editBtn}
+                                ${delBtn}
+                            </div>
                         </div>
-                        <div>${delBtn}</div>
+                        <div id="qb-details-${i}" class="q-details-box">
+                            ${q.questionImage ? `<img src="${q.questionImage}">` : ''}
+                            <p><b>Options:</b> 
+                                ${q.options && q.options.length ? q.options.join(' | ') : 'N/A (Integer)'}
+                            </p>
+                            <p><b>Correct Answer:</b> <span style="color:var(--success)">${q.correctAnswers ? q.correctAnswers.join(', ') : 'None'}</span></p>
+                            ${q.hint ? `<p><b>Hint:</b> ${q.hint}</p>` : ''}
+                            ${q.solution ? `<p><b>Solution:</b> ${q.solution}</p>` : ''}
+                            ${q.solutionImage ? `<img src="${q.solutionImage}">` : ''}
+                        </div>
                     </div>`;
             });
         } catch(e) { console.error("Could not load Question Bank:", e); }
+    }
+
+    // 🔥 NEW: Helper to toggle the view details box
+    function toggleView(divId) {
+        const el = document.getElementById(divId);
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // 🔥 NEW: Load QB Question into Editor Modal
+    function loadEditQBQuestion(id) {
+        if(role.toLowerCase() !== "admin") return alert("Only Admins can edit question bank.");
+        editingQBId = id;
+        const q = currentQBQuestions.find(x => x.id === id);
+        if(!q) return;
+
+        document.getElementById("qbFormTitle").innerText = "Edit Question";
+        document.getElementById("addQBBtn").innerText = "Update Question in Bank ✏️";
+        document.getElementById("cancelQBEditBtn").style.display = "block";
+
+        document.getElementById("qbExamType").value = q.exam_type || "Practice type";
+        document.getElementById("qbSubject").value = q.subject || "Physics";
+        document.getElementById("qbSection").value = q.section || "Single correct answer";
+        document.getElementById("qbTopics").value = (q.topics || []).join(', ');
+        
+        handleSectionChange(); // Render correct input type
+
+        document.getElementById("qbQText").value = q.question || "";
+        document.getElementById("qbHint").value = q.hint || "";
+        document.getElementById("qbSolutionText").value = q.solution || "";
+
+        if (q.section === 'Integer based question') {
+            document.getElementById("qbIntInput").value = (q.correctAnswers && q.correctAnswers[0]) ? q.correctAnswers[0] : "";
+        } else {
+            document.getElementById("qbOpt1").value = q.options[0] || "";
+            document.getElementById("qbOpt2").value = q.options[1] || "";
+            document.getElementById("qbOpt3").value = q.options[2] || "";
+            document.getElementById("qbOpt4").value = q.options[3] || "";
+            
+            const selectors = document.querySelectorAll('.qb-selector');
+            selectors.forEach((sel, idx) => {
+                sel.checked = (q.correctAnswers || []).includes(q.options[idx]);
+            });
+        }
+
+        // Preload Images
+        preloadImageZone('qbQImg', q.questionImage, loadedQBImages);
+        preloadImageZone('qbOpt1Img', q.optionImages ? q.optionImages[0] : null, loadedQBImages);
+        preloadImageZone('qbOpt2Img', q.optionImages ? q.optionImages[1] : null, loadedQBImages);
+        preloadImageZone('qbOpt3Img', q.optionImages ? q.optionImages[2] : null, loadedQBImages);
+        preloadImageZone('qbOpt4Img', q.optionImages ? q.optionImages[3] : null, loadedQBImages);
+        preloadImageZone('qbSolImg', q.solutionImage, loadedQBImages);
+
+        document.getElementById("qbEditorModal").style.display = "flex";
+        document.getElementById("qbEditorModal").querySelector('.modal-content').scrollTo(0,0);
     }
 
     async function deleteQBQuestion(id) {
@@ -759,173 +802,150 @@
 
     async function submitNewQBQuestion() {
         const btn = document.getElementById("addQBBtn");
-        btn.innerText = "Processing Images... ⏳";
-        btn.disabled = true;
+        btn.innerText = "Processing Images... ⏳"; btn.disabled = true;
 
         try {
             const section = document.getElementById("qbSection").value;
             const qText = document.getElementById("qbQText").value.trim();
 
-            const [qImage, o1Image, o2Image, o3Image, o4Image, solImage] = await Promise.all([
-                compressImage(pastedImages.qbQImg), compressImage(pastedImages.qbOpt1Img),
-                compressImage(pastedImages.qbOpt2Img), compressImage(pastedImages.qbOpt3Img),
-                compressImage(pastedImages.qbOpt4Img), compressImage(pastedImages.qbSolImg)
-            ]);
+            // 🔥 NEW: Check pasted images FIRST, fallback to DB loaded memory if unchanged
+            const finalQImage = pastedImages.qbQImg ? await compressImage(pastedImages.qbQImg) : loadedQBImages.qbQImg;
+            const finalO1Img = pastedImages.qbOpt1Img ? await compressImage(pastedImages.qbOpt1Img) : loadedQBImages.qbOpt1Img;
+            const finalO2Img = pastedImages.qbOpt2Img ? await compressImage(pastedImages.qbOpt2Img) : loadedQBImages.qbOpt2Img;
+            const finalO3Img = pastedImages.qbOpt3Img ? await compressImage(pastedImages.qbOpt3Img) : loadedQBImages.qbOpt3Img;
+            const finalO4Img = pastedImages.qbOpt4Img ? await compressImage(pastedImages.qbOpt4Img) : loadedQBImages.qbOpt4Img;
+            const finalSolImg = pastedImages.qbSolImg ? await compressImage(pastedImages.qbSolImg) : loadedQBImages.qbSolImg;
 
-            if (!qText && !qImage) {
-                return alert("You must provide either Question Text or a Question Image.");
-            }
+            if (!qText && !finalQImage) return alert("You must provide either Question Text or a Question Image.");
 
             const payload = {
-                exam_type: document.getElementById('qbExamType').value,
-                subject: document.getElementById('qbSubject').value,
-                section: section,
+                exam_type: document.getElementById('qbExamType').value, subject: document.getElementById('qbSubject').value, section: section,
                 topics: document.getElementById('qbTopics').value.split(',').map(t=>t.trim()).filter(t=>t),
-                question: qText,
-                questionImage: qImage,
-                hint: document.getElementById('qbHint').value.trim(),
-                solution: document.getElementById('qbSolutionText').value.trim(),
-                solutionImage: solImage,
-                options: [],
-                optionImages: [],
-                correctAnswers: []
+                question: qText, questionImage: finalQImage, hint: document.getElementById('qbHint').value.trim(),
+                solution: document.getElementById('qbSolutionText').value.trim(), solutionImage: finalSolImg,
+                options: [], optionImages: [], correctAnswers: []
             };
 
-            // Logic changes based on Section type
             if (section === 'Integer based question') {
                 const intAns = document.getElementById("qbIntInput").value;
                 if(intAns === "") return alert("Please provide an integer answer.");
                 payload.correctAnswers = [intAns];
             } else {
                 const optTexts = [
-                    document.getElementById("qbOpt1").value.trim() || "Option A",
-                    document.getElementById("qbOpt2").value.trim() || "Option B",
-                    document.getElementById("qbOpt3").value.trim() || "Option C",
-                    document.getElementById("qbOpt4").value.trim() || "Option D"
+                    document.getElementById("qbOpt1").value.trim() || "Option A", document.getElementById("qbOpt2").value.trim() || "Option B",
+                    document.getElementById("qbOpt3").value.trim() || "Option C", document.getElementById("qbOpt4").value.trim() || "Option D"
                 ];
                 payload.options = optTexts;
-                payload.optionImages = [o1Image, o2Image, o3Image, o4Image];
+                payload.optionImages = [finalO1Img, finalO2Img, finalO3Img, finalO4Img];
 
-                // Gather checked answers
                 const selectors = document.querySelectorAll('.qb-selector');
-                selectors.forEach((sel, idx) => {
-                    if(sel.checked) payload.correctAnswers.push(optTexts[idx]);
-                });
-
+                selectors.forEach((sel, idx) => { if(sel.checked) payload.correctAnswers.push(optTexts[idx]); });
                 if(payload.correctAnswers.length === 0) return alert("Select at least one correct option.");
             }
 
-            const res = await fetch(`${BACKEND_URL}/api/question_bank`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            let endpoint = `${BACKEND_URL}/api/question_bank`;
+            let method = "POST";
+
+            // 🔥 NEW: If editing, switch to PUT route
+            if(editingQBId !== null) {
+                endpoint = `${BACKEND_URL}/api/question_bank/${editingQBId}`;
+                method = "PUT";
+            }
+
+            const res = await fetch(endpoint, {
+                method: method, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(payload)
             });
 
             if(res.ok) {
-                alert("Question added to Bank! ✅");
+                alert(editingQBId ? "Question Updated! ✅" : "Question added to Bank! ✅");
                 closeQBEditor();
-            } else {
-                alert("Failed to add question to bank.");
-            }
-        } catch(e) {
-            console.error(e);
-            alert("Error uploading question.");
-        } finally {
-            btn.innerText = "Add to Question Bank ✅";
-            btn.disabled = false;
-        }
+            } else alert("Failed to save question.");
+        } catch(e) { console.error(e); alert("Error saving question.");
+        } finally { btn.innerText = "Add to Question Bank ✅"; btn.disabled = false; }
     }
 
-    async function uploadQBZIP() {
+    async function uploadQBZIP() { /* Intentionally identical to previous logic */
         const fileInput = document.getElementById('qbZipFile');
         const file = fileInput.files[0];
         const btn = document.getElementById('qbZipUploadBtn');
 
         if (!file) return alert("Please select a .zip file first!");
 
-        btn.innerText = "Extracting & Uploading... ⏳";
-        btn.disabled = true;
+        btn.innerText = "Extracting & Uploading... ⏳"; btn.disabled = true;
 
-        const formData = new FormData();
-        formData.append("file", file);
+        const formData = new FormData(); formData.append("file", file);
 
         try {
-            const res = await fetch(`${BACKEND_URL}/api/question_bank/bulk-upload-zip`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` },
-                body: formData
-            });
-
+            const res = await fetch(`${BACKEND_URL}/api/question_bank/bulk-upload-zip`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });
             const data = await res.json();
-            if (res.ok) {
-                alert(data.message);
-                fileInput.value = "";
-                closeQBEditor();
-            } else {
-                alert("Upload Failed: " + (data.detail || "Unknown error"));
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Connection error during upload.");
-        } finally {
-            btn.innerText = "Upload ZIP";
-            btn.disabled = false;
-        }
+            if (res.ok) { alert(data.message); fileInput.value = ""; closeQBEditor(); } 
+            else alert("Upload Failed: " + (data.detail || "Unknown error"));
+        } catch (e) { console.error(e); alert("Connection error during upload."); } 
+        finally { btn.innerText = "Upload ZIP"; btn.disabled = false; }
     }
 
-    // --- OTHER EXISTING FUNCTIONS (Results, Exam ZIP, etc.) remain intact below ---
+    // --- INDIVIDUAL EXAM EDITOR LOGIC ---
 
-    async function uploadZIP() {
-        const fileInput = document.getElementById('zipFile');
-        const file = fileInput.files[0];
-        const btn = document.getElementById('zipUploadBtn');
-
-        if (!file) return alert("Please select a .zip file first!");
-        if (!currentEditingExamId) return alert("No exam selected.");
-
-        btn.innerText = "Extracting & Uploading... ⏳";
-        btn.disabled = true;
-
-        const formData = new FormData();
-        formData.append("file", file);
-
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload-zip`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` },
-                body: formData
-            });
-            const data = await res.json();
-            if (res.ok) {
-                alert(data.message);
-                fileInput.value = "";
-                refreshQuestionList(currentEditingExamId);
-            } else alert("Upload Failed: " + (data.detail || "Unknown error"));
-        } catch (e) { console.error(e); } finally { btn.innerText = "Upload ZIP"; btn.disabled = false; }
+    // 🔥 NEW: Reset Exam Form to empty add state
+    function resetExamForm() {
+        editingQuestionIndex = null;
+        document.getElementById("examFormTitle").innerText = "Add Individual Question to Paper";
+        document.getElementById("addQuestionBtn").innerText = "Add Question ✅";
+        document.getElementById("cancelExamEditBtn").style.display = "none";
+        
+        document.getElementById("newQ").value = ""; 
+        document.getElementById("opt1").value = ""; document.getElementById("opt2").value = "";
+        document.getElementById("opt3").value = ""; document.getElementById("opt4").value = "";
+        
+        clearPasteZone('qImg'); clearPasteZone('opt1Img'); clearPasteZone('opt2Img'); 
+        clearPasteZone('opt3Img'); clearPasteZone('opt4Img');
     }
 
-    async function deleteQuestion(examId, index) {
-        if(!confirm("Delete this question?")) return;
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/questions/${index}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
-            if(res.ok) refreshQuestionList(examId);
-        } catch(e) { console.error(e); }
+    // 🔥 NEW: Load specific Exam Question to Edit
+    function loadEditQuestion(index) {
+        editingQuestionIndex = index;
+        const q = currentExamQuestions[index];
+        if(!q) return;
+
+        document.getElementById("examFormTitle").innerText = `Edit Question ${index + 1}`;
+        document.getElementById("addQuestionBtn").innerText = "Update Question ✏️";
+        document.getElementById("cancelExamEditBtn").style.display = "block";
+
+        document.getElementById("newQ").value = q.question || "";
+        document.getElementById("opt1").value = q.options[0] || "";
+        document.getElementById("opt2").value = q.options[1] || "";
+        document.getElementById("opt3").value = q.options[2] || "";
+        document.getElementById("opt4").value = q.options[3] || "";
+        document.getElementById("subjectSelect").value = q.subject || "Physics";
+
+        // Preload existing images
+        preloadImageZone('qImg', q.questionImage, loadedExamImages);
+        preloadImageZone('opt1Img', q.optionImages ? q.optionImages[0] : null, loadedExamImages);
+        preloadImageZone('opt2Img', q.optionImages ? q.optionImages[1] : null, loadedExamImages);
+        preloadImageZone('opt3Img', q.optionImages ? q.optionImages[2] : null, loadedExamImages);
+        preloadImageZone('opt4Img', q.optionImages ? q.optionImages[3] : null, loadedExamImages);
+
+        // Scroll to form
+        document.getElementById("newQ").scrollIntoView({behavior: "smooth"});
     }
 
     async function submitNewQuestion() {
         const btn = document.getElementById("addQuestionBtn");
-        btn.innerText = "Processing Images... ⏳";
-        btn.disabled = true;
+        btn.innerText = "Processing... ⏳"; btn.disabled = true;
 
         try {
             const qText = document.getElementById("newQ").value.trim();
-            const [qImage, o1Image, o2Image, o3Image, o4Image] = await Promise.all([
-                compressImage(pastedImages.qImg), compressImage(pastedImages.opt1Img), compressImage(pastedImages.opt2Img), compressImage(pastedImages.opt3Img), compressImage(pastedImages.opt4Img)
-            ]);
+            
+            // 🔥 NEW: Check pasted images FIRST, fallback to DB loaded memory if unchanged
+            const finalQImage = pastedImages.qImg ? await compressImage(pastedImages.qImg) : loadedExamImages.qImg;
+            const finalO1Img = pastedImages.opt1Img ? await compressImage(pastedImages.opt1Img) : loadedExamImages.opt1Img;
+            const finalO2Img = pastedImages.opt2Img ? await compressImage(pastedImages.opt2Img) : loadedExamImages.opt2Img;
+            const finalO3Img = pastedImages.opt3Img ? await compressImage(pastedImages.opt3Img) : loadedExamImages.opt3Img;
+            const finalO4Img = pastedImages.opt4Img ? await compressImage(pastedImages.opt4Img) : loadedExamImages.opt4Img;
 
-            if (!qText && !qImage) {
-                btn.innerText = "Add Question ✅";
-                btn.disabled = false;
+            if (!qText && !finalQImage) {
+                btn.innerText = "Add Question ✅"; btn.disabled = false;
                 return alert("You must provide either Question Text or a Question Image.");
             }
 
@@ -934,16 +954,28 @@
                 document.getElementById("opt3").value.trim() || "Option C", document.getElementById("opt4").value.trim() || "Option D"
             ];
 
-            const payload = { question: qText, questionImage: qImage, options: optTexts, optionImages: [o1Image, o2Image, o3Image, o4Image], correctAnswer: optTexts[0], subject: document.getElementById("subjectSelect").value };
+            const payload = { 
+                question: qText, questionImage: finalQImage, options: optTexts, 
+                optionImages: [finalO1Img, finalO2Img, finalO3Img, finalO4Img], 
+                correctAnswer: optTexts[0], subject: document.getElementById("subjectSelect").value 
+            };
 
-            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload) });
+            let endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`;
+            let method = "POST";
+
+            // 🔥 NEW: Switch to PUT if updating an existing index
+            if(editingQuestionIndex !== null) {
+                endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions/${editingQuestionIndex}`;
+                method = "PUT";
+            }
+
+            const res = await fetch(endpoint, { method: method, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload) });
 
             if(res.ok) {
-                alert("Question added! Option A is saved as the correct answer. ✅");
-                document.getElementById("newQ").value = ""; document.getElementById("opt1").value = ""; document.getElementById("opt2").value = ""; document.getElementById("opt3").value = ""; document.getElementById("opt4").value = "";
-                clearPasteZone('qImg'); clearPasteZone('opt1Img'); clearPasteZone('opt2Img'); clearPasteZone('opt3Img'); clearPasteZone('opt4Img');
+                alert(editingQuestionIndex !== null ? "Question Updated! ✅" : "Question added! ✅");
+                resetExamForm();
                 refreshQuestionList(currentEditingExamId);
-            } else alert("Failed to add question.");
+            } else alert("Failed to save question.");
         } catch(e) { console.error(e); } finally { btn.innerText = "Add Question ✅"; btn.disabled = false; }
     }
 
@@ -956,65 +988,89 @@
             list.innerHTML = "";
             
             if (exam && exam.questions) {
+                currentExamQuestions = exam.questions; // Keep memory copy
+                
                 exam.questions.forEach((q, i) => {
                     const hasImg = q.questionImage ? '🖼️ [Image Attached]' : '';
                     const qTextDisplay = q.question || "<i>(Image Only Question)</i>";
+                    
                     list.innerHTML += `
-                    <div style="padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:11px;">${q.subject}</span><br>
-                            <b>Q${i+1}:</b> ${qTextDisplay} <br>
-                            <small style="color: blue;">${hasImg}</small><br>
-                            <small style="color: var(--success);"><b>Correct:</b> ${q.correctAnswer}</small>
+                    <div style="padding:15px; border-bottom:1px solid #eee; display:flex; flex-direction: column;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:11px;">${q.subject}</span><br>
+                                <b>Q${i+1}:</b> ${qTextDisplay} <br>
+                                <small style="color: blue;">${hasImg}</small><br>
+                                <small style="color: var(--success);"><b>Correct:</b> ${q.correctAnswer}</small>
+                            </div>
+                            <div>
+                                <!-- 🔥 NEW: View Details and Edit button -->
+                                <button class="btn btn-outline btn-small" onclick="toggleView('q-details-${i}')">👁️ View</button>
+                                <button class="btn btn-outline btn-small" onclick="loadEditQuestion(${i})">✏️ Edit</button>
+                                <button class="btn btn-primary btn-small" style="background:#ff7675; border:none;" onclick="deleteQuestion('${examId}', ${i})">🗑️ Delete</button>
+                            </div>
                         </div>
-                        <button class="btn" style="background:#ff7675; color:white; font-size:12px;" onclick="deleteQuestion('${examId}', ${i})">Delete</button>
+                        <div id="q-details-${i}" class="q-details-box">
+                            ${q.questionImage ? `<img src="${q.questionImage}">` : ''}
+                            <p><b>Options:</b> A: ${q.options[0]}, B: ${q.options[1]}, C: ${q.options[2]}, D: ${q.options[3]}</p>
+                        </div>
                     </div>`;
                 });
             }
         } catch(e) { console.error(e); }
     }
 
+    // Existing unchanged routines...
+    async function uploadZIP() {
+        const fileInput = document.getElementById('zipFile'); const file = fileInput.files[0]; const btn = document.getElementById('zipUploadBtn');
+        if (!file) return alert("Please select a .zip file first!"); if (!currentEditingExamId) return alert("No exam selected.");
+        btn.innerText = "Extracting & Uploading... ⏳"; btn.disabled = true;
+        const formData = new FormData(); formData.append("file", file);
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload-zip`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });
+            const data = await res.json();
+            if (res.ok) { alert(data.message); fileInput.value = ""; refreshQuestionList(currentEditingExamId); } else alert("Upload Failed: " + (data.detail || "Unknown error"));
+        } catch (e) { console.error(e); } finally { btn.innerText = "Upload ZIP"; btn.disabled = false; }
+    }
+
+    async function deleteQuestion(examId, index) {
+        if(!confirm("Delete this question?")) return;
+        try { const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/questions/${index}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } }); if(res.ok) refreshQuestionList(examId); } catch(e) { console.error(e); }
+    }
+
     async function openEditor(id, title) {
-        currentEditingExamId = id;
+        currentEditingExamId = id; resetExamForm();
         document.getElementById("modalExamTitle").innerText = `Editing: ${title}`;
         document.getElementById("editorModal").style.display = "flex";
         refreshQuestionList(id);
     }
 
-    function closeEditor() {
-        document.getElementById("editorModal").style.display = "none";
-        loadExams();
+    function closeEditor() { document.getElementById("editorModal").style.display = "none"; loadExams(); }
+
+    async function createUser() {
+        if(role.toLowerCase() !== "admin") return alert("Only Admins can create users.");
+        const name = document.getElementById("userName").value.trim(); const email = document.getElementById("userEmail").value.trim(); const password = document.getElementById("userPass").value.trim(); const userRole = document.getElementById("userRole").value;
+        if (!name || !email || !password) return alert("Please fill all user fields.");
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/users`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify({ name, email, password, role: userRole }) });
+            if (res.ok) { alert(`User ${name} created successfully! ✅`); document.getElementById("userName").value = ""; document.getElementById("userEmail").value = ""; document.getElementById("userPass").value = ""; } else alert("Failed to create user.");
+        } catch (error) { console.error("Error creating user:", error); }
     }
 
     async function loadResults() {
         try {
             const res = await fetch(`${BACKEND_URL}/api/results`, { headers: { "Authorization": `Bearer ${token}` } });
             if(res.ok) {
-                const results = await res.json();
-                const list = document.getElementById("resultsList");
-                if(results.length === 0) {
-                    list.innerHTML = "<div style='padding: 15px; text-align: center; color: #777;'>No results yet.</div>";
-                } else {
-                    list.innerHTML = results.map(r => `
-                        <div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;">
-                            <div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}</div>
-                            <div style="flex: 3; color: #555;">${r.examTitle}</div>
-                            <div style="flex: 1; text-align: right; font-weight: bold; color: ${r.score >= 0 ? 'var(--success)' : 'var(--danger)'};">${r.score}</div>
-                        </div>
-                    `).join("");
-                }
+                const results = await res.json(); const list = document.getElementById("resultsList");
+                if(results.length === 0) list.innerHTML = "<div style='padding: 15px; text-align: center; color: #777;'>No results yet.</div>";
+                else list.innerHTML = results.map(r => `<div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;"><div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}</div><div style="flex: 3; color: #555;">${r.examTitle}</div><div style="flex: 1; text-align: right; font-weight: bold; color: ${r.score >= 0 ? 'var(--success)' : 'var(--danger)'};">${r.score}</div></div>`).join("");
             } else document.getElementById("resultsList").innerHTML = "<div>Cannot fetch results.</div>";
         } catch(e) { console.error("Could not load results:", e); }
     }
 
-    // Init based on roles
     if (token && role && (role.toLowerCase() === "admin" || role.toLowerCase() === "setter")) {
-        loadExams();
-        loadResults();
-        if(role.toLowerCase() === "setter") {
-            // Setters shouldn't see user/results management fully
-            document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
-        }
+        loadExams(); loadResults();
+        if(role.toLowerCase() === "setter") document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
     }
 </script>
 
