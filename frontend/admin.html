@@ -139,7 +139,7 @@
         .btn-outline:hover { background: var(--primary); color: white; }
         .btn-small { padding: 4px 8px; font-size: 11px; margin-left: 5px;} 
 
-        .exam-item, .qb-item {
+        .exam-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -150,6 +150,23 @@
             margin-bottom: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
+
+        /* NEW: Enhanced Question Card Styles added from the previous UI update */
+        .q-card { background: white; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; border-left: 5px solid var(--secondary); transition: 0.2s; margin-bottom: 15px; border-top: none; }
+        .q-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
+        .q-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;}
+        
+        .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;}
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; color: white; text-transform: uppercase; letter-spacing: 0.5px;}
+        .badge-type { background: var(--primary); }
+        .badge-subject { background: var(--success); }
+        .badge-section { background: #8e44ad; }
+        .badge-topic { background: #f39c12; color: #fff; box-shadow: 0 2px 4px rgba(243, 156, 18, 0.3); }
+        
+        .q-options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0; }
+        .opt-item-card { display: flex; align-items: center; padding: 10px; border: 1px solid #eee; border-radius: 4px; background: white; font-size: 13px;}
+        .opt-item-card.correct { border-color: var(--success); border-width: 2px; background: #e8f8f5; }
+        .opt-item-card strong { margin-right: 10px; color: #7f8c8d; }
 
         #editorModal, #qbEditorModal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -168,8 +185,6 @@
         .paste-zone:hover, .paste-zone:focus { border-color: var(--secondary); background: #ebf5fb; outline: none; }
         .img-preview { max-width: 100%; max-height: 80px; display: none; margin-top: 10px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .clear-img-btn { position: absolute; top: 5px; right: 5px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; cursor: pointer; display: none; }
-        
-        .qb-badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: white; margin-right: 5px; }
         
         .q-details-box { display:none; margin-top:10px; font-size: 13px; background:#f4f7f6; padding: 15px; border-radius:6px; border: 1px solid #ddd; }
         .q-details-box img { max-width: 150px; max-height: 100px; border-radius: 4px; margin: 5px 0; border: 1px solid #ccc;}
@@ -237,7 +252,6 @@
                 </div>
             </div>
             
-            <!-- NEW: Filter UI for Question Bank -->
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 20px; background: #fdfdfd; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
                 <select id="qbFilterSubject" style="margin-bottom: 0;">
                     <option value="">All Subjects</option>
@@ -255,7 +269,6 @@
                 <input type="text" id="qbFilterTopic" placeholder="Search Topic..." style="margin-bottom: 0;">
                 <button class="btn btn-secondary" style="background: var(--primary); color: white;" onclick="loadQuestionBank()">Filter 🔍</button>
             </div>
-            <!-- END NEW Filter UI -->
 
             <div id="qbList">Loading question bank...</div>
         </div>
@@ -769,21 +782,19 @@
         clearPasteZone('qbOpt3Img'); clearPasteZone('qbOpt4Img'); clearPasteZone('qbSolImg');
     }
 
+    // NEW: Integrated enhanced card UI layout with accurate filters and MathJax rendering
     async function loadQuestionBank() {
         try {
-            // NEW: Fetch filter values from the UI
             const fSub = document.getElementById("qbFilterSubject") ? document.getElementById("qbFilterSubject").value : "";
             const fSec = document.getElementById("qbFilterSection") ? document.getElementById("qbFilterSection").value : "";
             const fTopic = document.getElementById("qbFilterTopic") ? document.getElementById("qbFilterTopic").value : "";
             
-            // NEW: Build the query string dynamically
             const params = new URLSearchParams();
             if(fSub) params.append("subject", fSub);
             if(fSec) params.append("section", fSec);
             if(fTopic) params.append("topic", fTopic);
             const queryStr = params.toString() ? `?${params.toString()}` : "";
 
-            // NEW: Appended query string to the fetch URL
             const res = await fetch(`${BACKEND_URL}/api/question_bank${queryStr}`, { headers: { "Authorization": `Bearer ${token}` } });
             const qbList = await res.json();
             currentQBQuestions = qbList; 
@@ -793,34 +804,67 @@
             if(qbList.length === 0) return listDiv.innerHTML = "<div style='padding: 15px; color: #777;'>Bank is empty or no matches found. Add questions!</div>";
 
             qbList.forEach((q, i) => {
-                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
-                const editBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-outline btn-small" onclick="loadEditQBQuestion('${q.id}')">✏️ Edit</button>` : "";
+                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none; width:100%;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
+                const editBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-outline btn-small" style="width:100%;" onclick="loadEditQBQuestion('${q.id}')">✏️ Edit</button>` : "";
 
-                listDiv.innerHTML += `
-                    <div class="qb-item" style="flex-direction: column; align-items: stretch;">
-                        <div style="display:flex; justify-content: space-between; align-items: flex-start;">
-                            <div>
-                                <span class="qb-badge" style="background:var(--primary);">${q.exam_type || 'N/A'}</span>
-                                <span class="qb-badge" style="background:var(--success);">${q.subject || 'N/A'}</span>
-                                <span class="qb-badge" style="background:#8e44ad;">${q.section || 'N/A'}</span><br>
-                                <div style="margin-top: 8px;"><strong>Q:</strong> ${q.question ? q.question.substring(0,80)+'...' : '<i>[Image Only]</i>'}</div>
-                                <small style="color: #666;">Topics: ${q.topics && q.topics.length ? q.topics.join(', ') : 'None'}</small>
+                // Formatting options into detailed grid view
+                let optionsHTML = "";
+                if (q.options && q.options.length > 0) {
+                    optionsHTML = `<div class="q-options-grid">`;
+                    q.options.forEach((opt, idx) => {
+                        const isCorrect = q.correctAnswers && q.correctAnswers.includes(opt);
+                        const highlightClass = isCorrect ? 'correct' : '';
+                        const optionLetter = String.fromCharCode(65 + idx);
+                        optionsHTML += `
+                            <div class="opt-item-card ${highlightClass}">
+                                <strong>${optionLetter}.</strong> 
+                                <span>${opt}</span>
+                                ${isCorrect ? '<span style="margin-left:auto; color:var(--success); font-weight:bold;">✓</span>' : ''}
                             </div>
+                        `;
+                    });
+                    optionsHTML += `</div>`;
+                } else {
+                    optionsHTML = `
+                        <div style="padding: 10px; background: #e8f8f5; border: 1px solid var(--success); border-radius: 4px; margin: 15px 0;">
+                            <strong>Numerical Answer:</strong> ${q.correctAnswers ? q.correctAnswers.join(', ') : 'N/A'}
+                        </div>
+                    `;
+                }
+
+                // Replacing standard view with enhanced detailed Q-card layout
+                listDiv.innerHTML += `
+                    <div class="q-card">
+                        <div class="q-card-header">
                             <div>
-                                <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')">👁️ View</button>
+                                <div class="badges">
+                                    <span class="badge badge-type">${q.exam_type || 'N/A'}</span>
+                                    <span class="badge badge-subject">${q.subject || 'N/A'}</span>
+                                    <span class="badge badge-section">${q.section || 'N/A'}</span>
+                                </div>
+                                <div style="margin-top: 8px; font-size: 15px; max-width: 650px;">
+                                    <strong>Q:</strong> ${q.question ? q.question.substring(0,100)+'...' : '<i>[Image Only]</i>'}
+                                </div>
+                                <div style="margin-top: 8px;">
+                                    <span class="badge badge-topic">🏷️ ${q.topics && q.topics.length ? q.topics.join(', ') : 'Uncategorized'}</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-direction: column; align-items: flex-end; min-width: 120px;">
+                                <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')" style="width: 100%;">👁️ Details</button>
                                 ${editBtn}
                                 ${delBtn}
                             </div>
                         </div>
+                        
                         <div id="qb-details-${i}" class="q-details-box">
-                            ${q.questionImage ? `<img src="${q.questionImage}">` : ''}
-                            <p><b>Options:</b> 
-                                ${q.options && q.options.length ? q.options.join(' | ') : 'N/A (Numerical)'}
-                            </p>
-                            <p><b>Correct Answer:</b> <span style="color:var(--success)">${q.correctAnswers ? q.correctAnswers.join(', ') : 'None'}</span></p>
-                            ${q.hint ? `<p><b>Hint:</b> ${q.hint}</p>` : ''}
-                            ${q.solution ? `<p><b>Solution:</b> ${q.solution}</p>` : ''}
-                            ${q.solutionImage ? `<img src="${q.solutionImage}">` : ''}
+                            <div style="font-size: 15px; margin-bottom: 10px;">${q.question || ''}</div>
+                            ${q.questionImage ? `<img src="${q.questionImage}" style="max-width: 100%; max-height: 200px;">` : ''}
+                            
+                            ${optionsHTML}
+                            
+                            ${q.hint ? `<p style="background: #fff3cd; padding: 8px; border-left: 3px solid #ffeeba; margin-bottom: 10px;"><b>Hint:</b> ${q.hint}</p>` : ''}
+                            ${q.solution ? `<p style="background: #d4edda; padding: 8px; border-left: 3px solid #c3e6cb;"><b>Solution:</b> ${q.solution}</p>` : ''}
+                            ${q.solutionImage ? `<img src="${q.solutionImage}" style="max-width: 100%; max-height: 200px; margin-top: 10px;">` : ''}
                         </div>
                     </div>`;
             });
@@ -1004,15 +1048,18 @@
                 resDiv.innerHTML = "<div style='color:#777; text-align:center;'>No questions match your filters.</div>";
                 importBtn.style.display = "none";
             } else {
+                // NEW: Applied the badges to the import results layout
                 filtered.forEach(q => {
                     const qText = q.question ? q.question.substring(0, 80) + '...' : '<i>[Image Only]</i>';
                     resDiv.innerHTML += `
-                        <div style="display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #eee;">
-                            <input type="checkbox" class="qb-import-cb" value="${q.id}" style="margin-right: 10px; width: auto;">
+                        <div style="display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; background: #fafafa; margin-bottom: 5px; border-radius: 4px;">
+                            <input type="checkbox" class="qb-import-cb" value="${q.id}" style="margin-right: 15px; width: 18px; height: 18px;">
                             <div style="flex: 1;">
-                                <span class="qb-badge" style="background:var(--success); font-size:10px;">${q.subject}</span>
-                                <span class="qb-badge" style="background:#8e44ad; font-size:10px;">${q.section}</span>
-                                <span style="font-size: 13px; margin-left: 5px;">${qText}</span>
+                                <div class="badges" style="margin-bottom: 5px;">
+                                    <span class="badge badge-subject" style="font-size: 9px; padding: 2px 6px;">${q.subject}</span>
+                                    <span class="badge badge-section" style="font-size: 9px; padding: 2px 6px;">${q.section}</span>
+                                </div>
+                                <span style="font-size: 13px;">${qText}</span>
                             </div>
                         </div>
                     `;
@@ -1222,24 +1269,46 @@
                     const hasImg = q.questionImage ? '🖼️ [Image Attached]' : '';
                     const qTextDisplay = q.question || "<i>(Image Only Question)</i>";
                     
+                    // NEW: Applied the enhanced grid layout for local exam questions
+                    let optionsHTML = "";
+                    if (q.section !== "Integer based question" && q.options && q.options.length > 0) {
+                        optionsHTML = `<div class="q-options-grid">`;
+                        q.options.forEach((opt, idx) => {
+                            const isCorrect = q.correctAnswer === opt;
+                            const highlightClass = isCorrect ? 'correct' : '';
+                            const optionLetter = String.fromCharCode(65 + idx);
+                            optionsHTML += `
+                                <div class="opt-item-card ${highlightClass}">
+                                    <strong>${optionLetter}.</strong> <span>${opt}</span>
+                                    ${isCorrect ? '<span style="margin-left:auto; color:var(--success); font-weight:bold;">✓</span>' : ''}
+                                </div>
+                            `;
+                        });
+                        optionsHTML += `</div>`;
+                    } else {
+                        optionsHTML = `<div style="padding: 10px; background: #e8f8f5; border: 1px solid var(--success); border-radius: 4px; margin: 15px 0;"><strong>Numerical Answer:</strong> ${q.correctAnswer}</div>`;
+                    }
+                    
                     list.innerHTML += `
-                    <div style="padding:15px; border-bottom:1px solid #eee; display:flex; flex-direction: column;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="q-card">
+                        <div class="q-card-header">
                             <div>
-                                <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:11px;">${q.subject}</span><br>
-                                <b>Q${i+1}:</b> ${qTextDisplay} <br>
-                                <small style="color: blue;">${hasImg}</small><br>
-                                <small style="color: var(--success);"><b>Correct:</b> ${q.correctAnswer}</small>
+                                <div class="badges" style="margin-bottom: 5px;">
+                                    <span class="badge badge-subject">${q.subject}</span>
+                                    <span class="badge badge-type" style="background: #34495e;">Q${i+1}</span>
+                                </div>
+                                <div style="margin-top: 8px;"><strong>${qTextDisplay}</strong></div>
+                                <small style="color: blue;">${hasImg}</small>
                             </div>
-                            <div>
-                                <button class="btn btn-outline btn-small" onclick="toggleView('q-details-${i}')">👁️ View</button>
-                                <button class="btn btn-outline btn-small" onclick="loadEditQuestion(${i})">✏️ Edit</button>
-                                <button class="btn btn-primary btn-small" style="background:#ff7675; border:none;" onclick="deleteQuestion('${examId}', ${i})">🗑️ Delete</button>
+                            <div style="display: flex; gap: 8px; flex-direction: column; min-width: 100px;">
+                                <button class="btn btn-outline btn-small" style="width: 100%;" onclick="toggleView('q-details-${i}')">👁️ View</button>
+                                <button class="btn btn-outline btn-small" style="width: 100%;" onclick="loadEditQuestion(${i})">✏️ Edit</button>
+                                <button class="btn btn-primary btn-small" style="background:#ff7675; border:none; width: 100%;" onclick="deleteQuestion('${examId}', ${i})">🗑️ Delete</button>
                             </div>
                         </div>
                         <div id="q-details-${i}" class="q-details-box">
-                            ${q.questionImage ? `<img src="${q.questionImage}">` : ''}
-                            <p><b>Options:</b> ${q.options && q.options.length ? `A: ${q.options[0]}, B: ${q.options[1]}, C: ${q.options[2]}, D: ${q.options[3]}` : 'N/A (Numerical)'}</p>
+                            ${q.questionImage ? `<img src="${q.questionImage}" style="max-width: 100%; max-height: 200px;">` : ''}
+                            ${optionsHTML}
                         </div>
                     </div>`;
                 });
