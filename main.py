@@ -387,10 +387,36 @@ async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depen
 # 🗄️ QUESTION BANK MANAGEMENT
 # ==========================================
 @app.get("/api/question_bank")
-async def get_question_bank(user=Depends(authorize(["admin", "setter"]))):
+async def get_question_bank(
+    subject: str = None, # NEW: Added subject filter parameter
+    section: str = None, # NEW: Added section filter parameter
+    topic: str = None,   # NEW: Added topic filter parameter
+    user=Depends(authorize(["admin", "setter"]))
+):
     try:
-        docs = db.collection("question_bank").stream()
-        return [{**doc.to_dict(), "id": doc.id} for doc in docs]
+        # NEW: Apply Firestore filters where directly possible
+        query = db.collection("question_bank")
+        if subject:
+            query = query.where("subject", "==", subject)
+        if section:
+            query = query.where("section", "==", section)
+            
+        docs = query.stream()
+        results = []
+        
+        for doc in docs:
+            data = doc.to_dict()
+            
+            # NEW: Post-filter by topic (robust, case-insensitive substring search across topics array)
+            if topic:
+                topic_lower = topic.lower()
+                topics_list = data.get("topics", [])
+                if not any(topic_lower in t.lower() for t in topics_list):
+                    continue
+                    
+            results.append({**data, "id": doc.id})
+            
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch question bank: {str(e)}")
 
