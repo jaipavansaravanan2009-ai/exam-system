@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Take Exam | JEE Portal</title>
     
+    <!-- 🔥 MathJax with mhchem for Chemistry & LaTeX Rendering -->
     <script>
         window.MathJax = {
             loader: {load: ['[tex]/mhchem']}, 
@@ -112,7 +113,8 @@
 <div class="container">
     <div class="left-panel">
         <div class="subject-tabs" id="subjectTabs">
-            </div>
+            <!-- Tabs injected dynamically -->
+        </div>
         
         <div class="question-content">
             <div class="q-header">
@@ -124,7 +126,8 @@
             <img id="qImage" class="question-image" src="" alt="Question Image">
             
             <div id="optionsContainer">
-                </div>
+                <!-- MCQ Options or Numerical Input goes here -->
+            </div>
         </div>
 
         <div class="action-footer">
@@ -144,7 +147,8 @@
         <div class="palette-container">
             <h4 style="margin-bottom: 10px; color: #555;">Question Palette</h4>
             <div class="palette-grid" id="paletteGrid">
-                </div>
+                <!-- Buttons injected dynamically -->
+            </div>
             
             <div class="legend">
                 <div class="leg-item"><div class="leg-box status-answered"></div> Answered</div>
@@ -161,24 +165,14 @@
 
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com";
-    const token = localStorage.getItem("studentToken");
+    
+    // FIX: Check multiple common keys to prevent false-positive auth failures
+    const token = localStorage.getItem("studentToken") || localStorage.getItem("token") || localStorage.getItem("adminToken");
     const studentName = localStorage.getItem("userName") || "Student";
     
-    if (!token) {
-        alert("Authentication required. Redirecting to login.");
-        window.location.href = "login.html";
-    }
-    
-    document.getElementById("studentNameDisplay").innerText = studentName;
-
-    // Get Exam ID from URL
+    // FIX: Get Exam ID from URL with a fallback key ('id' vs 'examId')
     const urlParams = new URLSearchParams(window.location.search);
-    const examId = urlParams.get('examId');
-    
-    if(!examId) {
-        alert("Invalid Exam ID.");
-        window.location.href = "dashboard.html";
-    }
+    const examId = urlParams.get('examId') || urlParams.get('id');
 
     // State Variables
     let examData = null;
@@ -194,6 +188,24 @@
     
     let timerInterval;
 
+    // FIX: Boot function handles checks gracefully using return statements
+    async function boot() {
+        if (!token) {
+            alert("Authentication required. Redirecting to login.");
+            window.location.href = "/"; // Direct to root to prevent static file 404s
+            return; 
+        }
+        
+        if(!examId) {
+            alert("Invalid Exam ID.");
+            window.location.href = "/dashboard.html"; // Absolute path
+            return;
+        }
+
+        document.getElementById("studentNameDisplay").innerText = studentName;
+        await fetchExam();
+    }
+
     // Initialize
     async function fetchExam() {
         try {
@@ -207,7 +219,7 @@
             
             if(questions.length === 0) {
                 alert("This exam has no questions.");
-                return window.location.href = "dashboard.html";
+                return window.location.href = "/dashboard.html";
             }
 
             document.getElementById("examTitleDisplay").innerText = examData.title;
@@ -233,7 +245,7 @@
         } catch(e) {
             console.error(e);
             alert("Error loading exam environment.");
-            window.location.href = "dashboard.html";
+            window.location.href = "/dashboard.html";
         }
     }
 
@@ -513,7 +525,7 @@
             
             if(res.ok) {
                 alert("Exam Submitted Successfully!");
-                window.location.href = "dashboard.html";
+                window.location.href = "/dashboard.html";
             } else {
                 alert("Failed to submit exam.");
                 document.getElementById("loadingOverlay").style.display = "none";
@@ -525,8 +537,8 @@
         }
     }
 
-    // Start App
-    window.onload = fetchExam;
+    // FIX: Attach the boot sequence correctly to the window load
+    window.onload = boot;
 
 </script>
 
