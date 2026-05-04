@@ -3,18 +3,30 @@
 <head>
     <title>JEE Mains Mock - Official Interface</title>
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <!-- FIX: Replaced KaTeX with MathJax + mhchem to match admin.html and properly render Chemistry \ce{} tags -->
+    <script>
+        window.MathJax = {
+            loader: {load: ['[tex]/mhchem']},
+            tex: { 
+                packages: {'[+]': ['mhchem']},
+                inlineMath: [['$', '$'], ['\\(', '\\)']], 
+                displayMath: [['$$', '$$'], ['\\[', '\\]']] 
+            },
+            startup: { typeset: false } 
+        };
+    </script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
     <style>
-        :root { --nta-blue: #1e3d59; --green: #27ae60; --red: #e74c3c; --purple: #8e44ad; --gray: #bdc3c7; }
+        :root { --nta-blue: #1e3d59; --green: #27ae60; --red: #e74c3c; --purple: #8e44ad; --gray: #bdc3c7; --secondary: #2e86c1; }
         body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
         /* Header & Subject Bar */
         header { background: var(--nta-blue); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
         .subject-bar { background: #fff; border-bottom: 1px solid #ccc; display: flex; }
-        .sub-btn { padding: 12px 25px; border: none; background: none; cursor: pointer; font-weight: bold; border-right: 1px solid #eee; }
+        .sub-btn { padding: 12px 25px; border: none; background: none; cursor: pointer; font-weight: bold; border-right: 1px solid #eee; transition: 0.2s;}
+        .sub-btn:hover { background: #f4f7f6; }
         .sub-btn.active { background: var(--nta-blue); color: white; }
 
         .main-container { display: flex; flex: 1; overflow: hidden; }
@@ -26,8 +38,11 @@
         .exam-img:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-color: var(--secondary); }
         .opt-img { max-width: 200px; max-height: 80px; border-radius: 4px; margin-left: 15px; vertical-align: middle; border: 1px solid #eee; cursor: zoom-in; transition: 0.2s; }
         .opt-img:hover { border-color: var(--secondary); transform: scale(1.05); }
-        .opt-row { margin: 12px 0; padding: 10px; border: 1px solid #f0f0f0; border-radius: 6px; transition: 0.2s; display: flex; align-items: center;}
+        
+        /* FIX: Enhanced Option Row UI */
+        .opt-row { margin: 12px 0; padding: 10px; border: 2px solid #f0f0f0; border-radius: 6px; transition: 0.2s; display: flex; align-items: center; cursor: pointer; }
         .opt-row:hover { background: #f9f9f9; border-color: #ddd; }
+        .opt-row.selected { border-color: var(--nta-blue); background: #ebf5fb; } /* Visual feedback for selected option */
 
         /* --- ADVANCED ZOOM MODAL --- */
         #zoomModal {
@@ -67,7 +82,7 @@
         
         .zoom-canvas {
             flex: 1;
-            overflow: auto; /* Allows scrolling when image is huge */
+            overflow: auto; 
             display: flex;
             justify-content: center;
             align-items: center;
@@ -77,21 +92,22 @@
             transition: width 0.2s ease;
             box-shadow: 0 0 20px rgba(0,0,0,0.8);
             border-radius: 4px;
-            background: white; /* In case of transparent PNGs */
+            background: white; 
         }
 
         /* Palette Colors */
-        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; }
-        .p-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; overflow-y: auto; padding-right: 5px; }
+        .p-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; font-weight: bold;}
         .p-btn.active { border: 2px solid #000; outline: 2px solid #3498db; }
-        .p-btn.visited { background: var(--red); color: white; border-radius: 50% 50% 0 0; }
-        .p-btn.answered { background: var(--green); color: white; border-radius: 0 0 50% 50%; }
-        .p-btn.review { background: var(--purple); color: white; border-radius: 50%; }
-        .p-btn.review-answered { background: var(--purple); color: white; border-radius: 50%; position: relative; }
-        .p-btn.review-answered::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 8px; height: 8px; background: var(--green); border-radius: 50%; border: 1px solid white; }
+        .p-btn.visited { background: var(--red); color: white; border-radius: 50% 50% 0 0; border-color: var(--red); }
+        .p-btn.answered { background: var(--green); color: white; border-radius: 0 0 50% 50%; border-color: var(--green); }
+        .p-btn.review { background: var(--purple); color: white; border-radius: 50%; border-color: var(--purple); }
+        .p-btn.review-answered { background: var(--purple); color: white; border-radius: 50%; position: relative; border-color: var(--purple); }
+        .p-btn.review-answered::after { content: ''; position: absolute; bottom: -2px; right: -2px; width: 12px; height: 12px; background: var(--green); border-radius: 50%; border: 1px solid white; }
 
-        .controls { margin-top: 30px; display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 20px; }
-        .btn { padding: 10px 18px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; }
+        .controls { margin-top: 30px; display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 20px; flex-wrap: wrap; }
+        .btn { padding: 10px 18px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; transition: 0.2s;}
+        .btn:hover { filter: brightness(0.9); }
         #timer { font-size: 20px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
     </style>
 </head>
@@ -119,15 +135,18 @@
             <button class="btn" style="background:#27ae60;" onclick="saveAndNext()">Save & Next</button>
             <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear Response</button>
             <button class="btn" style="background:#8e44ad;" onclick="markForReview()">Mark for Review & Next</button>
-            <button class="btn" style="background:#e67e22;" onclick="submitFinal()">Submit Exam</button>
+            <button class="btn" style="background:#e67e22; margin-left: auto;" onclick="submitFinal()">Submit Exam</button>
         </div>
     </div>
 
     <div class="sidebar">
         <h4>Question Palette</h4>
         <div class="palette-grid" id="palette"></div>
-        <div style="margin-top: auto; font-size: 12px;">
-            <p>🟢 Answered | 🔴 Not Answered | 🟣 Review | ⚪ Not Visited</p>
+        <div style="margin-top: auto; font-size: 13px; line-height: 1.8; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+            <div><span style="display:inline-block; width:12px; height:12px; background:var(--green); border-radius: 0 0 50% 50%;"></span> Answered</div>
+            <div><span style="display:inline-block; width:12px; height:12px; background:var(--red); border-radius: 50% 50% 0 0;"></span> Not Answered</div>
+            <div><span style="display:inline-block; width:12px; height:12px; background:var(--purple); border-radius: 50%;"></span> Marked for Review</div>
+            <div><span style="display:inline-block; width:12px; height:12px; background:white; border: 1px solid #999; border-radius: 4px;"></span> Not Visited</div>
         </div>
     </div>
 </div>
@@ -147,8 +166,6 @@
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com";
     
-    // Removed the top-level token check to prevent asynchronous execution bugs
-    
     let examData = null;
     let currentIdx = -1;
     let currentSub = 'Physics';
@@ -162,7 +179,7 @@
     function openZoom(src) {
         const img = document.getElementById("modalImg");
         img.src = src;
-        resetZoom(); // Start at 100% every time
+        resetZoom(); 
         document.getElementById("zoomModal").style.display = "flex";
     }
 
@@ -170,7 +187,6 @@
         document.getElementById("zoomModal").style.display = "none";
     }
 
-    // Close if they click the dark background, but not the image itself
     function handleCanvasClick(event) {
         if(event.target.id === "zoomCanvas") {
             closeZoom();
@@ -179,8 +195,8 @@
 
     function changeZoom(amount) {
         imgZoomLevel += amount;
-        if (imgZoomLevel < 50) imgZoomLevel = 50;   // Minimum 50%
-        if (imgZoomLevel > 500) imgZoomLevel = 500; // Maximum 500% zoom
+        if (imgZoomLevel < 50) imgZoomLevel = 50;  
+        if (imgZoomLevel > 500) imgZoomLevel = 500; 
         updateZoomCSS();
     }
 
@@ -207,26 +223,24 @@
     }
 
     window.onload = async () => {
-        // 🔥 FIX 1: Retrieve token safely inside the function
         const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
         
         if (!token) {
             alert("Security Error: You must be logged in to take an exam.");
             window.location.href = "login.html";
-            return; // 🔥 FIX 2: Halt execution immediately if no token
+            return; 
         }
 
         const urlParams = new URLSearchParams(window.location.search);
-        const examId = urlParams.get('id') || urlParams.get('examId'); // 🔥 FIX 3: Catch both parameter styles
+        const examId = urlParams.get('id') || urlParams.get('examId'); 
 
         if (!examId) {
             alert("Invalid Exam ID.");
-            window.location.href = "student_portal.html"; // Redirect to a safe page instead of trying to fetch null
-            return; // 🔥 FIX 4: Halt execution immediately if no exam ID
+            window.location.href = "student_portal.html"; 
+            return; 
         }
 
         try {
-            // 🔥 FIX 5: Ensure the Authorization header is passed to your backend
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`, {
                 headers: { "Authorization": `Bearer ${token}` } 
             });
@@ -234,7 +248,6 @@
             if (!res.ok) throw new Error("Exam not found or unauthorized");
             examData = await res.json();
             
-            // 🔥 SHUFFLE LOGIC
             if (examData.questions) {
                 examData.questions.forEach(q => {
                     if (q.options && q.options.length > 1) {
@@ -256,12 +269,9 @@
                 });
             }
 
-            // 🔥 DYNAMIC TIMER & TITLE UPDATE 🔥
             document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
-            
-            // Read the timer from the database, or default to 180 mins if it's an old exam
             const allocatedMinutes = examData.timerMinutes || 180;
-            timeLeft = allocatedMinutes * 60; // Convert to seconds for the countdown
+            timeLeft = allocatedMinutes * 60; 
 
             document.getElementById("examUI").style.display = "flex";
             
@@ -269,7 +279,7 @@
             startTimer();
         } catch (err) {
             alert("Error loading exam. Redirecting back to dashboard.");
-            window.location.href = "student_portal.html"; // 🔥 FIX 6: Exit gracefully on error
+            window.location.href = "student_portal.html"; 
         }
     };
 
@@ -294,11 +304,18 @@
     }
 
     function showQuestion(index) {
+        // FIX: Ensure the previous question is marked as visited if left blank, AND the new question immediately shows as visited
         if (currentIdx !== -1 && !statusMap[currentIdx]) {
             statusMap[currentIdx] = 'visited';
         }
         
         currentIdx = index;
+        
+        // Immediately mark the current question as visited so it updates on the palette before any action
+        if (!statusMap[currentIdx]) {
+            statusMap[currentIdx] = 'visited';
+        }
+        
         const q = examData.questions[index];
         document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
         
@@ -319,10 +336,14 @@
                 }
                 
                 const isChecked = studentAnswers[index] === opt ? 'checked' : '';
+                const isSelectedClass = isChecked ? 'selected' : '';
+                // FIX: Escape double quotes in options to prevent HTML breakage
+                const safeOptValue = opt.replace(/"/g, '&quot;');
+                
                 optionsHTML += `
-                    <div class="opt-row">
-                        <label style="cursor: pointer; display: flex; align-items: center; width: 100%;">
-                            <input type="radio" name="ans" value="${opt}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);">
+                    <div class="opt-row ${isSelectedClass}" onclick="handleRowClick(this)">
+                        <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                            <input type="radio" name="ans" value="${safeOptValue}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);" onclick="event.stopPropagation(); updateRowStyles(this)">
                             <span style="font-size: 16px;">${opt}</span>
                             ${imgHTML}
                         </label>
@@ -330,11 +351,26 @@
             });
             optDiv.innerHTML = optionsHTML;
         } else {
-            optDiv.innerHTML = `<input type="number" id="numAns" value="${studentAnswers[index] || ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px;">`;
+            optDiv.innerHTML = `<input type="number" step="any" id="numAns" value="${studentAnswers[index] !== undefined ? studentAnswers[index] : ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px; border: 2px solid #ccc; border-radius: 4px;">`;
         }
         
         renderPalette();
         renderMath();
+    }
+
+    // FIX: Function to handle clicking anywhere on the option row for better UX
+    function handleRowClick(rowDiv) {
+        const radio = rowDiv.querySelector('input[type="radio"]');
+        if (radio) {
+            radio.checked = true;
+            updateRowStyles(radio);
+        }
+    }
+
+    // FIX: Visually highlight the selected option row
+    function updateRowStyles(selectedRadio) {
+        document.querySelectorAll('.opt-row').forEach(row => row.classList.remove('selected'));
+        selectedRadio.closest('.opt-row').classList.add('selected');
     }
 
     function renderPalette() {
@@ -398,10 +434,11 @@
         if (currentIdx === -1) return;
         
         delete studentAnswers[currentIdx];
-        statusMap[currentIdx] = 'visited';
+        statusMap[currentIdx] = 'visited'; // FIX: When cleared, it should revert to 'visited' (Red)
         
         const radios = document.querySelectorAll('input[name="ans"]');
         radios.forEach(r => r.checked = false);
+        document.querySelectorAll('.opt-row').forEach(row => row.classList.remove('selected')); // FIX: Remove visual highlight
         
         const numInput = document.getElementById("numAns");
         if(numInput) numInput.value = "";
@@ -422,16 +459,13 @@
         }, 1000);
     }
 
-    // --- 🔥 BULLETPROOF SUBMIT FINAL FUNCTION 🔥 ---
     async function submitFinal() {
         if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
         
-        // Final "visited" status for current question if left empty
         if (currentIdx !== -1 && studentAnswers[currentIdx] === undefined) {
             statusMap[currentIdx] = 'visited';
         }
         
-        // 1. Lock the UI
         document.getElementById("examUI").style.pointerEvents = "none";
         document.getElementById("qText").innerHTML = "<h3 style='text-align:center; color: var(--nta-blue); margin-top: 50px;'>Submitting your exam, please wait... ⏳</h3>";
         document.getElementById("optionsList").innerHTML = "";
@@ -440,10 +474,8 @@
         const subjectWiseData = {};
         let totalScore = 0;
         
-        // 2. Safely Calculate Data
         if (examData && examData.questions) {
             examData.questions.forEach((q, i) => {
-                // Safety: Default to Physics if DB is missing the subject
                 const subject = q.subject || "Physics";
                 
                 if (!subjectWiseData[subject]) {
@@ -460,9 +492,8 @@
                      subjectWiseData[subject].markedForReviewCount++;
                 }
                 
-                // Safety: Explicit undefined/null check to handle empty string options properly
-                if (studentAns !== undefined && studentAns !== null) {
-                    if (studentAns === correctAns) {
+                if (studentAns !== undefined && studentAns !== null && studentAns !== "") { // FIX: Ensure empty string isn't graded as answered
+                    if (studentAns == correctAns) { // Using == to handle numerical string vs int comparisons safely
                         subjectWiseData[subject].correct++;
                         subjectWiseData[subject].score += 4;
                     } else {
@@ -479,10 +510,9 @@
             }
         }
         
-        // 3. Build Safe Payload
         const payload = {
             studentName: localStorage.getItem("userName") || "Guest Student",
-            examTitle: examData.title || "Untitled Exam", // Safety: Prevent Python 400 error
+            examTitle: examData.title || "Untitled Exam", 
             examId: new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId'),
             subjectWiseBreakdown: subjectWiseData
         };
@@ -498,7 +528,6 @@
                  alert("Exam Submitted Successfully! Total Score: " + totalScore);
                  window.location.href = "student_portal.html";
             } else {
-                 // Try to pull exact error from Python
                  let errorMsg = "API call failed";
                  try {
                      const errData = await res.json();
@@ -510,27 +539,19 @@
             console.error(e);
             alert("Submission Error: " + e.message);
             
-            // 🔥 CRITICAL RECOVERY: Un-brick the UI so the student can try again
             document.getElementById("examUI").style.pointerEvents = "auto";
             if(currentIdx !== -1) {
-                showQuestion(currentIdx); // Restores question text and options
+                showQuestion(currentIdx); 
             } else {
                 document.getElementById("qText").innerHTML = "<h3 style='color: var(--red);'>Submission failed. Please try again.</h3>";
             }
         }
     }
 
+    // FIX: Swapped KaTeX render function with MathJax to support the NTA-style \ce{} formulas used in the admin portal
     function renderMath() {
-        if (window.renderMathInElement) {
-            renderMathInElement(document.body, {
-                delimiters: [
-                    {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false},
-                    {left: '\\(', right: '\\)', display: false},
-                    {left: '\\[', right: '\\]', display: true}
-                ],
-                throwOnError: false
-            });
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
         }
     }
     
