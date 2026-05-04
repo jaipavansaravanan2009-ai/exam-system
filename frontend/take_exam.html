@@ -1,546 +1,539 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Take Exam | JEE Portal</title>
-    
-    <!-- 🔥 MathJax with mhchem for Chemistry & LaTeX Rendering -->
-    <script>
-        window.MathJax = {
-            loader: {load: ['[tex]/mhchem']}, 
-            tex: { 
-                packages: {'[+]': ['mhchem']}, 
-                inlineMath: [['$', '$'], ['\\(', '\\)']], 
-                displayMath: [['$$', '$$'], ['\\[', '\\]']] 
-            },
-            startup: { typeset: false } // We render manually on question change
-        };
-    </script>
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <title>JEE Mains Mock - Official Interface</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 
     <style>
-        :root {
-            --primary: #3498db;
-            --secondary: #2c3e50;
-            --answered: #27ae60;
-            --not-answered: #e74c3c;
-            --not-visited: #95a5a6;
-            --marked: #9b59b6;
-            --marked-answered: #8e44ad;
-            --bg: #f4f7f6;
+        :root { --nta-blue: #1e3d59; --green: #27ae60; --red: #e74c3c; --purple: #8e44ad; --gray: #bdc3c7; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* Header & Subject Bar */
+        header { background: var(--nta-blue); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .subject-bar { background: #fff; border-bottom: 1px solid #ccc; display: flex; }
+        .sub-btn { padding: 12px 25px; border: none; background: none; cursor: pointer; font-weight: bold; border-right: 1px solid #eee; }
+        .sub-btn.active { background: var(--nta-blue); color: white; }
+
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; position: relative; }
+        .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; }
+
+        /* Image Handling */
+        .exam-img { max-width: 100%; max-height: 250px; border-radius: 8px; margin-top: 15px; display: block; border: 1px solid #ddd; padding: 5px; cursor: zoom-in; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .exam-img:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-color: var(--secondary); }
+        .opt-img { max-width: 200px; max-height: 80px; border-radius: 4px; margin-left: 15px; vertical-align: middle; border: 1px solid #eee; cursor: zoom-in; transition: 0.2s; }
+        .opt-img:hover { border-color: var(--secondary); transform: scale(1.05); }
+        .opt-row { margin: 12px 0; padding: 10px; border: 1px solid #f0f0f0; border-radius: 6px; transition: 0.2s; display: flex; align-items: center;}
+        .opt-row:hover { background: #f9f9f9; border-color: #ddd; }
+
+        /* --- ADVANCED ZOOM MODAL --- */
+        #zoomModal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.92);
+            flex-direction: column;
+            backdrop-filter: blur(4px);
+        }
+        .zoom-toolbar {
+            background: #111;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        .zoom-btn {
+            padding: 8px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+            border: none;
+            background: var(--nta-blue);
+            color: white;
+            transition: 0.2s;
+        }
+        .zoom-btn:hover { background: var(--secondary); }
+        .zoom-btn.danger { background: var(--red); }
+        .zoom-btn.danger:hover { background: #c0392b; }
+        
+        .zoom-canvas {
+            flex: 1;
+            overflow: auto; /* Allows scrolling when image is huge */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        #modalImg {
+            transition: width 0.2s ease;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            border-radius: 4px;
+            background: white; /* In case of transparent PNGs */
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        body { background: var(--bg); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        /* Palette Colors */
+        .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; }
+        .p-btn { width: 35px; height: 35px; border: 1px solid #999; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 12px; }
+        .p-btn.active { border: 2px solid #000; outline: 2px solid #3498db; }
+        .p-btn.visited { background: var(--red); color: white; border-radius: 50% 50% 0 0; }
+        .p-btn.answered { background: var(--green); color: white; border-radius: 0 0 50% 50%; }
+        .p-btn.review { background: var(--purple); color: white; border-radius: 50%; }
+        .p-btn.review-answered { background: var(--purple); color: white; border-radius: 50%; position: relative; }
+        .p-btn.review-answered::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 8px; height: 8px; background: var(--green); border-radius: 50%; border: 1px solid white; }
 
-        /* Header */
-        .header { background: var(--secondary); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); z-index: 10; }
-        .timer-box { font-size: 18px; font-weight: bold; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); }
-
-        /* Main Layout */
-        .container { display: flex; flex: 1; overflow: hidden; }
-        
-        /* Left: Question Area */
-        .left-panel { flex: 3; display: flex; flex-direction: column; background: white; border-right: 2px solid #ddd; position: relative; }
-        
-        .subject-tabs { display: flex; background: #ecf0f1; border-bottom: 1px solid #ddd; }
-        .sub-tab { padding: 12px 20px; cursor: pointer; font-weight: 600; color: #555; border-right: 1px solid #ddd; border-bottom: 3px solid transparent; transition: 0.2s; }
-        .sub-tab.active { background: white; color: var(--primary); border-bottom: 3px solid var(--primary); }
-
-        .question-content { flex: 1; padding: 25px; overflow-y: auto; font-size: 16px; line-height: 1.6; }
-        .q-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 15px; color: var(--secondary); border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        
-        .question-text { margin-bottom: 20px; }
-        .question-image { max-width: 100%; max-height: 300px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 4px; display: none; }
-        
-        /* Options */
-        .option-label { display: flex; align-items: center; padding: 12px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px; cursor: pointer; transition: 0.2s; background: #fafafa; }
-        .option-label:hover { background: #f0f8ff; border-color: var(--primary); }
-        .option-label input[type="radio"] { margin-right: 15px; transform: scale(1.2); }
-        .opt-img { max-height: 80px; margin-left: 10px; border-radius: 4px; }
-
-        /* Numerical Input */
-        .numerical-input-container { padding: 15px; background: #e8f4f8; border: 1px solid #bce8f1; border-radius: 6px; margin-top: 20px; }
-        .numerical-input { padding: 10px; font-size: 16px; width: 200px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
-        .numerical-input:focus { border-color: var(--primary); box-shadow: 0 0 5px rgba(52, 152, 219, 0.5); }
-
-        /* Action Buttons */
-        .action-footer { display: flex; justify-content: space-between; padding: 15px 25px; background: #fdfdfd; border-top: 1px solid #eee; }
-        .btn { padding: 10px 20px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 14px; color: white; }
-        .btn-save { background: var(--success); } .btn-save:hover { background: #219653; }
-        .btn-mark { background: #f39c12; } .btn-mark:hover { background: #d68910; }
-        .btn-clear { background: #95a5a6; } .btn-clear:hover { background: #7f8c8d; }
-        
-        /* Right: Palette Area */
-        .right-panel { flex: 1; min-width: 280px; background: #fafafa; display: flex; flex-direction: column; }
-        
-        .user-info { padding: 20px; border-bottom: 1px solid #ddd; text-align: center; background: white; }
-        
-        .palette-container { padding: 20px; flex: 1; overflow-y: auto; }
-        .palette-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px; }
-        .pal-btn { width: 100%; aspect-ratio: 1; border-radius: 50%; border: none; font-weight: bold; font-size: 14px; color: white; cursor: pointer; background: var(--not-visited); box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.1s;}
-        .pal-btn:active { transform: scale(0.95); }
-        .pal-btn.active-q { border: 3px solid #333; transform: scale(1.1); box-shadow: 0 0 10px rgba(0,0,0,0.3); }
-
-        .status-answered { background: var(--answered); }
-        .status-not-answered { background: var(--not-answered); }
-        .status-marked { background: var(--marked); }
-        .status-marked-answered { background: var(--marked-answered); position: relative; }
-        .status-marked-answered::after { content: '✔'; position: absolute; bottom: -2px; right: -2px; background: #2ecc71; color: white; font-size: 10px; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-
-        .legend { margin-top: 20px; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .leg-item { display: flex; align-items: center; }
-        .leg-box { width: 15px; height: 15px; border-radius: 50%; margin-right: 8px; }
-
-        .submit-btn { padding: 15px; background: var(--primary); color: white; border: none; font-weight: bold; font-size: 16px; cursor: pointer; width: 100%; transition: 0.2s; }
-        .submit-btn:hover { background: #2980b9; }
-        
-        /* Modal */
-        #loadingOverlay { position: fixed; top:0; left:0; width:100%; height:100%; background:white; z-index: 1000; display:flex; justify-content:center; align-items:center; font-size: 20px; color: var(--secondary); font-weight:bold; }
+        .controls { margin-top: 30px; display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 20px; }
+        .btn { padding: 10px 18px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; }
+        #timer { font-size: 20px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
     </style>
 </head>
 <body>
 
-<div id="loadingOverlay">Loading Exam Environment... ⏳</div>
+<header>
+    <div id="examTitle">JEE Mock Exam</div>
+    <div id="timer">03:00:00</div>
+</header>
 
-<div class="header">
-    <div id="examTitleDisplay" style="font-size: 18px; font-weight: bold;">Mock Exam</div>
-    <div class="timer-box">⏱️ <span id="timeRemaining">00:00:00</span></div>
+<div class="subject-bar">
+    <button class="sub-btn active" onclick="filterSubject('Physics')">Physics</button>
+    <button class="sub-btn" onclick="filterSubject('Chemistry')">Chemistry</button>
+    <button class="sub-btn" onclick="filterSubject('Maths')">Mathematics</button>
 </div>
 
-<div class="container">
-    <div class="left-panel">
-        <div class="subject-tabs" id="subjectTabs">
-            <!-- Tabs injected dynamically -->
-        </div>
+<div class="main-container" id="examUI" style="display: none;">
+    <div class="question-section">
+        <h3 id="qNumber">Question</h3>
+        <hr>
+        <div id="qText" style="font-size: 18px; margin: 20px 0;">Select a subject to begin.</div>
+        <div id="optionsList"></div>
         
-        <div class="question-content">
-            <div class="q-header">
-                <span id="qNumberDisplay">Question 1</span>
-                <span id="qTypeDisplay" style="color: #7f8c8d; font-size: 14px;">Single Correct Type</span>
-            </div>
-            
-            <div class="question-text" id="qText"></div>
-            <img id="qImage" class="question-image" src="" alt="Question Image">
-            
-            <div id="optionsContainer">
-                <!-- MCQ Options or Numerical Input goes here -->
-            </div>
-        </div>
-
-        <div class="action-footer">
-            <div>
-                <button class="btn btn-mark" onclick="markForReview()">Mark for Review & Next</button>
-                <button class="btn btn-clear" onclick="clearResponse()">Clear Response</button>
-            </div>
-            <button class="btn btn-save" onclick="saveAndNext()">Save & Next</button>
+        <div class="controls">
+            <button class="btn" style="background:#27ae60;" onclick="saveAndNext()">Save & Next</button>
+            <button class="btn" style="background:#95a5a6;" onclick="clearResponse()">Clear Response</button>
+            <button class="btn" style="background:#8e44ad;" onclick="markForReview()">Mark for Review & Next</button>
+            <button class="btn" style="background:#e67e22;" onclick="submitFinal()">Submit Exam</button>
         </div>
     </div>
 
-    <div class="right-panel">
-        <div class="user-info">
-            <h3 id="studentNameDisplay" style="color: var(--secondary);">Student Name</h3>
+    <div class="sidebar">
+        <h4>Question Palette</h4>
+        <div class="palette-grid" id="palette"></div>
+        <div style="margin-top: auto; font-size: 12px;">
+            <p>🟢 Answered | 🔴 Not Answered | 🟣 Review | ⚪ Not Visited</p>
         </div>
-        
-        <div class="palette-container">
-            <h4 style="margin-bottom: 10px; color: #555;">Question Palette</h4>
-            <div class="palette-grid" id="paletteGrid">
-                <!-- Buttons injected dynamically -->
-            </div>
-            
-            <div class="legend">
-                <div class="leg-item"><div class="leg-box status-answered"></div> Answered</div>
-                <div class="leg-item"><div class="leg-box status-not-answered"></div> Not Answered</div>
-                <div class="leg-item"><div class="leg-box status-not-visited"></div> Not Visited</div>
-                <div class="leg-item"><div class="leg-box status-marked"></div> Marked</div>
-                <div class="leg-item" style="grid-column: span 2;"><div class="leg-box status-marked-answered"></div> Answered & Marked for Review</div>
-            </div>
-        </div>
-        
-        <button class="submit-btn" onclick="confirmSubmit()">Submit Exam</button>
+    </div>
+</div>
+
+<div id="zoomModal">
+    <div class="zoom-toolbar">
+        <button class="zoom-btn" onclick="changeZoom(50)">🔍 Zoom In (+)</button>
+        <button class="zoom-btn" onclick="changeZoom(-50)">🔍 Zoom Out (-)</button>
+        <button class="zoom-btn" onclick="resetZoom()" style="background: #7f8c8d;">Reset</button>
+        <button class="zoom-btn danger" onclick="closeZoom()">✖ Close</button>
+    </div>
+    <div class="zoom-canvas" id="zoomCanvas" onclick="handleCanvasClick(event)">
+        <img id="modalImg" src="">
     </div>
 </div>
 
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com";
     
-    // FIX: Check multiple common keys to prevent false-positive auth failures
-    const token = localStorage.getItem("studentToken") || localStorage.getItem("token") || localStorage.getItem("adminToken");
-    const studentName = localStorage.getItem("userName") || "Student";
+    // Removed the top-level token check to prevent asynchronous execution bugs
     
-    // FIX: Get Exam ID from URL with a fallback key ('id' vs 'examId')
-    const urlParams = new URLSearchParams(window.location.search);
-    const examId = urlParams.get('examId') || urlParams.get('id');
-
-    // State Variables
     let examData = null;
-    let questions = [];
-    let subjects = [];
-    let currentSubject = "";
-    let currentIndex = 0; // Global index across all subjects
-    
-    // Tracking Arrays (Length = total questions)
-    // Statuses: 'not-visited', 'not-answered', 'answered', 'marked', 'marked-answered'
-    let questionStatus = []; 
-    let userAnswers = []; // Store raw text of answer or numerical string
-    
-    let timerInterval;
+    let currentIdx = -1;
+    let currentSub = 'Physics';
+    let studentAnswers = {};
+    let statusMap = {};
+    let timeLeft = 180 * 60;
 
-    // FIX: Boot function handles checks gracefully using return statements
-    async function boot() {
-        if (!token) {
-            alert("Authentication required. Redirecting to login.");
-            window.location.href = "/"; // Direct to root to prevent static file 404s
-            return; 
-        }
-        
-        if(!examId) {
-            alert("Invalid Exam ID.");
-            window.location.href = "/dashboard.html"; // Absolute path
-            return;
-        }
+    // --- ZOOM LOGIC ---
+    let imgZoomLevel = 100;
 
-        document.getElementById("studentNameDisplay").innerText = studentName;
-        await fetchExam();
+    function openZoom(src) {
+        const img = document.getElementById("modalImg");
+        img.src = src;
+        resetZoom(); // Start at 100% every time
+        document.getElementById("zoomModal").style.display = "flex";
     }
 
-    // Initialize
-    async function fetchExam() {
+    function closeZoom() {
+        document.getElementById("zoomModal").style.display = "none";
+    }
+
+    // Close if they click the dark background, but not the image itself
+    function handleCanvasClick(event) {
+        if(event.target.id === "zoomCanvas") {
+            closeZoom();
+        }
+    }
+
+    function changeZoom(amount) {
+        imgZoomLevel += amount;
+        if (imgZoomLevel < 50) imgZoomLevel = 50;   // Minimum 50%
+        if (imgZoomLevel > 500) imgZoomLevel = 500; // Maximum 500% zoom
+        updateZoomCSS();
+    }
+
+    function resetZoom() {
+        imgZoomLevel = 100;
+        updateZoomCSS();
+    }
+
+    function updateZoomCSS() {
+        const img = document.getElementById("modalImg");
+        const canvas = document.getElementById("zoomCanvas");
+        
+        if (imgZoomLevel === 100) {
+            img.style.maxWidth = "90%";
+            img.style.maxHeight = "85vh";
+            img.style.width = "auto";
+            canvas.style.alignItems = "center";
+        } else {
+            img.style.maxWidth = "none";
+            img.style.maxHeight = "none";
+            img.style.width = imgZoomLevel + "%";
+            canvas.style.alignItems = imgZoomLevel > 100 ? "flex-start" : "center";
+        }
+    }
+
+    window.onload = async () => {
+        // 🔥 FIX 1: Retrieve token safely inside the function
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        
+        if (!token) {
+            alert("Security Error: You must be logged in to take an exam.");
+            window.location.href = "login.html";
+            return; // 🔥 FIX 2: Halt execution immediately if no token
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const examId = urlParams.get('id') || urlParams.get('examId'); // 🔥 FIX 3: Catch both parameter styles
+
+        if (!examId) {
+            alert("Invalid Exam ID.");
+            window.location.href = "student_portal.html"; // Redirect to a safe page instead of trying to fetch null
+            return; // 🔥 FIX 4: Halt execution immediately if no exam ID
+        }
+
         try {
+            // 🔥 FIX 5: Ensure the Authorization header is passed to your backend
             const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`, {
-                headers: { "Authorization": `Bearer ${token}` }
+                headers: { "Authorization": `Bearer ${token}` } 
             });
-            if(!res.ok) throw new Error("Failed to load exam");
             
+            if (!res.ok) throw new Error("Exam not found or unauthorized");
             examData = await res.json();
-            questions = examData.questions || [];
             
-            if(questions.length === 0) {
-                alert("This exam has no questions.");
-                return window.location.href = "/dashboard.html";
+            // 🔥 SHUFFLE LOGIC
+            if (examData.questions) {
+                examData.questions.forEach(q => {
+                    if (q.options && q.options.length > 1) {
+                        let pairs = q.options.map((text, idx) => ({
+                            text: text,
+                            img: (q.optionImages && q.optionImages.length > idx) ? q.optionImages[idx] : null
+                        }));
+                        
+                        for (let i = pairs.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+                        }
+                        
+                        q.options = pairs.map(p => p.text);
+                        if (q.optionImages) {
+                            q.optionImages = pairs.map(p => p.img);
+                        }
+                    }
+                });
             }
 
-            document.getElementById("examTitleDisplay").innerText = examData.title;
+            // 🔥 DYNAMIC TIMER & TITLE UPDATE 🔥
+            document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
             
-            // Initialize Tracking
-            questionStatus = new Array(questions.length).fill('not-visited');
-            userAnswers = new Array(questions.length).fill(null);
-            
-            // Extract Unique Subjects & Setup Navigation
-            const subSet = new Set();
-            questions.forEach(q => subSet.add(q.subject || "Physics"));
-            subjects = Array.from(subSet);
-            currentSubject = subjects[0];
-            
-            renderSubjectTabs();
-            startTimer(examData.timerMinutes || 180);
-            
-            // Mark first question as not-answered instead of not-visited
-            questionStatus[0] = 'not-answered';
-            loadQuestion(0);
-            
-            document.getElementById("loadingOverlay").style.display = "none";
-        } catch(e) {
-            console.error(e);
-            alert("Error loading exam environment.");
-            window.location.href = "/dashboard.html";
-        }
-    }
+            // Read the timer from the database, or default to 180 mins if it's an old exam
+            const allocatedMinutes = examData.timerMinutes || 180;
+            timeLeft = allocatedMinutes * 60; // Convert to seconds for the countdown
 
-    // 🔥 Trigger MathJax securely
-    function reRenderMathJax() {
-        if (window.MathJax && window.MathJax.typesetPromise) {
-            MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
+            document.getElementById("examUI").style.display = "flex";
+            
+            filterSubject('Physics');
+            startTimer();
+        } catch (err) {
+            alert("Error loading exam. Redirecting back to dashboard.");
+            window.location.href = "student_portal.html"; // 🔥 FIX 6: Exit gracefully on error
         }
-    }
+    };
 
-    function renderSubjectTabs() {
-        const tabContainer = document.getElementById("subjectTabs");
-        tabContainer.innerHTML = "";
+    function filterSubject(sub) {
+        currentSub = sub;
+        document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === sub));
         
-        subjects.forEach(sub => {
-            const tab = document.createElement("div");
-            tab.className = `sub-tab ${sub === currentSubject ? 'active' : ''}`;
-            tab.innerText = sub;
-            tab.onclick = () => jumpToSubject(sub);
-            tabContainer.appendChild(tab);
-        });
-        renderPalette();
-    }
-
-    function jumpToSubject(sub) {
-        currentSubject = sub;
-        renderSubjectTabs();
-        // Find first question of this subject
-        const idx = questions.findIndex(q => (q.subject || "Physics") === sub);
-        if(idx !== -1) {
-            if(questionStatus[idx] === 'not-visited') questionStatus[idx] = 'not-answered';
-            loadQuestion(idx);
-        }
-    }
-
-    function loadQuestion(index) {
-        currentIndex = index;
-        const q = questions[index];
-        const actualSub = q.subject || "Physics";
-        
-        if(actualSub !== currentSubject) {
-            currentSubject = actualSub;
-            renderSubjectTabs();
+        let firstOfSub = -1;
+        if (examData && examData.questions) {
+            firstOfSub = examData.questions.findIndex(q => q.subject === sub);
         }
         
-        // Count question number within its subject
-        let subQNum = 1;
-        for(let i=0; i<index; i++) {
-            if((questions[i].subject || "Physics") === actualSub) subQNum++;
-        }
-
-        const secType = q.section || "Single correct answer";
-        document.getElementById("qNumberDisplay").innerText = `${actualSub} - Question ${subQNum}`;
-        document.getElementById("qTypeDisplay").innerText = secType;
-        
-        document.getElementById("qText").innerHTML = q.question || "";
-        
-        const imgEl = document.getElementById("qImage");
-        if(q.questionImage) {
-            imgEl.src = q.questionImage;
-            imgEl.style.display = "block";
+        if (firstOfSub !== -1) {
+            showQuestion(firstOfSub);
         } else {
-            imgEl.style.display = "none";
-            imgEl.src = "";
+            document.getElementById("qNumber").innerText = sub;
+            document.getElementById("qText").innerHTML = "<i>No questions available for this subject yet.</i>";
+            document.getElementById("optionsList").innerHTML = "";
+            currentIdx = -1;
+            renderPalette();
+        }
+    }
+
+    function showQuestion(index) {
+        if (currentIdx !== -1 && !statusMap[currentIdx]) {
+            statusMap[currentIdx] = 'visited';
         }
         
-        const optContainer = document.getElementById("optionsContainer");
-        optContainer.innerHTML = "";
+        currentIdx = index;
+        const q = examData.questions[index];
+        document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
+        
+        let qContent = q.question;
+        if (q.questionImage) {
+            qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Question Graphic">`;
+        }
+        document.getElementById("qText").innerHTML = qContent;
 
-        // 🔥 Logic for Numerical vs MCQ
-        if(secType.toLowerCase().includes("integer") || secType.toLowerCase().includes("numerical")) {
-            const currentVal = userAnswers[index] !== null ? userAnswers[index] : "";
-            optContainer.innerHTML = `
-                <div class="numerical-input-container">
-                    <label style="font-weight:bold; color:var(--secondary); display:block; margin-bottom:10px;">Enter Numerical Value:</label>
-                    <input type="number" step="any" id="numAnswerInput" class="numerical-input" value="${currentVal}" placeholder="e.g. 4.5">
-                </div>
-            `;
-        } else {
-            // MCQ Options
-            const opts = q.options || [];
-            const optImgs = q.optionImages || [];
+        const optDiv = document.getElementById("optionsList");
+        if (q.options && q.options.length > 1) {
+            let optionsHTML = "";
             
-            opts.forEach((optText, i) => {
-                if(!optText && !optImgs[i]) return;
+            q.options.forEach((opt, idx) => {
+                let imgHTML = "";
+                if (q.optionImages && q.optionImages[idx]) {
+                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
+                }
                 
-                const isChecked = userAnswers[index] === optText ? "checked" : "";
-                let imgTag = optImgs[i] ? `<img src="${optImgs[i]}" class="opt-img">` : '';
-                let textTag = optText ? `<span>${optText}</span>` : '';
-                
-                optContainer.innerHTML += `
-                    <label class="option-label">
-                        <input type="radio" name="mcqOption" value="${optText.replace(/"/g, '&quot;')}" ${isChecked}>
-                        ${textTag} ${imgTag}
-                    </label>
-                `;
+                const isChecked = studentAnswers[index] === opt ? 'checked' : '';
+                optionsHTML += `
+                    <div class="opt-row">
+                        <label style="cursor: pointer; display: flex; align-items: center; width: 100%;">
+                            <input type="radio" name="ans" value="${opt}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);">
+                            <span style="font-size: 16px;">${opt}</span>
+                            ${imgHTML}
+                        </label>
+                    </div>`;
             });
+            optDiv.innerHTML = optionsHTML;
+        } else {
+            optDiv.innerHTML = `<input type="number" id="numAns" value="${studentAnswers[index] || ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px;">`;
         }
         
         renderPalette();
-        reRenderMathJax(); // 🔥 Fire MathJax rendering on the newly injected text
+        renderMath();
     }
 
     function renderPalette() {
-        const grid = document.getElementById("paletteGrid");
-        grid.innerHTML = "";
+        const grid = document.getElementById("palette");
+        if (!examData || !examData.questions) return;
         
-        // Only show palette for current subject
-        let displayQNum = 1;
-        questions.forEach((q, i) => {
-            if((q.subject || "Physics") === currentSubject) {
-                const btn = document.createElement("button");
-                btn.className = `pal-btn status-${questionStatus[i]} ${i === currentIndex ? 'active-q' : ''}`;
-                btn.innerText = displayQNum++;
-                btn.onclick = () => {
-                    if(questionStatus[i] === 'not-visited') questionStatus[i] = 'not-answered';
-                    saveCurrentDraft(); // save whatever they typed before jumping
-                    loadQuestion(i);
-                };
-                grid.appendChild(btn);
+        let paletteHTML = "";
+        examData.questions.forEach((q, i) => {
+            if (q.subject === currentSub) {
+                let cls = statusMap[i] || '';
+                if (i === currentIdx) cls += ' active';
+                paletteHTML += `<div class="p-btn ${cls}" onclick="showQuestion(${i})">${i + 1}</div>`;
             }
         });
+        grid.innerHTML = paletteHTML;
     }
 
-    // Save UI state to array before moving
-    function saveCurrentDraft() {
-        const q = questions[currentIndex];
-        const secType = q.section || "";
-        
-        if(secType.toLowerCase().includes("integer") || secType.toLowerCase().includes("numerical")) {
-            const val = document.getElementById("numAnswerInput").value.trim();
-            userAnswers[currentIndex] = val !== "" ? val : null;
-        } else {
-            const selected = document.querySelector('input[name="mcqOption"]:checked');
-            userAnswers[currentIndex] = selected ? selected.value : null;
-        }
-    }
-
-    // Action Handlers
     function saveAndNext() {
-        saveCurrentDraft();
-        const hasAnswer = userAnswers[currentIndex] !== null;
+        if (currentIdx === -1) return;
         
-        if(hasAnswer) {
-            questionStatus[currentIndex] = 'answered';
+        const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
+        if (sel && sel.value !== "") {
+            studentAnswers[currentIdx] = sel.value;
+            statusMap[currentIdx] = 'answered';
         } else {
-            questionStatus[currentIndex] = 'not-answered';
+            statusMap[currentIdx] = 'visited';
         }
-        
-        moveToNext();
+        nextLogic();
     }
 
     function markForReview() {
-        saveCurrentDraft();
-        const hasAnswer = userAnswers[currentIndex] !== null;
+        if (currentIdx === -1) return;
         
-        if(hasAnswer) {
-            questionStatus[currentIndex] = 'marked-answered';
+        const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
+        if (sel && sel.value !== "") {
+            studentAnswers[currentIdx] = sel.value;
+            statusMap[currentIdx] = 'review-answered';
         } else {
-            questionStatus[currentIndex] = 'marked';
+            statusMap[currentIdx] = 'review';
+        }
+        nextLogic();
+    }
+
+    function nextLogic() {
+        let nextIdx = -1;
+        for (let i = currentIdx + 1; i < examData.questions.length; i++) {
+            if (examData.questions[i].subject === currentSub) {
+                nextIdx = i;
+                break;
+            }
         }
         
-        moveToNext();
+        if (nextIdx !== -1) {
+            showQuestion(nextIdx);
+        } else {
+            renderPalette();
+        }
     }
 
     function clearResponse() {
-        userAnswers[currentIndex] = null;
-        questionStatus[currentIndex] = 'not-answered';
-        loadQuestion(currentIndex); // Reload UI
-    }
-
-    function moveToNext() {
-        if(currentIndex < questions.length - 1) {
-            const nextIdx = currentIndex + 1;
-            if(questionStatus[nextIdx] === 'not-visited') questionStatus[nextIdx] = 'not-answered';
-            loadQuestion(nextIdx);
-        } else {
-            renderPalette(); // Just update palette if at end
-            alert("You have reached the end of the exam.");
-        }
-    }
-
-    // Timer Logic
-    function startTimer(minutes) {
-        let timeRemaining = minutes * 60;
-        const display = document.getElementById("timeRemaining");
+        if (currentIdx === -1) return;
         
-        timerInterval = setInterval(() => {
-            timeRemaining--;
+        delete studentAnswers[currentIdx];
+        statusMap[currentIdx] = 'visited';
+        
+        const radios = document.querySelectorAll('input[name="ans"]');
+        radios.forEach(r => r.checked = false);
+        
+        const numInput = document.getElementById("numAns");
+        if(numInput) numInput.value = "";
+        
+        renderPalette();
+    }
+
+    function startTimer() {
+        const timerInterval = setInterval(() => {
+            timeLeft--;
+            let h = Math.floor(timeLeft / 3600), m = Math.floor((timeLeft % 3600) / 60), s = timeLeft % 60;
+            document.getElementById("timer").innerText = `${h}:${m}:${s}`.replace(/\b\d\b/g, "0$&");
             
-            let hrs = Math.floor(timeRemaining / 3600);
-            let mins = Math.floor((timeRemaining % 3600) / 60);
-            let secs = timeRemaining % 60;
-            
-            display.innerText = 
-                String(hrs).padStart(2, '0') + ":" + 
-                String(mins).padStart(2, '0') + ":" + 
-                String(secs).padStart(2, '0');
-                
-            if(timeRemaining <= 300) { display.style.color = "#e74c3c"; } // Last 5 mins red
-            
-            if(timeRemaining <= 0) {
+            if (timeLeft <= 0) {
                 clearInterval(timerInterval);
-                alert("Time is up! Auto-submitting your exam.");
-                executeSubmit();
+                submitFinal();
             }
         }, 1000);
     }
 
-    // Submission Logic
-    function confirmSubmit() {
-        saveCurrentDraft(); // Make sure the last question is saved
+    // --- 🔥 BULLETPROOF SUBMIT FINAL FUNCTION 🔥 ---
+    async function submitFinal() {
+        if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
         
-        let notVisitedCount = questionStatus.filter(s => s === 'not-visited').length;
-        let notAnsweredCount = questionStatus.filter(s => s === 'not-answered').length;
-        
-        let msg = `Are you sure you want to submit?\n\nUnseen: ${notVisitedCount}\nUnanswered: ${notAnsweredCount}`;
-        if(confirm(msg)) {
-            executeSubmit();
+        // Final "visited" status for current question if left empty
+        if (currentIdx !== -1 && studentAnswers[currentIdx] === undefined) {
+            statusMap[currentIdx] = 'visited';
         }
-    }
-
-    async function executeSubmit() {
-        clearInterval(timerInterval);
-        document.getElementById("loadingOverlay").innerText = "Evaluating Results... ⏳";
-        document.getElementById("loadingOverlay").style.display = "flex";
         
-        // Build Payload
-        let subjectWiseBreakdown = {};
+        // 1. Lock the UI
+        document.getElementById("examUI").style.pointerEvents = "none";
+        document.getElementById("qText").innerHTML = "<h3 style='text-align:center; color: var(--nta-blue); margin-top: 50px;'>Submitting your exam, please wait... ⏳</h3>";
+        document.getElementById("optionsList").innerHTML = "";
         
-        subjects.forEach(sub => {
-            subjectWiseBreakdown[sub] = { 
-                correct: 0, incorrect: 0, notAttempted: 0, markedForReviewCount: 0, subjectQuestionsCount: 0 
-            };
-        });
-
-        questions.forEach((q, i) => {
-            let sub = q.subject || 'Physics';
-            subjectWiseBreakdown[sub].subjectQuestionsCount++;
-            
-            let status = questionStatus[i];
-            let ans = userAnswers[i];
-            
-            // Calculate marking (assume +4 correct, -1 incorrect for now. Backend verifies)
-            if(status === 'answered' || status === 'marked-answered') {
-                // Ensure correct comparison logic
-                const actualCorrect = q.correctAnswer;
-                if(ans == actualCorrect) {
-                    subjectWiseBreakdown[sub].correct++;
-                } else {
-                    subjectWiseBreakdown[sub].incorrect++;
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        const subjectWiseData = {};
+        let totalScore = 0;
+        
+        // 2. Safely Calculate Data
+        if (examData && examData.questions) {
+            examData.questions.forEach((q, i) => {
+                // Safety: Default to Physics if DB is missing the subject
+                const subject = q.subject || "Physics";
+                
+                if (!subjectWiseData[subject]) {
+                    subjectWiseData[subject] = {
+                        score: 0, correct: 0, incorrect: 0, notAttempted: 0, markedForReviewCount: 0
+                    };
                 }
-            } else {
-                subjectWiseBreakdown[sub].notAttempted++;
-            }
+                
+                const studentAns = studentAnswers[i];
+                const correctAns = q.correctAnswer;
+                const status = statusMap[i] || 'unvisited';
+
+                if(status === 'review' || status === 'review-answered'){
+                     subjectWiseData[subject].markedForReviewCount++;
+                }
+                
+                // Safety: Explicit undefined/null check to handle empty string options properly
+                if (studentAns !== undefined && studentAns !== null) {
+                    if (studentAns === correctAns) {
+                        subjectWiseData[subject].correct++;
+                        subjectWiseData[subject].score += 4;
+                    } else {
+                        subjectWiseData[subject].incorrect++;
+                        subjectWiseData[subject].score -= 1;
+                    }
+                } else {
+                    subjectWiseData[subject].notAttempted++;
+                }
+            });
             
-            if(status === 'marked' || status === 'marked-answered') {
-                subjectWiseBreakdown[sub].markedForReviewCount++;
+            for (const subject in subjectWiseData) {
+                totalScore += subjectWiseData[subject].score;
             }
-        });
-
+        }
+        
+        // 3. Build Safe Payload
         const payload = {
-            examTitle: examData.title,
-            examId: examId,
-            subjectWiseBreakdown: subjectWiseBreakdown
+            studentName: localStorage.getItem("userName") || "Guest Student",
+            examTitle: examData.title || "Untitled Exam", // Safety: Prevent Python 400 error
+            examId: new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId'),
+            subjectWiseBreakdown: subjectWiseData
         };
-
+        
         try {
             const res = await fetch(`${BACKEND_URL}/api/public/submit`, {
                 method: "POST",
-                headers: { 
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}` 
-                },
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(payload)
             });
             
-            if(res.ok) {
-                alert("Exam Submitted Successfully!");
-                window.location.href = "/dashboard.html";
+            if (res.ok) {
+                 alert("Exam Submitted Successfully! Total Score: " + totalScore);
+                 window.location.href = "student_portal.html";
             } else {
-                alert("Failed to submit exam.");
-                document.getElementById("loadingOverlay").style.display = "none";
+                 // Try to pull exact error from Python
+                 let errorMsg = "API call failed";
+                 try {
+                     const errData = await res.json();
+                     errorMsg = errData.detail || errData.message || errorMsg;
+                 } catch(parseErr) {}
+                 throw new Error(errorMsg);
             }
-        } catch(e) {
+        } catch (e) {
             console.error(e);
-            alert("Network error during submission.");
-            document.getElementById("loadingOverlay").style.display = "none";
+            alert("Submission Error: " + e.message);
+            
+            // 🔥 CRITICAL RECOVERY: Un-brick the UI so the student can try again
+            document.getElementById("examUI").style.pointerEvents = "auto";
+            if(currentIdx !== -1) {
+                showQuestion(currentIdx); // Restores question text and options
+            } else {
+                document.getElementById("qText").innerHTML = "<h3 style='color: var(--red);'>Submission failed. Please try again.</h3>";
+            }
         }
     }
 
-    // FIX: Attach the boot sequence correctly to the window load
-    window.onload = boot;
-
+    function renderMath() {
+        if (window.renderMathInElement) {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false
+            });
+        }
+    }
+    
 </script>
-
 </body>
 </html>
