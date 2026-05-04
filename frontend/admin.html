@@ -236,6 +236,27 @@
                     <button class="btn btn-primary" onclick="openQBEditor()">➕ Add New Question</button>
                 </div>
             </div>
+            
+            <!-- NEW: Filter UI for Question Bank -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 20px; background: #fdfdfd; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
+                <select id="qbFilterSubject" style="margin-bottom: 0;">
+                    <option value="">All Subjects</option>
+                    <option value="Physics">Physics</option>
+                    <option value="Chemistry">Chemistry</option>
+                    <option value="Maths">Maths</option>
+                </select>
+                <select id="qbFilterSection" style="margin-bottom: 0;">
+                    <option value="">All Sections</option>
+                    <option value="Single correct answer">Single correct answer</option>
+                    <option value="Multiple correct answer">Multiple correct answer</option>
+                    <option value="Match the following">Match the following</option>
+                    <option value="Integer based question">Integer based question</option>
+                </select>
+                <input type="text" id="qbFilterTopic" placeholder="Search Topic..." style="margin-bottom: 0;">
+                <button class="btn btn-secondary" style="background: var(--primary); color: white;" onclick="loadQuestionBank()">Filter 🔍</button>
+            </div>
+            <!-- END NEW Filter UI -->
+
             <div id="qbList">Loading question bank...</div>
         </div>
     </div>
@@ -750,13 +771,26 @@
 
     async function loadQuestionBank() {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
+            // NEW: Fetch filter values from the UI
+            const fSub = document.getElementById("qbFilterSubject") ? document.getElementById("qbFilterSubject").value : "";
+            const fSec = document.getElementById("qbFilterSection") ? document.getElementById("qbFilterSection").value : "";
+            const fTopic = document.getElementById("qbFilterTopic") ? document.getElementById("qbFilterTopic").value : "";
+            
+            // NEW: Build the query string dynamically
+            const params = new URLSearchParams();
+            if(fSub) params.append("subject", fSub);
+            if(fSec) params.append("section", fSec);
+            if(fTopic) params.append("topic", fTopic);
+            const queryStr = params.toString() ? `?${params.toString()}` : "";
+
+            // NEW: Appended query string to the fetch URL
+            const res = await fetch(`${BACKEND_URL}/api/question_bank${queryStr}`, { headers: { "Authorization": `Bearer ${token}` } });
             const qbList = await res.json();
             currentQBQuestions = qbList; 
             const listDiv = document.getElementById("qbList");
             listDiv.innerHTML = "";
             
-            if(qbList.length === 0) return listDiv.innerHTML = "<div style='padding: 15px; color: #777;'>Bank is empty. Add questions!</div>";
+            if(qbList.length === 0) return listDiv.innerHTML = "<div style='padding: 15px; color: #777;'>Bank is empty or no matches found. Add questions!</div>";
 
             qbList.forEach((q, i) => {
                 const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
