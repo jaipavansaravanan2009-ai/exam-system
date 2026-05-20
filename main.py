@@ -20,15 +20,6 @@ import traceback
 from PIL import Image
 from fastapi.responses import RedirectResponse
 
-app = FastAPI()
-
-# 👇 ADD THIS NEW ROUTE 👇
-@app.get("/")
-def home():
-    # This automatically sends users to your API documentation page 
-    # instead of showing them a 404 error!
-    return RedirectResponse(url="/docs")
-
 # Load Environment Variables
 load_dotenv()
 
@@ -64,6 +55,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 🏠 ROOT ROUTE - Redirect to login page
+@app.get("/")
+def home():
+    return RedirectResponse(url="/login.html")
 
 # 2. Middleware: Unified Authorization
 def authorize(roles=None):
