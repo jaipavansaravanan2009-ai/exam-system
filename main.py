@@ -18,14 +18,16 @@ import zipfile
 import mimetypes
 import traceback
 from PIL import Image
+from fastapi.responses import RedirectResponse
 
 app = FastAPI()
 
-# Add this to serve your website
+# 👇 ADD THIS NEW ROUTE 👇
 @app.get("/")
-def serve_frontend():
-    # Make sure 'login.html' matches your actual file name
-    return FileResponse("login.html")
+def home():
+    # This automatically sends users to your API documentation page 
+    # instead of showing them a 404 error!
+    return RedirectResponse(url="/docs")
 
 # Load Environment Variables
 load_dotenv()
