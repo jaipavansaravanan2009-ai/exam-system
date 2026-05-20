@@ -167,6 +167,7 @@ async def create_user(request: Request, user=Depends(authorize(["admin"]))):
 async def create_exam(request: Request, user=Depends(authorize(["admin"]))):
     body = await request.json()
     body["createdAt"] = datetime.now(timezone.utc)
+    body["enableHints"] = body.get("enableHints", False)
     update_time, doc_ref = db.collection("exams").add(body)
     return {"message": "Exam created! ✅", "id": doc_ref.id}
 
@@ -683,6 +684,33 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
             }
             verified_breakdown[subject] = verified_section
 
+        # Build question-wise breakdown for detailed analysis
+        question_breakdown = []
+        for q in exam_questions:
+            q_index = exam_questions.index(q)
+            student_ans = result_payload.get("questionAnswers", {}).get(str(q_index))
+            correct_ans = q.get("correctAnswer", "")
+            is_correct = (student_ans == correct_ans) if student_ans else False
+            is_attempted = student_ans is not None and student_ans != "" and student_ans != "null"
+
+            question_breakdown.append({
+                "questionIndex": q_index,
+                "questionText": q.get("question", "")[:100],
+                "questionImage": q.get("questionImage"),
+                "subject": q.get("subject", "Physics"),
+                "section": q.get("section", "Single correct answer"),
+                "topics": q.get("topics", []),
+                "options": q.get("options", []),
+                "optionImages": q.get("optionImages", []),
+                "correctAnswer": correct_ans,
+                "studentAnswer": student_ans,
+                "isCorrect": is_correct,
+                "isAttempted": is_attempted,
+                "hint": q.get("hint", ""),
+                "solution": q.get("solution", ""),
+                "solutionImage": q.get("solutionImage", "")
+            })
+
         new_result_doc = {
             "studentName": student_name,
             "examTitle": exam_title,
@@ -690,7 +718,8 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
             "submittedAt": firestore.SERVER_TIMESTAMP, 
             "examQuestionsCount": total_questions_count,
             "totalScore": calculated_total_score,
-            "subjectWiseBreakdown": verified_breakdown
+            "subjectWiseBreakdown": verified_breakdown,
+            "questionBreakdown": question_breakdown
         }
 
         db.collection("results").add(new_result_doc)
@@ -700,6 +729,120 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to submit result: {str(e)}")
+
+@app.get("/api/public/results/{result_id}/question-analysis")
+async def get_question_analysis(result_id: str, user = Depends(authorize(["student"]))):
+    """Get detailed question-wise analysis for a student's exam result"""
+    try:
+        result_doc = db.collection("results").document(result_id).get()
+        if not result_doc.exists:
+            raise HTTPException(status_code=404, detail="Result not found.")
+        
+        my_result = result_doc.to_dict()
+        
+        if my_result["studentName"] != user["name"]:
+            raise HTTPException(status_code=403, detail="Unauthorized to view this result.")
+        
+        # Return the question breakdown directly from the result
+        question_breakdown = my_result.get("questionBreakdown", [])
+        
+        return {
+            "examTitle": my_result.get("examTitle", ""),
+            "totalScore": my_result.get("totalScore", 0),
+            "totalQuestions": my_result.get("examQuestionsCount", 0),
+            "questionBreakdown": question_breakdown
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/results/{exam_id}/detailed-analysis")
+async def get_exam_detailed_analysis(exam_id: str, user = Depends(authorize(["admin"]))):
+    """Get detailed analysis for all students who took a specific exam"""
+    try:
+        # Get all results for this exam
+        all_results_query = db.collection("results").where("examId", "==", exam_id).stream()
+        
+        results = []
+        for doc in all_results_query:
+            data = doc.to_dict()
+            submitted_time = data.get("submittedAt")
+            if submitted_time and hasattr(submitted_time, 'isoformat'):
+                time_str = submitted_time.isoformat()
+            else:
+                time_str = str(submitted_time) if submitted_time else None
+            
+            results.append({
+                "id": doc.id,
+                "submittedAt": time_str,
+                **data
+            })
+        
+        # Calculate question-wise statistics
+        exam_doc = db.collection("exams").document(exam_id).get()
+        if not exam_doc.exists:
+            raise HTTPException(status_code=404, detail="Exam not found")
+        
+        exam_data = exam_doc.to_dict()
+        exam_questions = exam_data.get("questions", [])
+        
+        question_stats = []
+        for i, q in enumerate(exam_questions):
+            correct_count = 0
+            incorrect_count = 0
+            not_attempted_count = 0
+            
+            for result in results:
+                qb = result.get("questionBreakdown", [])
+                if i < len(qb):
+                    q_data = qb[i]
+                    if q_data.get("isAttempted", False):
+                        if q_data.get("isCorrect", False):
+                            correct_count += 1
+                        else:
+                            incorrect_count += 1
+                    else:
+                        not_attempted_count += 1
+            
+            total_students = len(results)
+            question_stats.append({
+                "questionIndex": i,
+                "questionText": q.get("question", "")[:100],
+                "subject": q.get("subject", "Physics"),
+                "topics": q.get("topics", []),
+                "totalStudents": total_students,
+                "correctCount": correct_count,
+                "incorrectCount": incorrect_count,
+                "notAttemptedCount": not_attempted_count,
+                "correctPercentage": round((correct_count / total_students * 100), 1) if total_students > 0 else 0
+            })
+        
+        # Calculate overall statistics
+        total_students = len(results)
+        avg_score = round(sum(r.get("totalScore", 0) for r in results) / total_students, 1) if total_students > 0 else 0
+        top_score = max((r.get("totalScore", 0) for r in results), default=0)
+        
+        return {
+            "examTitle": exam_data.get("title", ""),
+            "totalStudents": total_students,
+            "avgScore": avg_score,
+            "topScore": top_score,
+            "results": results,
+            "questionStats": question_stats
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/public/results/{result_id}/analysis")
 async def get_live_analysis(result_id: str, user = Depends(authorize(["student"]))):
@@ -759,6 +902,24 @@ async def get_live_analysis(result_id: str, user = Depends(authorize(["student"]
                 "avg": round(sum(sub_list) / len(sub_list), 1) if sub_list else 0,
                 "top": sub_list[0] if sub_list else 0
             }
+        
+        # Add question-wise analysis for detailed breakdown
+        question_breakdown = my_result.get("questionBreakdown", [])
+        question_analysis = []
+        
+        for qb in question_breakdown:
+            question_analysis.append({
+                "question": qb.get("questionText", ""),
+                "subject": qb.get("subject", "Physics"),
+                "topics": qb.get("topics", []),
+                "correctAnswer": qb.get("correctAnswer", ""),
+                "studentAnswer": qb.get("studentAnswer"),
+                "isCorrect": qb.get("isCorrect", False),
+                "solution": qb.get("solution", ""),
+                "hint": qb.get("hint", "")
+            })
+        
+        analysis["questionAnalysis"] = question_analysis
             
         return analysis
         

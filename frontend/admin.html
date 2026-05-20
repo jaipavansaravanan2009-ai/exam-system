@@ -230,6 +230,11 @@
                 <input type="number" id="newExamTimer" placeholder="e.g., 180" value="180" style="margin-top: 5px;">
             </div>
 
+            <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" id="newExamEnableHints" style="width: 20px; height: 20px; margin: 0;">
+                <label style="font-weight: bold; font-size: 14px; color: #555; margin: 0;">Enable Hints for Students</label>
+            </div>
+
             <button onclick="createNewExam()" class="btn btn-success" style="width: 100%; font-size: 16px;">Create Exam</button>
         </div>
 
@@ -310,6 +315,7 @@
                 <div style="flex: 2;">Student Name</div>
                 <div style="flex: 3;">Exam Title</div>
                 <div style="flex: 1; text-align: right;">Final Score</div>
+                <div style="width: 150px; text-align: right;">Action</div>
             </div>
             
             <div id="resultsList" style="font-size: 15px;"></div>
@@ -690,14 +696,15 @@
         const title = document.getElementById("newExamTitle").value;
         const type = document.getElementById("newExamType").value;
         const timer = parseInt(document.getElementById("newExamTimer").value) || 180;
+        const enableHints = document.getElementById("newExamEnableHints").checked;
         if (!title) return alert("Please enter an Exam Title!");
 
         try {
             const res = await fetch(`${BACKEND_URL}/api/exams`, {
                 method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ title: title, examType: type, timerMinutes: timer, questions: [] })
+                body: JSON.stringify({ title: title, examType: type, timerMinutes: timer, enableHints: enableHints, questions: [] })
             });
-            if (res.ok) { alert("Exam created!"); document.getElementById("newExamTitle").value = ""; loadExams(); } 
+            if (res.ok) { alert("Exam created!"); document.getElementById("newExamTitle").value = ""; document.getElementById("newExamEnableHints").checked = false; loadExams(); } 
             else alert("Failed to create exam.");
         } catch (err) { console.error(err); }
     }
@@ -1361,11 +1368,139 @@
         try {
             const res = await fetch(`${BACKEND_URL}/api/results`, { headers: { "Authorization": `Bearer ${token}` } });
             if(res.ok) {
-                const results = await res.json(); const list = document.getElementById("resultsList");
-                if(results.length === 0) list.innerHTML = "<div style='padding: 15px; text-align: center; color: #777;'>No results yet.</div>";
-                else list.innerHTML = results.map(r => `<div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;"><div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}</div><div style="flex: 3; color: #555;">${r.examTitle}</div><div style="flex: 1; text-align: right; font-weight: bold; color: ${r.score >= 0 ? 'var(--success)' : 'var(--danger)'};">${r.score}</div></div>`).join("");
+                const results = await res.json(); 
+                const list = document.getElementById("resultsList");
+                if(results.length === 0) {
+                    list.innerHTML = "<div style='padding: 15px; text-align: center; color: #777;'>No results yet.</div>";
+                } else {
+                    let html = "";
+                    results.forEach(r => {
+                        let dateDisplay = "Unknown Date";
+                        if(r.submittedAt) {
+                            const date = new Date(r.submittedAt);
+                            dateDisplay = date.toLocaleDateString() + " " + date.toLocaleTimeString().substring(0,5);
+                        }
+                        const score = r.totalScore || r.score || 0;
+                        html += `<div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;">
+                            <div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}</div>
+                            <div style="flex: 3; color: #555;">${r.examTitle}</div>
+                            <div style="flex: 1; text-align: right; color: #777; font-size: 13px;">${dateDisplay}</div>
+                            <div style="flex: 1; text-align: right; font-weight: bold; color: ${score >= 0 ? 'var(--success)' : 'var(--danger)'};">${score}</div>
+                            <div style="width: 150px; text-align: right;">
+                                <button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 View Analysis</button>
+                            </div>
+                        </div>`;
+                    });
+                    list.innerHTML = html;
+                }
             } else document.getElementById("resultsList").innerHTML = "<div>Cannot fetch results.</div>";
         } catch(e) { console.error("Could not load results:", e); }
+    }
+
+    // Admin Analysis Modal for viewing detailed candidate analysis
+    async function viewAdminAnalysis(resultId) {
+        // Fetch the detailed analysis from the backend
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/results/${resultId}/analysis`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            
+            if (!res.ok) {
+                alert("Could not load analysis for this result.");
+                return;
+            }
+            
+            const analysisData = await res.json();
+            
+            // Show the analysis in a modal (reusing the concept from student portal but simpler)
+            const modal = document.createElement('div');
+            modal.id = 'adminAnalysisModal';
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 3000; backdrop-filter: blur(4px);';
+            
+            let questionAnalysisHTML = '';
+            if (analysisData.questionAnalysis && analysisData.questionAnalysis.length > 0) {
+                questionAnalysisHTML = '<h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Analysis</h3>';
+                
+                analysisData.questionAnalysis.forEach((qa, index) => {
+                    const statusClass = qa.isCorrect ? 'correct' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? 'skipped' : 'incorrect');
+                    const statusText = qa.isCorrect ? 'Correct' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? 'Skipped' : 'Incorrect');
+                    const marks = qa.isCorrect ? '+4' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '0' : '-1');
+                    
+                    let subColor = "var(--secondary)"; 
+                    if(qa.subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
+                    if(qa.subject.toLowerCase().includes("math")) subColor = "#8e44ad";
+                    
+                    questionAnalysisHTML += `
+                        <div style="background: white; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                            <div style="padding: 12px 15px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; border-left: 4px solid ${qa.isCorrect ? 'var(--success)' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '#95a5a6' : 'var(--danger)')};">
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
+                                    <span style="font-size: 13px; color: #666;">${qa.subject}</span>
+                                    ${qa.topics && qa.topics.length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${qa.topics.join(', ')}</span>` : ''}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${marks}</span>
+                                    <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: ${qa.isCorrect ? '#e8f5e9' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '#eceff1' : '#ffebee')}; color: ${qa.isCorrect ? '#2e7d32' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '#546e7a' : '#c62828')};">${statusText}</span>
+                                </div>
+                            </div>
+                            <div style="padding: 15px;">
+                                <div style="font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 12px; line-height: 1.5;">${qa.question}</div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                    <div style="padding: 10px; border-radius: 6px; font-size: 14px; background: #e8f4fd; border: 1px solid #b3d9ff;">
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Student Answer</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${qa.studentAnswer !== null && qa.studentAnswer !== undefined ? qa.studentAnswer : '<span style="color: #999;">Not Attempted</span>'}</div>
+                                    </div>
+                                    <div style="padding: 10px; border-radius: 6px; font-size: 14px; background: #e8f8e8; border: 1px solid #b2dfb2;">
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Correct Answer</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: var(--success);">${qa.correctAnswer}</div>
+                                    </div>
+                                </div>
+                                ${qa.solution ? `<div style="background: #fff9e6; border: 1px solid #ffe082; border-radius: 6px; padding: 12px; margin-top: 10px;"><h4 style="color: #f57f17; margin-bottom: 8px; font-size: 14px;">💡 Solution</h4><div style="font-size: 14px; line-height: 1.6; color: #333;">${qa.solution}</div></div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            modal.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 950px; max-height: 90vh; overflow-y: auto;">
+                    <button class="btn" style="float:right; background:#333; color:white;" onclick="this.closest('#adminAnalysisModal').remove()">Close X</button>
+                    <h2 style="color: var(--primary); margin-bottom: 5px;">📊 Result Analysis</h2>
+                    <p style="color: #777; font-size: 14px; margin-bottom: 20px;">Candidate: ${analysisData.overall ? 'Student' : 'Unknown'}</p>
+                    <hr style="margin: 20px 0;">
+                    
+                    <div style="background: #f4f6f9; border-radius: 10px; padding: 20px; margin-bottom: 25px; border: 1px solid #e1e8ed;">
+                        <h3 style="text-align: center; color: var(--primary); margin-bottom: 15px; font-size: 16px;">🏆 OVERALL PERFORMANCE</h3>
+                        <div style="display: flex; justify-content: space-around; text-align: center;">
+                            <div>
+                                <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; text-transform: uppercase;">Total Score</div>
+                                <div style="font-size: 24px; font-weight: bold; color: var(--primary);">${analysisData.overall ? analysisData.overall.myScore : 'N/A'}</div>
+                            </div>
+                            <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                                <div style="font-size: 12px; color: #e67e22; font-weight: bold; text-transform: uppercase;">Rank</div>
+                                <div style="font-size: 24px; font-weight: bold; color: #d35400;">#${analysisData.overall ? analysisData.overall.rank : 'N/A'}</div>
+                            </div>
+                            <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                                <div style="font-size: 12px; color: #27ae60; font-weight: bold; text-transform: uppercase;">Top Score</div>
+                                <div style="font-size: 24px; font-weight: bold; color: #27ae60;">${analysisData.overall ? analysisData.overall.top : 'N/A'}</div>
+                            </div>
+                            <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                                <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; text-transform: uppercase;">Total Students</div>
+                                <div style="font-size: 24px; font-weight: bold; color: #7f8c8d;">${analysisData.totalStudents || 'N/A'}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${questionAnalysisHTML}
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+        } catch(e) {
+            console.error(e);
+            alert("Error loading analysis: " + e.message);
+        }
     }
 
     if (token && role && (role.toLowerCase() === "admin" || role.toLowerCase() === "setter")) {

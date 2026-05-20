@@ -50,6 +50,21 @@
         .opt-row label { cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0; pointer-events: none; }
         .opt-row input[type="radio"] { pointer-events: auto; } /* Only let the custom JS trigger the row click */
 
+        /* Hint Button & Display */
+        .hint-container { margin: 15px 0; }
+        .hint-btn {
+            background: #fff3cd; border: 1px solid #ffeeba; color: #856404;
+            padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;
+            display: flex; align-items: center; gap: 8px; transition: all 0.2s;
+        }
+        .hint-btn:hover { background: #ffe8a1; }
+        .hint-display {
+            display: none; margin-top: 10px; padding: 15px; background: #fff9e6;
+            border-left: 4px solid #f39c12; border-radius: 4px; font-size: 15px;
+            line-height: 1.5;
+        }
+        .hint-display.show { display: block; }
+
         /* --- ADVANCED ZOOM MODAL --- */
         #zoomModal {
             display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%;
@@ -106,6 +121,7 @@
         <h3 id="qNumber">Question</h3>
         <hr>
         <div id="qText" style="font-size: 18px; margin: 20px 0;">Select a subject to begin.</div>
+        <div id="hintContainer" class="hint-container" style="display: none;"></div>
         <div id="optionsList"></div>
         
         <div class="controls">
@@ -307,6 +323,24 @@
             qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Question Graphic">`;
         }
         document.getElementById("qText").innerHTML = qContent;
+
+        // Handle hints
+        const hintContainer = document.getElementById("hintContainer");
+        const hintsEnabled = examData.enableHints || false;
+        if (hintsEnabled && q.hint) {
+            hintContainer.style.display = "block";
+            hintContainer.innerHTML = `
+                <button class="hint-btn" onclick="toggleHint(${index})">
+                    💡 Show Hint for this question
+                </button>
+                <div id="hint-display-${index}" class="hint-display">
+                    <strong>💡 Hint:</strong> ${q.hint}
+                </div>
+            `;
+        } else {
+            hintContainer.style.display = "none";
+            hintContainer.innerHTML = "";
+        }
 
         const optDiv = document.getElementById("optionsList");
         if (q.options && q.options.length > 1) {
@@ -541,6 +575,13 @@
             } else {
                 document.getElementById("qText").innerHTML = "<h3 style='color: var(--red);'>Submission failed. Please try again.</h3>";
             }
+        }
+    }
+
+    function toggleHint(index) {
+        const hintDisplay = document.getElementById(`hint-display-${index}`);
+        if (hintDisplay) {
+            hintDisplay.classList.toggle('show');
         }
     }
 

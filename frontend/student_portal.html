@@ -157,6 +157,118 @@
             display: flex; gap: 20px; font-size: 14px; background: #fdfdfd; padding: 10px; border-radius: 6px; border: 1px solid #f0f0f0;
         }
         .summary-item { display: flex; align-items: center; gap: 8px; font-weight: bold; color: #555;}
+
+        /* Question-wise Analysis Styles */
+        .question-analysis-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .question-analysis-header {
+            padding: 12px 15px;
+            background: #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            border-bottom: 1px solid #e0e0e0;
+            transition: background 0.2s;
+        }
+        .question-analysis-header:hover {
+            background: #eef2f5;
+        }
+        .question-analysis-header.correct {
+            border-left: 4px solid var(--success);
+        }
+        .question-analysis-header.incorrect {
+            border-left: 4px solid var(--danger);
+        }
+        .question-analysis-header.skipped {
+            border-left: 4px solid #95a5a6;
+        }
+        .question-analysis-body {
+            display: none;
+            padding: 15px;
+        }
+        .question-analysis-body.show {
+            display: block;
+        }
+        .question-text {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        .answer-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .answer-box {
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .your-answer {
+            background: #e8f4fd;
+            border: 1px solid #b3d9ff;
+        }
+        .correct-answer {
+            background: #e8f8e8;
+            border: 1px solid #b2dfb2;
+        }
+        .solution-box {
+            background: #fff9e6;
+            border: 1px solid #ffe082;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+        .solution-box h4 {
+            color: #f57f17;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .solution-text {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-badge.correct {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status-badge.incorrect {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .status-badge.skipped {
+            background: #eceff1;
+            color: #546e7a;
+        }
+        .question-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 13px;
+            color: #666;
+        }
+        .question-meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
     </style>
 </head>
 <body>
@@ -519,10 +631,82 @@
                 }
             }
 
+            // Question-wise Analysis Section
+            if (liveData.questionAnalysis && liveData.questionAnalysis.length > 0) {
+                container.innerHTML += `
+                    <h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">
+                        📝 Question-wise Detailed Analysis
+                    </h3>
+                `;
+
+                liveData.questionAnalysis.forEach((qa, index) => {
+                    const statusClass = qa.isCorrect ? 'correct' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? 'skipped' : 'incorrect');
+                    const statusText = qa.isCorrect ? 'Correct' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? 'Skipped' : 'Incorrect');
+                    const statusBadgeClass = statusClass;
+                    
+                    let subColor = "var(--secondary)"; 
+                    if(qa.subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
+                    if(qa.subject.toLowerCase().includes("math")) subColor = "#8e44ad";
+
+                    container.innerHTML += `
+                        <div class="question-analysis-card">
+                            <div class="question-analysis-header ${statusClass}" onclick="toggleQuestionAnalysis(this)">
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
+                                    <span style="font-size: 13px; color: #666;">${qa.subject}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">
+                                        ${qa.isCorrect ? '+4' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '0' : '-1')}
+                                    </span>
+                                    <span class="status-badge ${statusBadgeClass}">${statusText}</span>
+                                    <span style="font-size: 18px; color: #999;">▼</span>
+                                </div>
+                            </div>
+                            <div class="question-analysis-body">
+                                <div class="question-text">
+                                    <span style="color: #666; font-size: 13px;">${qa.subject} | Topics: ${qa.topics ? qa.topics.join(', ') : 'N/A'}</span><br><br>
+                                    ${qa.question}
+                                </div>
+                                <div class="answer-comparison">
+                                    <div class="answer-box your-answer">
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Your Answer</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">
+                                            ${qa.studentAnswer !== null && qa.studentAnswer !== undefined ? qa.studentAnswer : '<span style="color: #999;">Not Attempted</span>'}
+                                        </div>
+                                    </div>
+                                    <div class="answer-box correct-answer">
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Correct Answer</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: var(--success);">${qa.correctAnswer}</div>
+                                    </div>
+                                </div>
+                                ${qa.solution ? `
+                                <div class="solution-box">
+                                    <h4>💡 Detailed Solution</h4>
+                                    <div class="solution-text">${qa.solution}</div>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
         } catch(e) {
             console.error(e);
             loader.style.display = "none";
             container.innerHTML = `<div style="padding: 20px; color: #c0392b; background: #fdedec; text-align: center; border-radius: 6px;">Failed to load live ranking data. Check your internet connection.</div>`;
+        }
+    }
+
+    function toggleQuestionAnalysis(headerElement) {
+        const body = headerElement.nextElementSibling;
+        body.classList.toggle('show');
+        const arrow = headerElement.querySelector('span:last-child');
+        if (body.classList.contains('show')) {
+            arrow.innerText = '▲';
+        } else {
+            arrow.innerText = '▼';
         }
     }
 
