@@ -19,6 +19,14 @@ import mimetypes
 import traceback
 from PIL import Image
 
+app = FastAPI()
+
+# Add this to serve your website
+@app.get("/")
+def serve_frontend():
+    # Make sure 'login.html' matches your actual file name
+    return FileResponse("login.html")
+
 # Load Environment Variables
 load_dotenv()
 
