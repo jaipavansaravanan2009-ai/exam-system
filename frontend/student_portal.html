@@ -4,6 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Dashboard | JEE Portal</title>
+    
+    <script>
+        window.MathJax = {
+            loader: {load: ['[tex]/mhchem']}, // Loads the chemistry extension
+            tex: { 
+                packages: {'[+]': ['mhchem']}, // Activates the extension
+                inlineMath: [['$', '$'], ['\\(', '\\)']], 
+                displayMath: [['$$', '$$'], ['\\[', '\\]']] 
+            },
+            startup: { typeset: false } // We will trigger manually after DOM updates
+        };
+    </script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
     <style>
         :root {
             --primary: #1e3d59;
@@ -697,6 +712,9 @@
             loader.style.display = "none";
             container.innerHTML = `<div style="padding: 20px; color: #c0392b; background: #fdedec; text-align: center; border-radius: 6px;">Failed to load live ranking data. Check your internet connection.</div>`;
         }
+        
+        // Render MathJax after content is loaded
+        reRenderMathJax();
     }
 
     function toggleQuestionAnalysis(headerElement) {
@@ -712,6 +730,12 @@
 
     function closeResultAnalysis() { 
         document.getElementById("resultAnalysisModal").style.display = "none"; 
+    }
+
+    function reRenderMathJax() {
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
+        }
     }
 
     function logout() {

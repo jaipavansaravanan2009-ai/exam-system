@@ -845,7 +845,7 @@ async def get_exam_detailed_analysis(exam_id: str, user = Depends(authorize(["ad
 
 
 @app.get("/api/public/results/{result_id}/analysis")
-async def get_live_analysis(result_id: str, user = Depends(authorize(["student"]))):
+async def get_live_analysis(result_id: str, user = Depends(authorize(["student", "admin"]))):
     try:
         result_doc = db.collection("results").document(result_id).get()
         if not result_doc.exists:
