@@ -441,8 +441,12 @@
     function startTimer() {
         const timerInterval = setInterval(() => {
             timeLeft--;
-            let h = Math.floor(timeLeft / 3600), m = Math.floor((timeLeft % 3600) / 60), s = timeLeft % 60;
-            document.getElementById("timer").innerText = `${h}:${m}:${s}`.replace(/\b\d\b/g, "0$&");
+            let h = Math.floor(timeLeft / 3600);
+            let m = Math.floor((timeLeft % 3600) / 60);
+            let s = timeLeft % 60;
+            // Proper zero-padding for all time components
+            document.getElementById("timer").innerText = 
+                `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
             
             if (timeLeft <= 0) {
                 clearInterval(timerInterval);

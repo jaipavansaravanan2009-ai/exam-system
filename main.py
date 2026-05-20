@@ -768,9 +768,31 @@ async def get_live_analysis(result_id: str, user = Depends(authorize(["student"]
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/")
-async def root():
-    return FileResponse("frontend/login.html")
+# Admin-only endpoint to fetch all results
+@app.get("/api/results")
+async def get_all_results(user=Depends(authorize(["admin"]))):
+    try:
+        docs = db.collection("results").stream()
+        results_list = []
+        for doc in docs:
+            data = doc.to_dict()
+            submitted_time = data.get("submittedAt")
+            if submitted_time and hasattr(submitted_time, 'isoformat'):
+                time_str = submitted_time.isoformat()
+            else:
+                time_str = str(submitted_time) if submitted_time else None
+            
+            results_list.append({
+                "id": doc.id,
+                "submittedAt": time_str,
+                **data
+            })
+        
+        results_list.sort(key=lambda x: x.get("submittedAt") or "", reverse=True)
+        return results_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch results: {str(e)}")
+
 
 if os.path.exists("frontend"):
     app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")

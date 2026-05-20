@@ -190,10 +190,8 @@
                 console.log("Logged in as:", data.role);
 
                 // Redirect based on role
-                if (data.role.toLowerCase() === "admin") {
+                if (data.role.toLowerCase() === "admin" || data.role.toLowerCase() === "setter") {
                     window.location.href = "admin.html";
-                } else if (data.role.toLowerCase() === "setter") {
-                    window.location.href = "setter_dashboard.html";
                 } else {
                     window.location.href = "student_portal.html";
                 }
