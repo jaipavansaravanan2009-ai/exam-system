@@ -1422,9 +1422,11 @@
                 questionAnalysisHTML = '<h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Analysis</h3>';
                 
                 analysisData.questionAnalysis.forEach((qa, index) => {
-                    const statusClass = qa.isCorrect ? 'correct' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? 'skipped' : 'incorrect');
-                    const statusText = qa.isCorrect ? 'Correct' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? 'Skipped' : 'Incorrect');
-                    const marks = qa.isCorrect ? '+4' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '0' : '-1');
+                    // Use isAttempted field from backend to determine if question was skipped
+                    const isSkipped = !qa.isAttempted;
+                    const statusClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
+                    const statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
+                    const marks = qa.isCorrect ? '+4' : (isSkipped ? '0' : '-1');
                     
                     let subColor = "var(--secondary)"; 
                     if(qa.subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
@@ -1432,7 +1434,7 @@
                     
                     questionAnalysisHTML += `
                         <div style="background: white; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <div style="padding: 12px 15px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; border-left: 4px solid ${qa.isCorrect ? 'var(--success)' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '#95a5a6' : 'var(--danger)')};">
+                            <div style="padding: 12px 15px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; border-left: 4px solid ${qa.isCorrect ? 'var(--success)' : (isSkipped ? '#95a5a6' : 'var(--danger)')};">
                                 <div style="display: flex; align-items: center; gap: 15px;">
                                     <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
                                     <span style="font-size: 13px; color: #666;">${qa.subject}</span>
@@ -1440,7 +1442,7 @@
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${marks}</span>
-                                    <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: ${qa.isCorrect ? '#e8f5e9' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '#eceff1' : '#ffebee')}; color: ${qa.isCorrect ? '#2e7d32' : (qa.studentAnswer === null || qa.studentAnswer === undefined ? '#546e7a' : '#c62828')};">${statusText}</span>
+                                    <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: ${qa.isCorrect ? '#e8f5e9' : (isSkipped ? '#eceff1' : '#ffebee')}; color: ${qa.isCorrect ? '#2e7d32' : (isSkipped ? '#546e7a' : '#c62828')};">${statusText}</span>
                                 </div>
                             </div>
                             <div style="padding: 15px;">
@@ -1448,7 +1450,7 @@
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                                     <div style="padding: 10px; border-radius: 6px; font-size: 14px; background: #e8f4fd; border: 1px solid #b3d9ff;">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Student Answer</div>
-                                        <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${qa.studentAnswer !== null && qa.studentAnswer !== undefined ? qa.studentAnswer : '<span style="color: #999;">Not Attempted</span>'}</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${qa.isAttempted ? qa.studentAnswer : '<span style="color: #999;">Not Attempted</span>'}</div>
                                     </div>
                                     <div style="padding: 10px; border-radius: 6px; font-size: 14px; background: #e8f8e8; border: 1px solid #b2dfb2;">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Correct Answer</div>

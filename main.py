@@ -859,7 +859,8 @@ async def get_live_analysis(result_id: str, user = Depends(authorize(["student",
         
         my_result = result_doc.to_dict()
         
-        if my_result["studentName"] != user["name"]:
+        # Allow admin users to view any student's analysis
+        if user.get("role") != "admin" and my_result["studentName"] != user["name"]:
             raise HTTPException(status_code=403, detail="Unauthorized to view this result.")
             
         exam_id = my_result["examId"]
