@@ -544,7 +544,8 @@
             studentName: localStorage.getItem("userName") || "Guest Student",
             examTitle: examData.title || "Untitled Exam", 
             examId: new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId'),
-            subjectWiseBreakdown: subjectWiseData
+            subjectWiseBreakdown: subjectWiseData,
+            questionAnswers: studentAnswers
         };
         
         try {
