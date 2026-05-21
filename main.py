@@ -922,6 +922,7 @@ async def get_live_analysis(result_id: str, user = Depends(authorize(["student",
                 "correctAnswer": qb.get("correctAnswer", ""),
                 "studentAnswer": qb.get("studentAnswer"),
                 "isCorrect": qb.get("isCorrect", False),
+                "isAttempted": qb.get("isAttempted", False),
                 "solution": qb.get("solution", ""),
                 "hint": qb.get("hint", "")
             })
