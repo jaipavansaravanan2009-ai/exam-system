@@ -83,10 +83,26 @@
         }
         .view-section.active { display: block; }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsive Design for Mobile */
+    @media (max-width: 768px) {
+        .sidebar { width: 100%; height: auto; position: relative; padding: 10px; }
+        .main-content { margin-left: 0; padding: 15px; }
+        .header-strip { flex-direction: column; align-items: flex-start; gap: 10px; }
+        .view-section { max-width: 100%; }
+        .card { padding: 15px; }
+        .q-card-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+        .q-card-header > div:last-child { align-items: flex-start; width: 100%; }
+        .q-options-grid { grid-template-columns: 1fr; }
+        .q-details-box img { max-height: 150px; }
+        .paste-zone { font-size: 11px; padding: 10px; }
+        .opt-container { padding: 8px; }
+        input[type="text"], input[type="password"], input[type="email"], select, input[type="number"] { padding: 10px; font-size: 14px; }
+    }
 
         .card {
             background: white;
@@ -1676,7 +1692,7 @@
             
             modal.innerHTML = `
                 <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 950px; max-height: 90vh; overflow-y: auto;">
-                    <button class="btn" style="float:right; background:#333; color:white;" onclick="this.closest('#adminAnalysisModal').remove()">Close X</button>
+            <button class="btn" style="float:right; background:#333; color:white;" onclick="this.parentElement.parentElement.remove()">Close X</button>
                     <h2 style="color: var(--primary); margin-bottom: 5px;">📊 Result Analysis</h2>
                     <p style="color: #777; font-size: 14px; margin-bottom: 20px;">Candidate: ${analysisData.overall ? 'Student' : 'Unknown'}</p>
                     <hr style="margin: 20px 0;">
@@ -1721,6 +1737,7 @@
 
     // ================= QUESTION LIST FUNCTIONS =================
     let editingQlId = null;
+    let quickCreateFromBank = false; // When true, a newly created list is auto-selected in the Question Bank folder sidebar
 
     async function loadQuestionLists() {
         try {
@@ -1819,6 +1836,13 @@
                     alert("List created! ✅");
                     closeListModal();
                     loadQuestionLists();
+                    // When created from the Question Bank folder sidebar, auto-select the new list there
+                    if (quickCreateFromBank) {
+                        const data = await res.json();
+                        loadQBFolders();
+                        qbSelectedListId = data.id;
+                        selectQBListFolder(data.id);
+                    }
                 } else alert("Failed to create list.");
             }
         } catch (e) {
@@ -1827,6 +1851,7 @@
         } finally {
             btn.innerText = editingQlId ? "Update List ✏️" : "Create List ✅";
             btn.disabled = false;
+            quickCreateFromBank = false;
         }
     }
 
@@ -1990,7 +2015,7 @@
     }
 
     async function searchQBForList() {
-        const btn = document.querySelector('button[onclick="searchQBForList()"]');
+        const btn = document.querySelector('#qlAddFromBankModal button[onclick*="searchQBForList"]');
         btn.innerText = "Searching... ⏳";
         
         try {
@@ -2207,32 +2232,12 @@
     }
 
     function openQBListQuickCreate() {
+        quickCreateFromBank = true;
         document.getElementById("qlFormTitle").innerText = "Quick Create List";
         document.getElementById("qlSaveBtn").innerText = "Create List ✅";
         document.getElementById("qlName").value = "";
         document.getElementById("qlDesc").value = "";
         editingQlId = null;
-        const originalSave = saveQuestionList;
-        window.saveQuestionList = async function() {
-            const name = document.getElementById("qlName").value.trim();
-            if (!name) return alert("Please enter a list name.");
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/question_lists`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ name, description: document.getElementById("qlDesc").value.trim() })
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    alert("List created! ✅");
-                    closeListModal();
-                    loadQBFolders();
-                    loadQuestionLists();
-                    qbSelectedListId = data.id;
-                    selectQBListFolder(data.id);
-                } else alert("Failed to create list.");
-            } catch(e) { console.error(e); }
-        };
         document.getElementById("qlEditorModal").style.display = "flex";
     }
 

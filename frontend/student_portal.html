@@ -273,6 +273,20 @@
             background: #eceff1;
             color: #546e7a;
         }
+
+        /* Responsive Design for Mobile */
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; height: auto; position: relative; padding: 10px; }
+            .main-content { margin-left: 0; padding: 15px; }
+            .header-strip { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .view-section { max-width: 100%; }
+            .card { padding: 15px; }
+            .exam-grid { grid-template-columns: 1fr; }
+            .question-analysis-header { flex-direction: column; align-items: flex-start; }
+            .question-analysis-header > div:last-child { align-items: flex-start; width: 100%; }
+            .answer-comparison { grid-template-columns: 1fr; }
+            .answers-summary-box { flex-direction: column; gap: 10px; }
+        }
         .question-meta {
             display: flex;
             gap: 15px;
@@ -432,6 +446,8 @@
                 return;
             }
 
+            let hasAvailableExams = false;
+
             // Fetch this student's PAST attempts to filter them out
             const pastResultsRes = await fetch(`${BACKEND_URL}/api/public/results/my-results`, { 
                 headers: { "Authorization": `Bearer ${token}` } 
@@ -460,17 +476,29 @@
                 const btnText = isReady ? "Start Mock Test ▶" : "Exam Not Ready";
                 const btnAction = isReady ? `onclick="startExam('${exam.id}')"` : "disabled";
 
-                grid.innerHTML += `
-                    <div class="exam-card">
-                        <div class="exam-title">${exam.title}</div>
-                        <div class="exam-meta">
-                            <span><b>Questions:</b> ${qCount}</span>
-                            <span><b>Total Marks:</b> ${qCount * 4}</span>
-                        </div>
-                        <button class="btn ${btnClass}" ${btnAction}>${btnText}</button>
+            grid.innerHTML += `
+                <div class="exam-card">
+                    <div class="exam-title">${exam.title}</div>
+                    <div class="exam-meta">
+                        <span><b>Questions:</b> ${qCount}</span>
+                        <span><b>Total Marks:</b> ${qCount * 4}</span>
                     </div>
-                `;
-            });
+                    <button class="btn ${btnClass}" ${btnAction}>${btnText}</button>
+                </div>
+            `;
+            
+            hasAvailableExams = true;
+        });
+
+        // Show message if all exams have been attempted
+        if (!hasAvailableExams && grid.innerHTML === "") {
+            grid.innerHTML = `<div style="grid-column: 1/-1; background: #fff3cd; color: #856404; padding: 30px; border-radius: 8px; text-align: center; border: 1px solid #ffeeba;">
+                <h3 style="margin-bottom: 10px;">All Exams Completed!</h3>
+                <p>You have already attempted all available exams. Check your past results for analysis.</p>
+                <button class="btn btn-outline" style="margin-top: 15px;" onclick="switchTab('view-past-results', document.querySelector('.nav-btn:nth-child(2)'))">View Past Results</button>
+            </div>`;
+            return;
+        }
 
         } catch (error) {
             console.error("Error:", error);

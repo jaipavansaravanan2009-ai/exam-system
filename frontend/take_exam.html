@@ -98,9 +98,20 @@
         .controls { margin-top: 30px; display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 20px; flex-wrap: wrap; }
         .btn { padding: 12px 20px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; transition: background 0.2s, transform 0.1s; }
         /* FIX: Smooth hover effects for bottom controls */
-        .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
         .btn:active { transform: translateY(1px); }
-        #timer { font-size: 20px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
+        #timer { font-size: 18px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
+
+        /* Responsive Design for Mobile */
+        @media (max-width: 768px) {
+            .subject-bar { flex-wrap: wrap; }
+            .sub-btn { padding: 10px 15px; font-size: 13px; }
+            .main-container { flex-direction: column; }
+            .question-section { padding: 15px; }
+            .sidebar { max-height: 40vh; }
+            .palette-grid { grid-template-columns: repeat(4, 1fr); }
+            .controls { flex-direction: column; gap: 8px; }
+        }
     </style>
 </head>
 <body>
@@ -113,7 +124,7 @@
 <div class="subject-bar">
     <button class="sub-btn active" onclick="filterSubject('Physics')">Physics</button>
     <button class="sub-btn" onclick="filterSubject('Chemistry')">Chemistry</button>
-    <button class="sub-btn" onclick="filterSubject('Maths')">Mathematics</button>
+    <button class="sub-btn" onclick="filterSubject('Maths')">Maths</button>
 </div>
 
 <div class="main-container" id="examUI" style="display: none;">
