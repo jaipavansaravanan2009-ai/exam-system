@@ -151,7 +151,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
 
-        /* NEW: Enhanced Question Card Styles added from the previous UI update */
+        /* Question Card Styles */
         .q-card { background: white; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; border-left: 5px solid var(--secondary); transition: 0.2s; margin-bottom: 15px; border-top: none; }
         .q-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
         .q-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;}
@@ -298,13 +298,6 @@
                     <p style="font-size: 11px; color: #888; margin-top: 5px;">Click a folder to filter questions</p>
                 </div>
                 <div id="qbFolderList" style="padding: 10px; max-height: 450px; overflow-y: auto;">
-                    <div class="qb-folder-item active" data-list-id="" onclick="selectQBListFolder('')" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; background: var(--secondary); color: white;">
-                        <span style="font-size: 20px;">📦</span>
-                        <div style="flex: 1;">
-                            <strong style="font-size: 14px;">All Questions</strong>
-                            <span id="qbAllCount" style="font-size: 11px; opacity: 0.8; display: block;">0 questions</span>
-                        </div>
-                    </div>
                     <!-- Dynamic folder items will be rendered here -->
                 </div>
             </div>
@@ -902,7 +895,6 @@
         clearPasteZone('qbOpt3Img'); clearPasteZone('qbOpt4Img'); clearPasteZone('qbSolImg');
     }
 
-    // NEW: Integrated enhanced card UI layout with accurate filters and MathJax rendering
     async function loadQuestionBank() {
         try {
             const fSub = document.getElementById("qbFilterSubject") ? document.getElementById("qbFilterSubject").value : "";
@@ -916,18 +908,38 @@
             const queryStr = params.toString() ? `?${params.toString()}` : "";
 
             const res = await fetch(`${BACKEND_URL}/api/question_bank${queryStr}`, { headers: { "Authorization": `Bearer ${token}` } });
-            const qbList = await res.json();
+            let qbList = await res.json();
+            
+            // Update the all count in folder sidebar
+            const allCount = document.getElementById("qbAllCount");
+            if (allCount) allCount.innerText = `${qbList.length} questions`;
+
+            // Filter by selected list if one is selected
+            if (qbSelectedListId) {
+                const listDoc = qbListsCache.find(l => l.id === qbSelectedListId);
+                if (listDoc && listDoc.questionIds && listDoc.questionIds.length > 0) {
+                    const validIds = new Set(listDoc.questionIds);
+                    qbList = qbList.filter(q => validIds.has(q.id));
+                } else {
+                    qbList = [];
+                }
+            }
+
             currentQBQuestions = qbList; 
             const listDiv = document.getElementById("qbList");
             listDiv.innerHTML = "";
             
-            if(qbList.length === 0) return listDiv.innerHTML = "<div style='padding: 15px; color: #777;'>Bank is empty or no matches found. Add questions!</div>";
+            if(qbList.length === 0) {
+                const msg = qbSelectedListId ? "This list has no questions yet. Add questions from the bank!" : "Bank is empty or no matches found. Add questions!";
+                return listDiv.innerHTML = `<div style='padding: 15px; color: #777;'>${msg}</div>`;
+            }
+
+            const listsForDropdown = qbListsCache;
 
             qbList.forEach((q, i) => {
                 const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none; width:100%;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
                 const editBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-outline btn-small" style="width:100%;" onclick="loadEditQBQuestion('${q.id}')">✏️ Edit</button>` : "";
 
-                // Formatting options into detailed grid view
                 let optionsHTML = "";
                 if (q.options && q.options.length > 0) {
                     optionsHTML = `<div class="q-options-grid">`;
@@ -952,7 +964,16 @@
                     `;
                 }
 
-                // Replacing standard view with enhanced detailed Q-card layout
+                let listOptionsHtml = '<option value="">Add to List...</option>';
+                if (listsForDropdown.length > 0) {
+                    listsForDropdown.forEach(l => {
+                        const alreadyInList = l.questionIds && l.questionIds.includes(q.id);
+                        const label = alreadyInList ? `${l.name} (✓ already in)` : l.name;
+                        listOptionsHtml += `<option value="${l.id}" ${alreadyInList ? 'disabled' : ''}>${label}</option>`;
+                    });
+                }
+                listOptionsHtml += '<option value="__create__">➕ Create new list...</option>';
+
                 listDiv.innerHTML += `
                     <div class="q-card">
                         <div class="q-card-header">
@@ -969,10 +990,18 @@
                                     <span class="badge badge-topic">🏷️ ${q.topics && q.topics.length ? q.topics.join(', ') : 'Uncategorized'}</span>
                                 </div>
                             </div>
-                            <div style="display: flex; gap: 8px; flex-direction: column; align-items: flex-end; min-width: 120px;">
-                                <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')" style="width: 100%;">👁️ Details</button>
-                                ${editBtn}
-                                ${delBtn}
+                            <div style="display: flex; gap: 8px; flex-direction: column; align-items: flex-end; min-width: 140px;">
+                                <div style="display: flex; gap: 4px; width: 100%;">
+                                    <select class="qb-add-to-list-select" onchange="handleAddToList(this, '${q.id}')" style="flex: 1; padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0;">
+                                        ${listOptionsHtml}
+                                    </select>
+                                    <button class="btn btn-primary btn-small" style="padding: 4px 6px; font-size: 10px; background: var(--success); border: none;" onclick="addSingleQuestionToExamFromBank('${q.id}')" title="Add to Exam">📥</button>
+                                </div>
+                                <div style="display: flex; gap: 4px; width: 100%;">
+                                    <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')" style="flex: 1;">👁️ Details</button>
+                                    ${editBtn}
+                                </div>
+                                ${delBtn ? `<div style="width: 100%;">${delBtn}</div>` : ''}
                             </div>
                         </div>
                         
@@ -1168,7 +1197,6 @@
                 resDiv.innerHTML = "<div style='color:#777; text-align:center;'>No questions match your filters.</div>";
                 importBtn.style.display = "none";
             } else {
-                // NEW: Applied the badges to the import results layout
                 filtered.forEach(q => {
                     const qText = q.question ? q.question.substring(0, 80) + '...' : '<i>[Image Only]</i>';
                     resDiv.innerHTML += `
@@ -1389,7 +1417,6 @@
                     const hasImg = q.questionImage ? '🖼️ [Image Attached]' : '';
                     const qTextDisplay = q.question || "<i>(Image Only Question)</i>";
                     
-                    // NEW: Applied the enhanced grid layout for local exam questions
                     let optionsHTML = "";
                     if (q.section !== "Integer based question" && q.options && q.options.length > 0) {
                         optionsHTML = `<div class="q-options-grid">`;
@@ -1510,9 +1537,7 @@
         } catch(e) { console.error("Could not load results:", e); }
     }
 
-    // Admin Analysis Modal for viewing detailed candidate analysis
     async function viewAdminAnalysis(resultId) {
-        // Fetch the detailed analysis from the backend
         try {
             const res = await fetch(`${BACKEND_URL}/api/public/results/${resultId}/analysis`, { 
                 headers: { "Authorization": `Bearer ${token}` } 
@@ -1525,7 +1550,6 @@
             
             const analysisData = await res.json();
             
-            // Show the analysis in a modal (reusing the concept from student portal but simpler)
             const modal = document.createElement('div');
             modal.id = 'adminAnalysisModal';
             modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 3000; backdrop-filter: blur(4px);';
@@ -1535,9 +1559,7 @@
                 questionAnalysisHTML = '<h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Analysis</h3>';
                 
                 analysisData.questionAnalysis.forEach((qa, index) => {
-                    // Use isAttempted field from backend to determine if question was skipped
                     const isSkipped = !qa.isAttempted;
-                    const statusClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
                     const statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
                     const marks = qa.isCorrect ? '+4' : (isSkipped ? '0' : '-1');
                     
@@ -1828,7 +1850,6 @@
     }
 
     async function addSingleQuestionToExam(questionId) {
-        // Get the question data from the current detail view
         try {
             const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
             const allQb = await res.json();
@@ -1840,7 +1861,6 @@
             
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
 
-            let examOptions = exams.map(e => `<option value="${e.id}">${e.title} (${e.questions ? e.questions.length : 0} questions)</option>`).join("");
             const selected = prompt("Enter the index of the exam to add this question to:\n\n" + exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n"));
             
             if (selected === null) return;
@@ -2044,431 +2064,6 @@
             qbListsCache = await res.json();
             
             const folderDiv = document.getElementById("qbFolderList");
-            // Keep the "All Questions" item at the top
-            const allItem = folderDiv.querySelector('.qb-folder-item[data-list-id=""]');
-            folderDiv.innerHTML = '';
-            if (allItem) folderDiv.appendChild(allItem.cloneNode(true));
-            else {
-                folderDiv.innerHTML = `
-                    <div class="qb-folder-item active" data-list-id="" onclick="selectQBListFolder('')" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; background: var(--secondary); color: white;">
-                        <span style="font-size: 20px;">📦</span>
-                        <div style="flex: 1;">
-                            <strong style="font-size: 14px;">All Questions</strong>
-                            <span id="qbAllCount" style="font-size: 11px; opacity: 0.8; display: block;">0 questions</span>
-                        </div>
-                    </div>
-                `;
-            }
-
-            if (qbListsCache.length === 0) {
-                folderDiv.innerHTML += `<div style="color: #999; font-size: 12px; padding: 15px; text-align: center;">No lists yet.<br>Click ➕ to create one</div>`;
-            } else {
-                qbListsCache.forEach(list => {
-                    const qCount = list.questionIds ? list.questionIds.length : 0;
-                    const isActive = qbSelectedListId === list.id;
-                    const bgStyle = isActive ? 'background: var(--secondary); color: white;' : 'background: transparent; color: #333;';
-                    const hoverStyle = isActive ? '' : 'onmouseover="this.style.background=\'#f0f4f8\'" onmouseout="this.style.background=\'transparent\'"';
-                    folderDiv.innerHTML += `
-                        <div class="qb-folder-item" data-list-id="${list.id}" onclick="selectQBListFolder('${list.id}')" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; ${bgStyle}" ${hoverStyle}>
-                            <span style="font-size: 20px;">📁</span>
-                            <div style="flex: 1; min-width: 0;">
-                                <strong style="font-size: 13px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${list.name}</strong>
-                                <span style="font-size: 11px; opacity: 0.8; display: block;">${qCount} questions</span>
-                            </div>
-                            <div style="display: flex; gap: 3px; flex-shrink: 0;">
-                                <button class="btn btn-primary btn-small" style="padding: 2px 5px; font-size: 10px; background: var(--success); border: none;" onclick="event.stopPropagation(); addListToExamFromBank('${list.id}', '${list.name.replace(/'/g, "\\'")}')" title="Add all to exam">📥</button>
-                                <button class="btn btn-primary btn-small" style="padding: 2px 5px; font-size: 10px; background: #e74c3c; border: none;" onclick="event.stopPropagation(); deleteQBListFolder('${list.id}')" title="Delete list">🗑️</button>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-        } catch (e) {
-            console.error("Failed to load folders:", e);
-        }
-    }
-
-    function selectQBListFolder(listId) {
-        qbSelectedListId = listId;
-        // Update UI active state
-        document.querySelectorAll('.qb-folder-item').forEach(el => {
-            const id = el.getAttribute('data-list-id');
-            if (id === listId) {
-                el.style.background = 'var(--secondary)';
-                el.style.color = 'white';
-            } else {
-                el.style.background = 'transparent';
-                el.style.color = '#333';
-            }
-        });
-        // Update title
-        if (listId === '') {
-            document.getElementById("qbViewTitle").innerHTML = '🗄️ All Questions';
-            document.getElementById("qbViewSubtitle").innerText = 'Browse and manage all questions';
-        } else {
-            const list = qbListsCache.find(l => l.id === listId);
-            const name = list ? list.name : 'Unknown';
-            document.getElementById("qbViewTitle").innerHTML = `📁 ${name}`;
-            document.getElementById("qbViewSubtitle").innerText = `Questions in this list - ${list ? (list.questionIds ? list.questionIds.length : 0) : 0} questions`;
-        }
-        loadQuestionBank();
-    }
-
-    function openQBListQuickCreate() {
-        // Open the existing create list modal from the Question Lists tab
-        document.getElementById("qlFormTitle").innerText = "Quick Create List";
-        document.getElementById("qlSaveBtn").innerText = "Create List ✅";
-        document.getElementById("qlName").value = "";
-        document.getElementById("qlDesc").value = "";
-        editingQlId = null;
-        // Override save to refresh folders after creation
-        const originalSave = saveQuestionList;
-        window.saveQuestionList = async function() {
-            const name = document.getElementById("qlName").value.trim();
-            if (!name) return alert("Please enter a list name.");
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/question_lists`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ name, description: document.getElementById("qlDesc").value.trim() })
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    alert("List created! ✅");
-                    closeListModal();
-                    loadQBFolders();
-                    loadQuestionLists();
-                    // Select the new list
-                    qbSelectedListId = data.id;
-                    selectQBListFolder(data.id);
-                } else alert("Failed to create list.");
-            } catch(e) { console.error(e); }
-        };
-        document.getElementById("qlEditorModal").style.display = "flex";
-        // Restore after close
-        const closeBtn = document.querySelector('#qlEditorModal .modal-content .btn:first-child');
-        const originalClose = closeBtn.onclick;
-        closeBtn.onclick = function() {
-            window.saveQuestionList = originalSave;
-            closeListModal();
-        };
-    }
-
-    async function addListToExamFromBank(listId, listName) {
-        try {
-            const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
-            const exams = await examsRes.json();
-            if (exams.length === 0) return alert("No exams exist. Create an exam first!");
-            
-            const examOptions = exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n");
-            const selected = prompt(`Select exam to add "${listName}" to:\n\n${examOptions}`);
-            
-            if (selected === null) return;
-            const idx = parseInt(selected);
-            if (isNaN(idx) || idx < 0 || idx >= exams.length) return alert("Invalid selection.");
-            
-            const res = await fetch(`${BACKEND_URL}/api/exams/${exams[idx].id}/import-question-list/${listId}`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            
-            const data = await res.json();
-            if (res.ok) {
-                alert(data.message || "Questions imported! ✅");
-            } else alert("Failed to import: " + (data.detail || "Unknown error"));
-        } catch (e) {
-            console.error(e);
-            alert("Error importing list to exam.");
-        }
-    }
-
-    async function deleteQBListFolder(id) {
-        if (!confirm("Delete this question list? The questions themselves will NOT be deleted from the bank.")) return;
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/question_lists/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
-            if (res.ok) {
-                if (qbSelectedListId === id) {
-                    qbSelectedListId = '';
-                    selectQBListFolder('');
-                }
-                loadQBFolders();
-                loadQuestionLists();
-            } else alert("Failed to delete list.");
-        } catch (e) { console.error(e); }
-    }
-
-    // ================= OVERRIDE loadQuestionBank to support list filtering =================
-    const originalLoadQuestionBank = loadQuestionBank;
-    loadQuestionBank = async function() {
-        try {
-            const fSub = document.getElementById("qbFilterSubject") ? document.getElementById("qbFilterSubject").value : "";
-            const fSec = document.getElementById("qbFilterSection") ? document.getElementById("qbFilterSection").value : "";
-            const fTopic = document.getElementById("qbFilterTopic") ? document.getElementById("qbFilterTopic").value : "";
-            
-            const params = new URLSearchParams();
-            if(fSub) params.append("subject", fSub);
-            if(fSec) params.append("section", fSec);
-            if(fTopic) params.append("topic", fTopic);
-            const queryStr = params.toString() ? `?${params.toString()}` : "";
-
-            const res = await fetch(`${BACKEND_URL}/api/question_bank${queryStr}`, { headers: { "Authorization": `Bearer ${token}` } });
-            let qbList = await res.json();
-            
-            // Update the all count
-            const allCount = document.getElementById("qbAllCount");
-            if (allCount) allCount.innerText = `${qbList.length} questions`;
-
-            // Filter by selected list if one is selected
-            if (qbSelectedListId) {
-                const listDoc = qbListsCache.find(l => l.id === qbSelectedListId);
-                if (listDoc && listDoc.questionIds && listDoc.questionIds.length > 0) {
-                    const validIds = new Set(listDoc.questionIds);
-                    qbList = qbList.filter(q => validIds.has(q.id));
-                } else {
-                    qbList = [];
-                }
-            }
-
-            currentQBQuestions = qbList; 
-            const listDiv = document.getElementById("qbList");
-            listDiv.innerHTML = "";
-            
-            if(qbList.length === 0) {
-                const msg = qbSelectedListId ? "This list has no questions yet. Add questions from the bank!" : "Bank is empty or no matches found. Add questions!";
-                return listDiv.innerHTML = `<div style='padding: 15px; color: #777;'>${msg}</div>`;
-            }
-
-            // Get all lists for the "Add to List" dropdown
-            const listsForDropdown = qbListsCache;
-
-            qbList.forEach((q, i) => {
-                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none; width:100%;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
-                const editBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-outline btn-small" style="width:100%;" onclick="loadEditQBQuestion('${q.id}')">✏️ Edit</button>` : "";
-
-                // Formatting options into detailed grid view
-                let optionsHTML = "";
-                if (q.options && q.options.length > 0) {
-                    optionsHTML = `<div class="q-options-grid">`;
-                    q.options.forEach((opt, idx) => {
-                        const isCorrect = q.correctAnswers && q.correctAnswers.includes(opt);
-                        const highlightClass = isCorrect ? 'correct' : '';
-                        const optionLetter = String.fromCharCode(65 + idx);
-                        optionsHTML += `
-                            <div class="opt-item-card ${highlightClass}">
-                                <strong>${optionLetter}.</strong> 
-                                <span>${opt}</span>
-                                ${isCorrect ? '<span style="margin-left:auto; color:var(--success); font-weight:bold;">✓</span>' : ''}
-                            </div>
-                        `;
-                    });
-                    optionsHTML += `</div>`;
-                } else {
-                    optionsHTML = `
-                        <div style="padding: 10px; background: #e8f8f5; border: 1px solid var(--success); border-radius: 4px; margin: 15px 0;">
-                            <strong>Numerical Answer:</strong> ${q.correctAnswers ? q.correctAnswers.join(', ') : 'N/A'}
-                        </div>
-                    `;
-                }
-
-                // Build "Add to List" dropdown options
-                let listOptionsHtml = '<option value="">Add to List...</option>';
-                if (listsForDropdown.length > 0) {
-                    listsForDropdown.forEach(l => {
-                        const alreadyInList = l.questionIds && l.questionIds.includes(q.id);
-                        const label = alreadyInList ? `${l.name} (✓ already in)` : l.name;
-                        listOptionsHtml += `<option value="${l.id}" ${alreadyInList ? 'disabled' : ''}>${label}</option>`;
-                    });
-                } else {
-                    listOptionsHtml += '<option value="" disabled>No lists available</option>';
-                }
-                // Also "Create new list" option
-                listOptionsHtml += '<option value="__create__">➕ Create new list...</option>';
-
-                // Replacing standard view with enhanced detailed Q-card layout
-                listDiv.innerHTML += `
-                    <div class="q-card">
-                        <div class="q-card-header">
-                            <div>
-                                <div class="badges">
-                                    <span class="badge badge-type">${q.exam_type || 'N/A'}</span>
-                                    <span class="badge badge-subject">${q.subject || 'N/A'}</span>
-                                    <span class="badge badge-section">${q.section || 'N/A'}</span>
-                                </div>
-                                <div style="margin-top: 8px; font-size: 15px; max-width: 650px;">
-                                    <strong>Q:</strong> ${q.question ? q.question.substring(0,100)+'...' : '<i>[Image Only]</i>'}
-                                </div>
-                                <div style="margin-top: 8px;">
-                                    <span class="badge badge-topic">🏷️ ${q.topics && q.topics.length ? q.topics.join(', ') : 'Uncategorized'}</span>
-                                </div>
-                            </div>
-                            <div style="display: flex; gap: 8px; flex-direction: column; align-items: flex-end; min-width: 140px;">
-                                <div style="display: flex; gap: 4px; width: 100%;">
-                                    <select class="qb-add-to-list-select" onchange="handleAddToList(this, '${q.id}')" style="flex: 1; padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0;">
-                                        ${listOptionsHtml}
-                                    </select>
-                                    <button class="btn btn-primary btn-small" style="padding: 4px 6px; font-size: 10px; background: var(--success); border: none;" onclick="addSingleQuestionToExamFromBank('${q.id}')" title="Add to Exam">📥</button>
-                                </div>
-                                <div style="display: flex; gap: 4px; width: 100%;">
-                                    ${editBtn}
-                                    ${delBtn}
-                                </div>
-                                <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')" style="width: 100%;">👁️ Details</button>
-                            </div>
-                        </div>
-                        
-                        <div id="qb-details-${i}" class="q-details-box">
-                            <div style="font-size: 15px; margin-bottom: 10px;">${q.question || ''}</div>
-                            ${q.questionImage ? `<img src="${q.questionImage}" style="max-width: 100%; max-height: 200px;">` : ''}
-                            
-                            ${optionsHTML}
-                            
-                            ${q.hint ? `<p style="background: #fff3cd; padding: 8px; border-left: 3px solid #ffeeba; margin-bottom: 10px;"><b>Hint:</b> ${q.hint}</p>` : ''}
-                            ${q.solution ? `<p style="background: #d4edda; padding: 8px; border-left: 3px solid #c3e6cb;"><b>Solution:</b> ${q.solution}</p>` : ''}
-                            ${q.solutionImage ? `<img src="${q.solutionImage}" style="max-width: 100%; max-height: 200px; margin-top: 10px;">` : ''}
-                        </div>
-                    </div>`;
-            });
-            reRenderMathJax(); 
-        } catch(e) { console.error("Could not load Question Bank:", e); }
-    };
-
-    // Handle Add to List dropdown selection
-    async function handleAddToList(selectEl, questionId) {
-        const listId = selectEl.value;
-        if (!listId) return;
-        
-        if (listId === '__create__') {
-            selectEl.value = '';
-            // Create new list and add question
-            const listName = prompt("Enter a name for the new question list:");
-            if (!listName || !listName.trim()) return;
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/question_lists`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ name: listName.trim(), description: "" })
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const newListId = data.id;
-                    // Add the question to the new list
-                    const addRes = await fetch(`${BACKEND_URL}/api/question_lists/${newListId}/questions`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                        body: JSON.stringify({ questionIds: [questionId] })
-                    });
-                    if (addRes.ok) {
-                        alert(`Question added to new list "${listName.trim()}"! ✅`);
-                        loadQBFolders();
-                        loadQuestionLists();
-                    } else alert("Failed to add question to new list.");
-                } else alert("Failed to create list.");
-            } catch(e) { console.error(e); }
-            return;
-        }
-
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/question_lists/${listId}/questions`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ questionIds: [questionId] })
-            });
-            if (res.ok) {
-                alert("Question added to list! ✅");
-                loadQBFolders();
-                // Refresh if currently viewing this list
-                if (qbSelectedListId === listId) selectQBListFolder(listId);
-            } else alert("Failed to add question to list.");
-        } catch(e) { console.error(e); }
-        selectEl.value = '';
-    }
-
-    // Add a single question from bank directly to an exam
-    async function addSingleQuestionToExamFromBank(questionId) {
-        const q = currentQBQuestions.find(x => x.id === questionId);
-        if (!q) return alert("Question not found.");
-
-        try {
-            const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
-            const exams = await examsRes.json();
-            if (exams.length === 0) return alert("No exams exist. Create an exam first!");
-            
-            const examOptions = exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n");
-            const selected = prompt(`Select exam to add this question to:\n\n${examOptions}`);
-            
-            if (selected === null) return;
-            const idx = parseInt(selected);
-            if (isNaN(idx) || idx < 0 || idx >= exams.length) return alert("Invalid selection.");
-            
-            const examQ = {
-                subject: q.subject || "Physics",
-                question: q.question || "",
-                questionImage: q.questionImage || null,
-                options: q.options || [],
-                optionImages: q.optionImages || [],
-                correctAnswer: (q.correctAnswers || [""])[0],
-                correctAnswers: q.correctAnswers || [],
-                section: q.section || "Single correct answer",
-                hint: q.hint || "",
-                solution: q.solution || "",
-                solutionImage: q.solutionImage || null,
-                topics: q.topics || []
-            };
-
-            const importRes = await fetch(`${BACKEND_URL}/api/exams/${exams[idx].id}/import-questions`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify([examQ])
-            });
-            
-            if (importRes.ok) {
-                alert(`Question added to "${exams[idx].title}"! ✅`);
-            } else alert("Failed to add question to exam.");
-        } catch (e) {
-            console.error(e);
-            alert("Error adding question to exam.");
-        }
-    }
-
-    // Override the tab switch to also load folders when question bank tab is shown
-    const originalSwitchTab = switchTab;
-    switchTab = function(tabId, btnElement) {
-        document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
-        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-        document.getElementById(tabId).classList.add('active');
-        btnElement.classList.add('active');
-        document.getElementById('pageTitle').innerText = btnElement.innerText.replace(/[^\w\s]/gi, '').trim();
-        if(tabId === 'view-question-bank') {
-            loadQBFolders();
-            loadQuestionBank();
-        }
-        if(tabId === 'view-question-lists') loadQuestionLists();
-        if(tabId === 'view-exams') loadExams();
-        if(tabId === 'view-results') loadResults();
-    };
-
-    // Also load folders on initial load
-    if (token && role && (role.toLowerCase() === "admin" || role.toLowerCase() === "setter")) {
-        loadExams(); loadResults();
-        if(role.toLowerCase() === "setter") document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
-        // Pre-load folders in background
-        setTimeout(loadQBFolders, 100);
-    }
-</script>
-
-</body>
-</html>
-    // ================= QUESTION BANK FOLDER SIDEBAR =================
-    let qbSelectedListId = ''; // '' means "All Questions"
-    let qbListsCache = [];
-
-    async function loadQBFolders() {
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/question_lists`, { headers: { "Authorization": `Bearer ${token}` } });
-            qbListsCache = await res.json();
-            
-            const folderDiv = document.getElementById("qbFolderList");
-            // Keep the "All Questions" item at the top
             folderDiv.innerHTML = `
                 <div class="qb-folder-item ${qbSelectedListId === '' ? 'active' : ''}" data-list-id="" onclick="selectQBListFolder('')" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; ${qbSelectedListId === '' ? 'background: var(--secondary); color: white;' : 'background: transparent; color: #333;'}">
                     <span style="font-size: 20px;">📦</span>
@@ -2508,7 +2103,6 @@
 
     function selectQBListFolder(listId) {
         qbSelectedListId = listId;
-        // Update UI active state
         document.querySelectorAll('.qb-folder-item').forEach(el => {
             const id = el.getAttribute('data-list-id');
             if (id === listId) {
@@ -2521,7 +2115,6 @@
                 el.classList.remove('active');
             }
         });
-        // Update title
         if (listId === '') {
             document.getElementById("qbViewTitle").innerHTML = '🗄️ All Questions';
             document.getElementById("qbViewSubtitle").innerText = 'Browse and manage all questions';
@@ -2540,8 +2133,6 @@
         document.getElementById("qlName").value = "";
         document.getElementById("qlDesc").value = "";
         editingQlId = null;
-        document.getElementById("qlEditorModal").style.display = "flex";
-        // Override save temporarily
         const originalSave = saveQuestionList;
         window.saveQuestionList = async function() {
             const name = document.getElementById("qlName").value.trim();
@@ -2563,6 +2154,7 @@
                 } else alert("Failed to create list.");
             } catch(e) { console.error(e); }
         };
+        document.getElementById("qlEditorModal").style.display = "flex";
     }
 
     async function addListToExamFromBank(listId, listName) {
@@ -2607,136 +2199,6 @@
             } else alert("Failed to delete list.");
         } catch (e) { console.error(e); }
     }
-
-    // ================= OVERRIDE loadQuestionBank to support list filtering and action buttons =================
-    loadQuestionBank = async function() {
-        try {
-            const fSub = document.getElementById("qbFilterSubject") ? document.getElementById("qbFilterSubject").value : "";
-            const fSec = document.getElementById("qbFilterSection") ? document.getElementById("qbFilterSection").value : "";
-            const fTopic = document.getElementById("qbFilterTopic") ? document.getElementById("qbFilterTopic").value : "";
-            
-            const params = new URLSearchParams();
-            if(fSub) params.append("subject", fSub);
-            if(fSec) params.append("section", fSec);
-            if(fTopic) params.append("topic", fTopic);
-            const queryStr = params.toString() ? `?${params.toString()}` : "";
-
-            const res = await fetch(`${BACKEND_URL}/api/question_bank${queryStr}`, { headers: { "Authorization": `Bearer ${token}` } });
-            let qbList = await res.json();
-            
-            // Update the all count
-            const allCount = document.getElementById("qbAllCount");
-            if (allCount) allCount.innerText = `${qbList.length} questions`;
-
-            // Filter by selected list if one is selected
-            if (qbSelectedListId) {
-                const listDoc = qbListsCache.find(l => l.id === qbSelectedListId);
-                if (listDoc && listDoc.questionIds && listDoc.questionIds.length > 0) {
-                    const validIds = new Set(listDoc.questionIds);
-                    qbList = qbList.filter(q => validIds.has(q.id));
-                } else {
-                    qbList = [];
-                }
-            }
-
-            currentQBQuestions = qbList; 
-            const listDiv = document.getElementById("qbList");
-            listDiv.innerHTML = "";
-            
-            if(qbList.length === 0) {
-                const msg = qbSelectedListId ? "This list has no questions yet. Add questions from the bank!" : "Bank is empty or no matches found. Add questions!";
-                return listDiv.innerHTML = `<div style='padding: 15px; color: #777;'>${msg}</div>`;
-            }
-
-            // Get all lists for the "Add to List" dropdown
-            const listsForDropdown = qbListsCache;
-
-            qbList.forEach((q, i) => {
-                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none; width:100%;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
-                const editBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-outline btn-small" style="width:100%;" onclick="loadEditQBQuestion('${q.id}')">✏️ Edit</button>` : "";
-
-                // Formatting options into detailed grid view
-                let optionsHTML = "";
-                if (q.options && q.options.length > 0) {
-                    optionsHTML = `<div class="q-options-grid">`;
-                    q.options.forEach((opt, idx) => {
-                        const isCorrect = q.correctAnswers && q.correctAnswers.includes(opt);
-                        const highlightClass = isCorrect ? 'correct' : '';
-                        const optionLetter = String.fromCharCode(65 + idx);
-                        optionsHTML += `
-                            <div class="opt-item-card ${highlightClass}">
-                                <strong>${optionLetter}.</strong> 
-                                <span>${opt}</span>
-                                ${isCorrect ? '<span style="margin-left:auto; color:var(--success); font-weight:bold;">✓</span>' : ''}
-                            </div>
-                        `;
-                    });
-                    optionsHTML += `</div>`;
-                } else {
-                    optionsHTML = `
-                        <div style="padding: 10px; background: #e8f8f5; border: 1px solid var(--success); border-radius: 4px; margin: 15px 0;">
-                            <strong>Numerical Answer:</strong> ${q.correctAnswers ? q.correctAnswers.join(', ') : 'N/A'}
-                        </div>
-                    `;
-                }
-
-                // Build "Add to List" dropdown options
-                let listOptionsHtml = '<option value="">Add to List...</option>';
-                if (listsForDropdown.length > 0) {
-                    listsForDropdown.forEach(l => {
-                        const alreadyInList = l.questionIds && l.questionIds.includes(q.id);
-                        const label = alreadyInList ? `${l.name} (✓ already in)` : l.name;
-                        listOptionsHtml += `<option value="${l.id}" ${alreadyInList ? 'disabled' : ''}>${label}</option>`;
-                    });
-                }
-                listOptionsHtml += '<option value="__create__">➕ Create new list...</option>';
-
-                listDiv.innerHTML += `
-                    <div class="q-card">
-                        <div class="q-card-header">
-                            <div>
-                                <div class="badges">
-                                    <span class="badge badge-type">${q.exam_type || 'N/A'}</span>
-                                    <span class="badge badge-subject">${q.subject || 'N/A'}</span>
-                                    <span class="badge badge-section">${q.section || 'N/A'}</span>
-                                </div>
-                                <div style="margin-top: 8px; font-size: 15px; max-width: 650px;">
-                                    <strong>Q:</strong> ${q.question ? q.question.substring(0,100)+'...' : '<i>[Image Only]</i>'}
-                                </div>
-                                <div style="margin-top: 8px;">
-                                    <span class="badge badge-topic">🏷️ ${q.topics && q.topics.length ? q.topics.join(', ') : 'Uncategorized'}</span>
-                                </div>
-                            </div>
-                            <div style="display: flex; gap: 8px; flex-direction: column; align-items: flex-end; min-width: 140px;">
-                                <div style="display: flex; gap: 4px; width: 100%;">
-                                    <select class="qb-add-to-list-select" onchange="handleAddToList(this, '${q.id}')" style="flex: 1; padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0;">
-                                        ${listOptionsHtml}
-                                    </select>
-                                    <button class="btn btn-primary btn-small" style="padding: 4px 6px; font-size: 10px; background: var(--success); border: none;" onclick="addSingleQuestionToExamFromBank('${q.id}')" title="Add to Exam">📥</button>
-                                </div>
-                                <div style="display: flex; gap: 4px; width: 100%;">
-                                    <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')" style="flex: 1;">👁️ Details</button>
-                                    ${editBtn}
-                                </div>
-                                ${delBtn ? `<div style="width: 100%;">${delBtn}</div>` : ''}
-                            </div>
-                        </div>
-                        
-                        <div id="qb-details-${i}" class="q-details-box">
-                            <div style="font-size: 15px; margin-bottom: 10px;">${q.question || ''}</div>
-                            ${q.questionImage ? `<img src="${q.questionImage}" style="max-width: 100%; max-height: 200px;">` : ''}
-                            
-                            ${optionsHTML}
-                            
-                            ${q.hint ? `<p style="background: #fff3cd; padding: 8px; border-left: 3px solid #ffeeba; margin-bottom: 10px;"><b>Hint:</b> ${q.hint}</p>` : ''}
-                            ${q.solution ? `<p style="background: #d4edda; padding: 8px; border-left: 3px solid #c3e6cb;"><b>Solution:</b> ${q.solution}</p>` : ''}
-                            ${q.solutionImage ? `<img src="${q.solutionImage}" style="max-width: 100%; max-height: 200px; margin-top: 10px;">` : ''}
-                        </div>
-                    </div>`;
-            });
-            reRenderMathJax(); 
-        } catch(e) { console.error("Could not load Question Bank:", e); }
-    };
 
     // Handle Add to List dropdown selection
     async function handleAddToList(selectEl, questionId) {
@@ -2859,3 +2321,4 @@
 </script>
 
 </body>
+</html>
