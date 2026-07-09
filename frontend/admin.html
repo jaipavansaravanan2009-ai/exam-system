@@ -1554,26 +1554,95 @@
             modal.id = 'adminAnalysisModal';
             modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 3000; backdrop-filter: blur(4px);';
             
+            // Subject Time Summary
+            let subjectTimeHTML = '';
+            if (analysisData.subjectTimes && Object.keys(analysisData.subjectTimes).length > 0) {
+                const totalTime = Object.values(analysisData.subjectTimes).reduce((a, b) => a + b, 0);
+                subjectTimeHTML = '<h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">⏱️ Subject Time Summary</h3><div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px;">';
+                let subColors = { "physics": "var(--secondary)", "chemistry": "var(--success)", "maths": "#8e44ad" };
+                for (const subject in analysisData.subjectTimes) {
+                    const secs = analysisData.subjectTimes[subject];
+                    const mins = Math.floor(secs / 60);
+                    const remainingSecs = secs % 60;
+                    const pct = totalTime > 0 ? (secs / totalTime * 100) : 0;
+                    let color = "var(--secondary)";
+                    for (const key in subColors) {
+                        if (subject.toLowerCase().includes(key)) color = subColors[key];
+                    }
+                    subjectTimeHTML += `
+                        <div style="background: white; border: 1px solid #eee; border-radius: 8px; padding: 15px; border-left: 4px solid ${color};">
+                            <div style="font-weight: bold; color: ${color}; margin-bottom: 8px;">${subject}</div>
+                            <div style="font-size: 22px; font-weight: bold;">${mins}:${remainingSecs.toString().padStart(2, '0')}</div>
+                            <div style="font-size: 12px; color: #777;">${pct.toFixed(0)}% of total</div>
+                            <div style="background: #eee; height: 6px; border-radius: 3px; margin-top: 8px;">
+                                <div style="background: ${color}; height: 6px; border-radius: 3px; width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+                subjectTimeHTML += '</div>';
+            }
+
             let questionAnalysisHTML = '';
             if (analysisData.questionAnalysis && analysisData.questionAnalysis.length > 0) {
-                questionAnalysisHTML = '<h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Analysis</h3>';
+                questionAnalysisHTML = '<h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Detailed Analysis</h3>';
                 
                 analysisData.questionAnalysis.forEach((qa, index) => {
                     const isSkipped = !qa.isAttempted;
                     const statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
                     const marks = qa.isCorrect ? '+4' : (isSkipped ? '0' : '-1');
                     
+                    let timeDisplay = '';
+                    if (qa.timeSpent !== null && qa.timeSpent !== undefined) {
+                        const mins = Math.floor(qa.timeSpent / 60);
+                        const secs = qa.timeSpent % 60;
+                        timeDisplay = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+                    }
+
                     let subColor = "var(--secondary)"; 
                     if(qa.subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
                     if(qa.subject.toLowerCase().includes("math")) subColor = "#8e44ad";
+
+                    // Build options display with correct/incorrect highlighting
+                    let optionsDisplay = '';
+                    if (qa.options && qa.options.length > 0) {
+                        optionsDisplay = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0;">';
+                        qa.options.forEach((opt, idx) => {
+                            const letter = String.fromCharCode(65 + idx);
+                            const isCorrectOpt = qa.correctAnswer === opt;
+                            const isSelectedOpt = qa.studentAnswer === opt;
+                            let bg = '#f9f9f9';
+                            let border = '1px solid #ddd';
+                            let indicator = '';
+                            if (isCorrectOpt && isSelectedOpt) { bg = '#e8f8e5'; border = '2px solid var(--success)'; indicator = '✅'; }
+                            else if (isCorrectOpt) { bg = '#e8f8e5'; border = '2px solid var(--success)'; indicator = '✓'; }
+                            else if (isSelectedOpt) { bg = '#ffebee'; border = '2px solid var(--danger)'; indicator = '❌'; }
+                            let optImg = (qa.optionImages && qa.optionImages[idx]) ? `<br><img src="${qa.optionImages[idx]}" style="max-width: 120px; max-height: 80px; margin-top: 5px; border-radius: 4px;">` : '';
+                            optionsDisplay += `<div style="padding: 8px; border-radius: 4px; background: ${bg}; border: ${border}; font-size: 13px;">${letter}. ${opt} <strong>${indicator}</strong>${optImg}</div>`;
+                        });
+                        optionsDisplay += '</div>';
+                    }
+
+                    // Solution image HTML
+                    let solutionImgHtml = '';
+                    if (qa.solutionImage) {
+                        solutionImgHtml = `<br><img src="${qa.solutionImage}" style="max-width: 100%; max-height: 250px; border-radius: 6px; border: 1px solid #ccc; margin-top: 8px;">`;
+                    }
                     
+                    // Question image
+                    let qImgHtml = '';
+                    if (qa.questionImage) {
+                        qImgHtml = `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 8px;">`;
+                    }
+
                     questionAnalysisHTML += `
                         <div style="background: white; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                             <div style="padding: 12px 15px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; border-left: 4px solid ${qa.isCorrect ? 'var(--success)' : (isSkipped ? '#95a5a6' : 'var(--danger)')};">
-                                <div style="display: flex; align-items: center; gap: 15px;">
+                                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                                     <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
-                                    <span style="font-size: 13px; color: #666;">${qa.subject}</span>
-                                    ${qa.topics && qa.topics.length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${qa.topics.join(', ')}</span>` : ''}
+                                    <span style="font-size: 12px; padding: 2px 8px; border-radius: 12px; background: ${subColor}; color: white;">${qa.subject}</span>
+                                    ${qa.topics && qa.topics.length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${qa.topics.slice(0, 3).join(', ')}</span>` : ''}
+                                    ${timeDisplay ? `<span style="font-size: 12px; color: #888;">${timeDisplay}</span>` : ''}
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${marks}</span>
@@ -1581,7 +1650,8 @@
                                 </div>
                             </div>
                             <div style="padding: 15px;">
-                                <div style="font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 12px; line-height: 1.5;">${qa.question}</div>
+                                <div style="font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 12px; line-height: 1.5;">${qa.question}${qImgHtml}</div>
+                                ${optionsDisplay}
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                                     <div style="padding: 10px; border-radius: 6px; font-size: 14px; background: #e8f4fd; border: 1px solid #b3d9ff;">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Student Answer</div>
@@ -1592,7 +1662,12 @@
                                         <div style="font-size: 16px; font-weight: bold; color: var(--success);">${qa.correctAnswer}</div>
                                     </div>
                                 </div>
-                                ${qa.solution ? `<div style="background: #fff9e6; border: 1px solid #ffe082; border-radius: 6px; padding: 12px; margin-top: 10px;"><h4 style="color: #f57f17; margin-bottom: 8px; font-size: 14px;">💡 Solution</h4><div style="font-size: 14px; line-height: 1.6; color: #333;">${qa.solution}</div></div>` : ''}
+                                ${qa.solution || qa.solutionImage ? `
+                                <div style="background: #fff9e6; border: 1px solid #ffe082; border-radius: 6px; padding: 12px; margin-top: 10px;">
+                                    <h4 style="color: #f57f17; margin-bottom: 8px; font-size: 14px;">💡 Detailed Solution</h4>
+                                    ${qa.solution ? `<div style="font-size: 14px; line-height: 1.6; color: #333;">${qa.solution}</div>` : ''}
+                                    ${solutionImgHtml}
+                                </div>` : ''}
                             </div>
                         </div>
                     `;
@@ -1628,11 +1703,15 @@
                         </div>
                     </div>
                     
+                    ${subjectTimeHTML}
                     ${questionAnalysisHTML}
                 </div>
             `;
             
             document.body.appendChild(modal);
+            
+            // Render MathJax on the modal content
+            reRenderMathJax();
             
         } catch(e) {
             console.error(e);

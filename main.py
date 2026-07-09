@@ -886,7 +886,7 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
 
             question_breakdown.append({
                 "questionIndex": q_index,
-                "questionText": q.get("question", "")[:100],
+                "questionText": q.get("question", ""),
                 "questionImage": q.get("questionImage"),
                 "subject": q.get("subject", "Physics"),
                 "section": q.get("section", "Single correct answer"),
@@ -902,6 +902,10 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
                 "solutionImage": q.get("solutionImage", "")
             })
 
+        # Get time tracking data from submission
+        question_times = result_payload.get("questionTimes", [])
+        subject_times = result_payload.get("subjectTimes", {})
+
         new_result_doc = {
             "studentName": student_name,
             "examTitle": exam_title,
@@ -910,7 +914,9 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
             "examQuestionsCount": total_questions_count,
             "totalScore": calculated_total_score,
             "subjectWiseBreakdown": verified_breakdown,
-            "questionBreakdown": question_breakdown
+            "questionBreakdown": question_breakdown,
+            "questionTimes": question_times,
+            "subjectTimes": subject_times
         }
 
         db.collection("results").add(new_result_doc)
@@ -1098,21 +1104,28 @@ async def get_live_analysis(result_id: str, user = Depends(authorize(["student",
         # Add question-wise analysis for detailed breakdown
         question_breakdown = my_result.get("questionBreakdown", [])
         question_analysis = []
+        question_times = my_result.get("questionTimes", [])
         
-        for qb in question_breakdown:
+        for i, qb in enumerate(question_breakdown):
             question_analysis.append({
                 "question": qb.get("questionText", ""),
+                "questionImage": qb.get("questionImage"),
                 "subject": qb.get("subject", "Physics"),
                 "topics": qb.get("topics", []),
+                "options": qb.get("options", []),
+                "optionImages": qb.get("optionImages", []),
                 "correctAnswer": qb.get("correctAnswer", ""),
                 "studentAnswer": qb.get("studentAnswer"),
                 "isCorrect": qb.get("isCorrect", False),
                 "isAttempted": qb.get("isAttempted", False),
                 "solution": qb.get("solution", ""),
-                "hint": qb.get("hint", "")
+                "solutionImage": qb.get("solutionImage"),
+                "hint": qb.get("hint", ""),
+                "timeSpent": question_times[i] if i < len(question_times) else None
             })
         
         analysis["questionAnalysis"] = question_analysis
+        analysis["subjectTimes"] = my_result.get("subjectTimes", {})
             
         return analysis
         

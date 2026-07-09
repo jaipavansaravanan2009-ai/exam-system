@@ -332,6 +332,19 @@
 
 </div>
 
+<!-- Zoom Modal for Student Portal -->
+<div id="studentZoomModal" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.92); flex-direction: column; backdrop-filter: blur(4px);">
+    <div style="background: #111; padding: 15px; display: flex; justify-content: center; gap: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.5);">
+        <button class="btn btn-primary" onclick="studentChangeZoom(50)">🔍 Zoom In (+)</button>
+        <button class="btn btn-primary" onclick="studentChangeZoom(-50)">🔍 Zoom Out (-)</button>
+        <button class="btn btn-outline" onclick="studentResetZoom()" style="border-color: white; color: white;">Reset</button>
+        <button class="btn btn-primary" onclick="studentCloseZoom()" style="background: #e74c3c;">✖ Close</button>
+    </div>
+    <div style="flex: 1; overflow: auto; display: flex; justify-content: center; align-items: center; padding: 20px;" onclick="if(event.target===this) studentCloseZoom()">
+        <img id="studentZoomImg" src="" style="transition: width 0.2s ease; box-shadow: 0 0 20px rgba(0,0,0,0.8); border-radius: 4px; background: white; max-width: 90%; max-height: 85vh;">
+    </div>
+</div>
+
 <div id="resultAnalysisModal">
     <div class="modal-content">
         <button class="btn btn-outline" style="float:right; border-color: #333; color: #333;" onclick="closeResultAnalysis()">Close X</button>
@@ -646,6 +659,39 @@
                 }
             }
 
+            // Subject Time Summary
+            if (liveData.subjectTimes && Object.keys(liveData.subjectTimes).length > 0) {
+                container.innerHTML += `
+                    <h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">
+                        ⏱️ Time Spent Per Subject
+                    </h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                `;
+                const totalTime = Object.values(liveData.subjectTimes).reduce((a, b) => a + b, 0);
+                let subColors = { "physics": "var(--secondary)", "chemistry": "var(--success)", "maths": "#8e44ad" };
+                for (const subject in liveData.subjectTimes) {
+                    const secs = liveData.subjectTimes[subject];
+                    const mins = Math.floor(secs / 60);
+                    const remainingSecs = secs % 60;
+                    const pct = totalTime > 0 ? (secs / totalTime * 100) : 0;
+                    let color = "var(--secondary)";
+                    for (const key in subColors) {
+                        if (subject.toLowerCase().includes(key)) color = subColors[key];
+                    }
+                    container.innerHTML += `
+                        <div style="background: white; border: 1px solid #eee; border-radius: 8px; padding: 15px; border-left: 4px solid ${color};">
+                            <div style="font-weight: bold; color: ${color}; margin-bottom: 8px;">${subject}</div>
+                            <div style="font-size: 22px; font-weight: bold;">${mins}:${remainingSecs.toString().padStart(2, '0')}</div>
+                            <div style="font-size: 12px; color: #777;">${pct.toFixed(0)}% of total time</div>
+                            <div style="background: #eee; height: 6px; border-radius: 3px; margin-top: 8px;">
+                                <div style="background: ${color}; height: 6px; border-radius: 3px; width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+                container.innerHTML += `</div>`;
+            }
+
             // Question-wise Analysis Section
             if (liveData.questionAnalysis && liveData.questionAnalysis.length > 0) {
                 container.innerHTML += `
@@ -655,15 +701,51 @@
                 `;
 
                 liveData.questionAnalysis.forEach((qa, index) => {
-                    // Use isAttempted field from backend to determine if question was skipped
                     const isSkipped = !qa.isAttempted;
                     const statusClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
                     const statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
                     const statusBadgeClass = statusClass;
                     
+                    // Format time spent on this question
+                    let timeDisplay = '';
+                    if (qa.timeSpent !== null && qa.timeSpent !== undefined) {
+                        const mins = Math.floor(qa.timeSpent / 60);
+                        const secs = qa.timeSpent % 60;
+                        timeDisplay = `${mins}:${secs.toString().padStart(2, '0')}`;
+                    }
+
                     let subColor = "var(--secondary)"; 
                     if(qa.subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
                     if(qa.subject.toLowerCase().includes("math")) subColor = "#8e44ad";
+
+                    // Build options display
+                    let optionsDisplay = '';
+                    if (qa.options && qa.options.length > 0) {
+                        optionsDisplay = '<div style="margin: 10px 0;"><strong>Options:</strong></div>';
+                        qa.options.forEach((opt, idx) => {
+                            const letter = String.fromCharCode(65 + idx);
+                            const isCorrectOpt = qa.correctAnswer === opt;
+                            const isSelectedOpt = qa.studentAnswer === opt;
+                            let bg = 'white';
+                            let border = '1px solid #ddd';
+                            if (isCorrectOpt && isSelectedOpt) { bg = '#e8f8e5'; border = '2px solid var(--success)'; }
+                            else if (isCorrectOpt) { bg = '#e8f8e5'; border = '2px solid var(--success)'; }
+                            else if (isSelectedOpt) { bg = '#ffebee'; border = '2px solid var(--danger)'; }
+                            let optImgHtml = (qa.optionImages && qa.optionImages[idx]) ? `<img src="${qa.optionImages[idx]}" class="opt-img" style="max-width: 100px; max-height: 60px; display: block; margin-top: 5px; cursor: zoom-in;" onclick="openZoom('${qa.optionImages[idx]}')">` : '';
+                            optionsDisplay += `<div style="padding: 8px; margin: 4px 0; border-radius: 4px; background: ${bg}; border: ${border}; font-size: 14px;">${letter}. ${opt} ${isCorrectOpt ? '✅' : ''} ${isSelectedOpt && !isCorrectOpt ? '❌' : ''}${optImgHtml}</div>`;
+                        });
+                    }
+
+                    // Build solution image HTML with zoom
+                    let solutionImgHtml = '';
+                    if (qa.solutionImage) {
+                        solutionImgHtml = `
+                            <div style="margin-top: 10px;">
+                                <strong>Solution Image:</strong><br>
+                                <img src="${qa.solutionImage}" style="max-width: 100%; max-height: 250px; border-radius: 6px; border: 1px solid #ccc; cursor: zoom-in; margin-top: 5px;" onclick="openZoom('${qa.solutionImage}')" alt="Solution Image">
+                            </div>
+                        `;
+                    }
 
                     container.innerHTML += `
                         <div class="question-analysis-card">
@@ -671,6 +753,7 @@
                                 <div style="display: flex; align-items: center; gap: 15px;">
                                     <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
                                     <span style="font-size: 13px; color: #666;">${qa.subject}</span>
+                                    ${timeDisplay ? `<span style="font-size: 12px; color: #888;">⏱️ ${timeDisplay}</span>` : ''}
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">
@@ -684,7 +767,9 @@
                                 <div class="question-text">
                                     <span style="color: #666; font-size: 13px;">${qa.subject} | Topics: ${qa.topics ? qa.topics.join(', ') : 'N/A'}</span><br><br>
                                     ${qa.question}
+                                    ${qa.questionImage ? `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 10px; cursor: zoom-in;" onclick="openZoom('${qa.questionImage}')">` : ''}
                                 </div>
+                                ${optionsDisplay}
                                 <div class="answer-comparison">
                                     <div class="answer-box your-answer">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Your Answer</div>
@@ -701,8 +786,9 @@
                                 <div class="solution-box">
                                     <h4>💡 Detailed Solution</h4>
                                     <div class="solution-text">${qa.solution}</div>
+                                    ${solutionImgHtml}
                                 </div>
-                                ` : ''}
+                                ` : solutionImgHtml ? `<div class="solution-box">${solutionImgHtml}</div>` : ''}
                             </div>
                         </div>
                     `;
@@ -738,6 +824,44 @@
         if (window.MathJax && window.MathJax.typesetPromise) {
             MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
         }
+    }
+
+    // ================= ZOOM FUNCTIONS FOR STUDENT PORTAL =================
+    let studentZoomLevel = 100;
+
+    function openZoom(src) {
+        const img = document.getElementById("studentZoomImg");
+        img.src = src;
+        studentResetZoom();
+        document.getElementById("studentZoomModal").style.display = "flex";
+    }
+
+    function studentCloseZoom() {
+        document.getElementById("studentZoomModal").style.display = "none";
+    }
+
+    function studentChangeZoom(amount) {
+        studentZoomLevel += amount;
+        if (studentZoomLevel < 50) studentZoomLevel = 50;
+        if (studentZoomLevel > 500) studentZoomLevel = 500;
+        const img = document.getElementById("studentZoomImg");
+        if (studentZoomLevel === 100) {
+            img.style.maxWidth = "90%";
+            img.style.maxHeight = "85vh";
+            img.style.width = "auto";
+        } else {
+            img.style.maxWidth = "none";
+            img.style.maxHeight = "none";
+            img.style.width = studentZoomLevel + "%";
+        }
+    }
+
+    function studentResetZoom() {
+        studentZoomLevel = 100;
+        const img = document.getElementById("studentZoomImg");
+        img.style.maxWidth = "90%";
+        img.style.maxHeight = "85vh";
+        img.style.width = "auto";
     }
 
     function logout() {

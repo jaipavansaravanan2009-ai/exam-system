@@ -173,6 +173,9 @@
     let studentAnswers = {};
     let statusMap = {};
     let timeLeft = 180 * 60;
+    let questionStartTime = Date.now();
+    let questionTimes = [];
+    let subjectTimes = {};
 
     // --- ZOOM LOGIC ---
     let imgZoomLevel = 100;
@@ -304,7 +307,22 @@
         }
     }
 
+    function recordTimeOnCurrentQuestion() {
+        if (currentIdx === -1 || !examData) return;
+        const now = Date.now();
+        const elapsed = Math.round((now - questionStartTime) / 1000);
+        if (elapsed > 0) {
+            questionTimes[currentIdx] = (questionTimes[currentIdx] || 0) + elapsed;
+            const subject = examData.questions[currentIdx].subject || "Physics";
+            subjectTimes[subject] = (subjectTimes[subject] || 0) + elapsed;
+        }
+        questionStartTime = now;
+    }
+
     function showQuestion(index) {
+        // Record time spent on current question before switching
+        recordTimeOnCurrentQuestion();
+        
         if (currentIdx !== -1 && !statusMap[currentIdx]) {
             statusMap[currentIdx] = 'visited';
         }
@@ -540,12 +558,17 @@
             }
         }
         
+        // Record final time on current question before submitting
+        recordTimeOnCurrentQuestion();
+
         const payload = {
             studentName: localStorage.getItem("userName") || "Guest Student",
             examTitle: examData.title || "Untitled Exam", 
             examId: new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId'),
             subjectWiseBreakdown: subjectWiseData,
-            questionAnswers: studentAnswers
+            questionAnswers: studentAnswers,
+            questionTimes: questionTimes,
+            subjectTimes: subjectTimes
         };
         
         try {
