@@ -585,6 +585,191 @@ async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authoriz
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
 
 # ==========================================
+# 📁 QUESTION LIST MANAGEMENT
+# ==========================================
+@app.get("/api/question_lists")
+async def get_question_lists(user=Depends(authorize(["admin", "setter"]))):
+    try:
+        docs = db.collection("question_lists").order_by("createdAt", direction=firestore.Query.DESCENDING).stream()
+        results = []
+        for doc in docs:
+            data = doc.to_dict()
+            results.append({**data, "id": doc.id})
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch question lists: {str(e)}")
+
+@app.post("/api/question_lists")
+async def create_question_list(request: Request, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        body = await request.json()
+        name = body.get("name", "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="List name is required")
+        
+        new_list = {
+            "name": name,
+            "description": body.get("description", "").strip(),
+            "createdAt": datetime.now(timezone.utc),
+            "createdBy": user.get("id"),
+            "createdByName": user.get("name") or "Unknown",
+            "questionIds": []
+        }
+        update_time, doc_ref = db.collection("question_lists").add(new_list)
+        return {"message": "Question list created! ✅", "id": doc_ref.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create question list: {str(e)}")
+
+@app.put("/api/question_lists/{list_id}")
+async def update_question_list(list_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        body = await request.json()
+        updates = {}
+        if "name" in body and body["name"].strip():
+            updates["name"] = body["name"].strip()
+        if "description" in body:
+            updates["description"] = body["description"].strip()
+        updates["updatedAt"] = datetime.now(timezone.utc)
+        
+        if updates:
+            db.collection("question_lists").document(list_id).update(updates)
+        return {"message": "Question list updated! ✅"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update question list: {str(e)}")
+
+@app.delete("/api/question_lists/{list_id}")
+async def delete_question_list(list_id: str, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        db.collection("question_lists").document(list_id).delete()
+        return {"message": "Question list deleted! 🗑️"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to delete question list")
+
+@app.get("/api/question_lists/{list_id}")
+async def get_question_list_detail(list_id: str, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        doc = db.collection("question_lists").document(list_id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+        
+        data = doc.to_dict()
+        question_ids = data.get("questionIds", [])
+        
+        # Fetch full question details from question_bank
+        questions = []
+        for q_id in question_ids:
+            q_doc = db.collection("question_bank").document(q_id).get()
+            if q_doc.exists:
+                q_data = q_doc.to_dict()
+                q_data["id"] = q_doc.id
+                questions.append(q_data)
+        
+        return {**data, "id": doc.id, "questions": questions}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch question list: {str(e)}")
+
+@app.post("/api/question_lists/{list_id}/questions")
+async def add_questions_to_list(list_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        body = await request.json()
+        question_ids = body.get("questionIds", [])
+        if not question_ids:
+            raise HTTPException(status_code=400, detail="No question IDs provided")
+        
+        list_ref = db.collection("question_lists").document(list_id)
+        doc = list_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+        
+        data = doc.to_dict()
+        existing_ids = set(data.get("questionIds", []))
+        new_ids = [qid for qid in question_ids if qid not in existing_ids]
+        
+        if new_ids:
+            list_ref.update({
+                "questionIds": firestore.ArrayUnion(new_ids)
+            })
+        
+        return {"message": f"{len(new_ids)} question(s) added to list! ✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add questions to list: {str(e)}")
+
+@app.delete("/api/question_lists/{list_id}/questions/{question_id}")
+async def remove_question_from_list(list_id: str, question_id: str, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        list_ref = db.collection("question_lists").document(list_id)
+        doc = list_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+        
+        list_ref.update({
+            "questionIds": firestore.ArrayRemove([question_id])
+        })
+        return {"message": "Question removed from list! ✅"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove question: {str(e)}")
+
+@app.post("/api/exams/{exam_id}/import-question-list/{list_id}")
+async def import_question_list_to_exam(exam_id: str, list_id: str, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        # Get the exam
+        exam_ref = db.collection("exams").document(exam_id)
+        exam_doc = exam_ref.get()
+        if not exam_doc.exists:
+            raise HTTPException(status_code=404, detail="Exam not found")
+        
+        # Get the question list with full data
+        list_doc = db.collection("question_lists").document(list_id).get()
+        if not list_doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+        
+        list_data = list_doc.to_dict()
+        question_ids = list_data.get("questionIds", [])
+        
+        if not question_ids:
+            raise HTTPException(status_code=400, detail="Question list is empty")
+        
+        # Fetch all questions from bank and convert to exam format
+        questions_to_add = []
+        for q_id in question_ids:
+            q_doc = db.collection("question_bank").document(q_id).get()
+            if q_doc.exists:
+                q = q_doc.to_dict()
+                exam_q = {
+                    "subject": q.get("subject", "Physics"),
+                    "section": q.get("section", "Single correct answer"),
+                    "question": q.get("question", ""),
+                    "questionImage": q.get("questionImage", None),
+                    "options": q.get("options", []),
+                    "optionImages": q.get("optionImages", []),
+                    "correctAnswer": (q.get("correctAnswers") or [""])[0] if q.get("correctAnswers") else "",
+                    "correctAnswers": q.get("correctAnswers", []),
+                    "hint": q.get("hint", ""),
+                    "solution": q.get("solution", ""),
+                    "solutionImage": q.get("solutionImage", None),
+                    "topics": q.get("topics", [])
+                }
+                questions_to_add.append(exam_q)
+        
+        # Add to exam
+        exam_data = exam_doc.to_dict()
+        existing_questions = exam_data.get("questions", [])
+        existing_questions.extend(questions_to_add)
+        exam_ref.update({"questions": existing_questions})
+        
+        return {"message": f"{len(questions_to_add)} questions imported from list '{list_data.get('name', '')}'! ✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to import question list: {str(e)}")
+
+# ==========================================
 # 🏆 PUBLIC ROUTES (FOR STUDENTS)
 # ==========================================
 @app.get("/api/public/exams")
