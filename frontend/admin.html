@@ -1325,7 +1325,12 @@
                 btn.style.display = "none";
                 refreshQuestionList(currentEditingExamId);
             } else {
-                alert("Failed to import questions.");
+                let errorMsg = "Failed to import questions.";
+                try {
+                    const errData = await res.json();
+                    errorMsg = errData.detail || errData.message || errorMsg;
+                } catch(parseErr) {}
+                alert(errorMsg);
             }
         } catch(e) {
             console.error(e);
