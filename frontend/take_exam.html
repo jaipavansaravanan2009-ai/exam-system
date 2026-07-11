@@ -145,6 +145,43 @@
             to { transform: translateX(0); opacity: 1; }
         }
 
+        /* Fullscreen prompt (small banner at bottom) */
+        #fullscreenPrompt {
+            display: none;
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fff3cd;
+            color: #856404;
+            padding: 14px 24px;
+            border-radius: 12px;
+            z-index: 9999;
+            font-size: 15px;
+            font-weight: 600;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 420px;
+            width: 90%;
+            border-left: 4px solid #f39c12;
+            animation: slideUp 0.3s ease;
+        }
+        #fullscreenPrompt.show { display: block; }
+        @keyframes slideUp {
+            from { transform: translateX(-50%) translateY(30px); opacity: 0; }
+            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+        }
+        #fullscreenPrompt .prompt-dismiss {
+            background: transparent;
+            border: none;
+            color: #856404;
+            font-weight: bold;
+            cursor: pointer;
+            margin-left: 12px;
+            font-size: 16px;
+        }
+        #fullscreenPrompt .prompt-dismiss:hover { text-decoration: underline; }
+
         /* Max violations reached modal */
         #maxViolationsModal {
             display: none;
@@ -328,6 +365,12 @@
     </div>
 </div>
 
+<!-- Fullscreen prompt banner (shown when fullscreen fails or user exits fullscreen) -->
+<div id="fullscreenPrompt">
+    <span>🔍 Please press <b>F11</b> to enter fullscreen mode for the best exam experience</span>
+    <button class="prompt-dismiss" onclick="dismissFullscreenPrompt()">✖</button>
+</div>
+
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com";
     
@@ -356,8 +399,9 @@
     let examActive = false;        // Becomes true after exam loads
     let cheatingViolations = [];   // Detailed log of all violations
     let autoSubmitTriggered = false; // Prevent multiple auto-submissions
+    let isTabHidden = false;       // Track if tab was hidden via visibilitychange (used to deduplicate blur)
 
-    // Show a blocking overlay when a major violation occurs (tab switch, fullscreen exit)
+    // Show a blocking overlay when a major violation occurs (tab switch, window blur)
     function showCheatOverlay(reason) {
         if (autoSubmitTriggered) return;
         
@@ -391,7 +435,7 @@
         checkAutoSubmitThreshold();
     }
 
-    // Record a violation (only for MAJOR offenses: tab switch, window blur, fullscreen exit, page navigate)
+    // Record a violation (only for MAJOR offenses: tab switch, window close, page navigate)
     function recordViolation(type, details) {
         if (autoSubmitTriggered) return;
         
@@ -427,7 +471,7 @@
         }
     }
 
-    // Show a small toast notification for minor violations
+    // Show a small toast notification for minor items
     function showViolationToast(message) {
         if (autoSubmitTriggered) return;
         
@@ -500,6 +544,14 @@
         window.location.href = 'student_portal.html';
     }
 
+    // Show/hide fullscreen prompt banner
+    function showFullscreenPrompt() {
+        document.getElementById('fullscreenPrompt').classList.add('show');
+    }
+    function dismissFullscreenPrompt() {
+        document.getElementById('fullscreenPrompt').classList.remove('show');
+    }
+
     // --- Event Handlers ---
 
     // Detect when tab visibility changes (user switches tabs/minimizes) — MAJOR violation
@@ -507,11 +559,13 @@
         if (!examActive || autoSubmitTriggered) return;
         
         if (document.hidden) {
+            isTabHidden = true;
             // User left the tab
             showCheatOverlay('You switched to another tab or application!');
             recordViolation('tab-switch', 'User switched away from exam tab');
             showViolationToast('Tab switch detected! Violation recorded.');
         } else {
+            isTabHidden = false;
             // User returned - dismiss overlay handled by button click
             // But also update away time if they came back and overlay not there
             if (awayStartTime !== null) {
@@ -523,13 +577,14 @@
         }
     });
 
-    // Detect window blur (Alt+Tab, clicking taskbar, etc.) — MAJOR violation
+    // Detect window blur (Alt+Tab, clicking taskbar, etc.)
+    // Only shows overlay — NO violation counted here (handled by visibilitychange to avoid double-count)
     window.addEventListener('blur', function() {
         if (!examActive || autoSubmitTriggered) return;
-        // Only show if not already showing an overlay
-        if (!document.getElementById('cheatOverlay').classList.contains('show')) {
+        // Only show overlay if tab is NOT already hidden (prevents double overlay from tab switch)
+        if (!isTabHidden && !document.getElementById('cheatOverlay').classList.contains('show')) {
             showCheatOverlay('You clicked outside the exam window!');
-            recordViolation('window-blur', 'User clicked outside exam window');
+            // NO recordViolation here — only visibilitychange counts violations
         }
     });
 
@@ -539,15 +594,18 @@
         // The away time tracking continues
     });
 
-    // Fullscreen change detection — MAJOR violation
+    // Fullscreen change detection — NO violation counted, just show prompt
     document.addEventListener('fullscreenchange', function() {
         if (!examActive || autoSubmitTriggered) return;
         
         isFullscreen = !!document.fullscreenElement;
         
         if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
-            showCheatOverlay('You exited fullscreen mode!');
-            recordViolation('fullscreen-exit', 'User exited fullscreen mode');
+            // Show the small prompt banner (no overlay, no violation)
+            showFullscreenPrompt();
+            showViolationToast('Please press F11 to re-enter fullscreen mode.');
+        } else {
+            dismissFullscreenPrompt();
         }
     });
 
@@ -556,8 +614,10 @@
         if (!examActive || autoSubmitTriggered) return;
         isFullscreen = !!document.webkitFullscreenElement;
         if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
-            showCheatOverlay('You exited fullscreen mode!');
-            recordViolation('fullscreen-exit', 'User exited fullscreen mode');
+            showFullscreenPrompt();
+            showViolationToast('Please press F11 to re-enter fullscreen mode.');
+        } else {
+            dismissFullscreenPrompt();
         }
     });
 
@@ -639,17 +699,23 @@
         });
     })();
 
-    // Request fullscreen automatically on exam load (no banner shown)
+    // Request fullscreen automatically on exam load — show prompt if denied
     function requestFullscreen() {
         const el = document.documentElement;
         if (el.requestFullscreen) {
-            el.requestFullscreen().catch(function(err) {
+            el.requestFullscreen().then(() => {
+                isFullscreen = true;
+                dismissFullscreenPrompt();
+            }).catch(function(err) {
                 console.warn('Fullscreen request denied:', err);
+                showFullscreenPrompt();
             });
         } else if (el.webkitRequestFullscreen) {
             el.webkitRequestFullscreen();
+            isFullscreen = true;
+        } else {
+            showFullscreenPrompt();
         }
-        isFullscreen = true;
     }
 
     // --- ZOOM LOGIC ---
