@@ -184,6 +184,29 @@
         .opt-item-card.correct { border-color: var(--success); border-width: 2px; background: #e8f8f5; }
         .opt-item-card strong { margin-right: 10px; color: #7f8c8d; }
 
+        #examSelectorModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none;
+            justify-content: center; align-items: center; z-index: 2000;
+            backdrop-filter: blur(4px);
+        }
+        .exam-selector-item {
+            display: flex; align-items: center; padding: 15px; border: 1px solid #eee;
+            border-radius: 8px; margin-bottom: 8px; cursor: pointer;
+            transition: all 0.2s; background: #fafafa;
+        }
+        .exam-selector-item:hover {
+            border-color: var(--secondary); background: #ebf5fb; transform: translateX(4px);
+        }
+        .exam-selector-item .exam-icon {
+            font-size: 28px; margin-right: 15px; flex-shrink: 0;
+        }
+        .exam-selector-item .exam-info { flex: 1; }
+        .exam-selector-item .exam-info .exam-title { font-weight: bold; font-size: 15px; color: var(--primary); }
+        .exam-selector-item .exam-info .exam-meta { font-size: 12px; color: #888; margin-top: 3px; }
+        .exam-selector-item .exam-select-arrow { font-size: 20px; color: var(--secondary); opacity: 0; transition: opacity 0.2s; }
+        .exam-selector-item:hover .exam-select-arrow { opacity: 1; }
+
         #qlEditorModal, #qlAddFromBankModal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8); display: none;
@@ -683,6 +706,24 @@
 
         <button class="btn" id="cancelQBEditBtn" onclick="resetQBForm()" style="display:none; width: 100%; margin-top: 10px; background: #95a5a6; color: white;">Cancel Edit</button>
         <button class="btn btn-success" id="addQBBtn" onclick="submitNewQBQuestion()" style="width: 100%; margin-top: 10px;">Add to Question Bank ✅</button>
+    </div>
+</div>
+
+<!-- ===== REUSABLE EXAM SELECTOR MODAL ===== -->
+<div id="examSelectorModal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="color: var(--primary); margin: 0;">📋 Select Exam</h2>
+            <button class="btn" style="background:#333; color:white;" onclick="closeExamSelector()">✖ Close</button>
+        </div>
+        <hr style="margin: 15px 0;">
+        <p style="color: #666; font-size: 14px; margin-bottom: 15px;" id="examSelectorPrompt">Choose an exam to add the selected item to:</p>
+        <div id="examSelectorList" style="max-height: 400px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 30px; color: #999;">Loading exams...</div>
+        </div>
+        <div style="margin-top: 15px; text-align: center;">
+            <button class="btn" style="background: #95a5a6; color: white;" onclick="closeExamSelector()">Cancel</button>
+        </div>
     </div>
 </div>
 
@@ -1965,36 +2006,34 @@
             
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
 
-            const selected = prompt("Enter the index of the exam to add this question to:\n\n" + exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n"));
-            
-            if (selected === null) return;
-            const idx = parseInt(selected);
-            if (isNaN(idx) || idx < 0 || idx >= exams.length) return alert("Invalid selection.");
-            
-            const examQ = {
-                subject: q.subject || "Physics",
-                question: q.question || "",
-                questionImage: q.questionImage || null,
-                options: q.options || [],
-                optionImages: q.optionImages || [],
-                correctAnswer: (q.correctAnswers || [""])[0],
-                correctAnswers: q.correctAnswers || [],
-                section: q.section || "Single correct answer",
-                hint: q.hint || "",
-                solution: q.solution || "",
-                solutionImage: q.solutionImage || null,
-                topics: q.topics || []
-            };
+            const filteredExams = exams; // Use all exams for the selector
 
-            const importRes = await fetch(`${BACKEND_URL}/api/exams/${exams[idx].id}/import-questions`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify([examQ])
+            openExamSelector("Choose an exam to add this question to:", async (examId, examTitle) => {
+                const examQ = {
+                    subject: q.subject || "Physics",
+                    question: q.question || "",
+                    questionImage: q.questionImage || null,
+                    options: q.options || [],
+                    optionImages: q.optionImages || [],
+                    correctAnswer: (q.correctAnswers || [""])[0],
+                    correctAnswers: q.correctAnswers || [],
+                    section: q.section || "Single correct answer",
+                    hint: q.hint || "",
+                    solution: q.solution || "",
+                    solutionImage: q.solutionImage || null,
+                    topics: q.topics || []
+                };
+
+                const importRes = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-questions`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify([examQ])
+                });
+                
+                if (importRes.ok) {
+                    alert(`Question added to "${examTitle}"! ✅`);
+                } else alert("Failed to add question to exam.");
             });
-            
-            if (importRes.ok) {
-                alert(`Question added to "${exams[idx].title}"! ✅`);
-            } else alert("Failed to add question to exam.");
         } catch (e) {
             console.error(e);
             alert("Error adding question to exam.");
@@ -2107,23 +2146,19 @@
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
 
             const listInfo = currentQuestionLists.find(l => l.id === currentQlDetailId);
+            const listName = listInfo ? listInfo.name : '';
             
-            const examOptions = exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n");
-            const selected = prompt(`Select exam to import the list "${listInfo ? listInfo.name : ''}" into:\n\n${examOptions}`);
-            
-            if (selected === null) return;
-            const idx = parseInt(selected);
-            if (isNaN(idx) || idx < 0 || idx >= exams.length) return alert("Invalid selection.");
-            
-            const res = await fetch(`${BACKEND_URL}/api/exams/${exams[idx].id}/import-question-list/${currentQlDetailId}`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }
+            openExamSelector(`Select exam to import the list "${listName}" into:`, async (examId, examTitle) => {
+                const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${currentQlDetailId}`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || "Questions imported! ✅");
+                } else alert("Failed to import: " + (data.detail || "Unknown error"));
             });
-            
-            const data = await res.json();
-            if (res.ok) {
-                alert(data.message || "Questions imported! ✅");
-            } else alert("Failed to import: " + (data.detail || "Unknown error"));
         } catch (e) {
             console.error(e);
             alert("Error importing list to exam.");
@@ -2136,22 +2171,17 @@
             const exams = await examsRes.json();
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
             
-            const examOptions = exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n");
-            const selected = prompt(`Select exam to add "${listName}" to:\n\n${examOptions}`);
-            
-            if (selected === null) return;
-            const idx = parseInt(selected);
-            if (isNaN(idx) || idx < 0 || idx >= exams.length) return alert("Invalid selection.");
-            
-            const res = await fetch(`${BACKEND_URL}/api/exams/${exams[idx].id}/import-question-list/${listId}`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }
+            openExamSelector(`Select exam to add "${listName}" to:`, async (examId, examTitle) => {
+                const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || "Questions imported! ✅");
+                } else alert("Failed to import: " + (data.detail || "Unknown error"));
             });
-            
-            const data = await res.json();
-            if (res.ok) {
-                alert(data.message || "Questions imported! ✅");
-            } else alert("Failed to import: " + (data.detail || "Unknown error"));
         } catch (e) {
             console.error(e);
             alert("Error importing list to exam.");
@@ -2247,22 +2277,17 @@
             const exams = await examsRes.json();
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
             
-            const examOptions = exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n");
-            const selected = prompt(`Select exam to add "${listName}" to:\n\n${examOptions}`);
-            
-            if (selected === null) return;
-            const idx = parseInt(selected);
-            if (isNaN(idx) || idx < 0 || idx >= exams.length) return alert("Invalid selection.");
-            
-            const res = await fetch(`${BACKEND_URL}/api/exams/${exams[idx].id}/import-question-list/${listId}`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${token}` }
+            openExamSelector(`Select exam to add "${listName}" to:`, async (examId, examTitle) => {
+                const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || "Questions imported! ✅");
+                } else alert("Failed to import: " + (data.detail || "Unknown error"));
             });
-            
-            const data = await res.json();
-            if (res.ok) {
-                alert(data.message || "Questions imported! ✅");
-            } else alert("Failed to import: " + (data.detail || "Unknown error"));
         } catch (e) {
             console.error(e);
             alert("Error importing list to exam.");
@@ -2342,40 +2367,93 @@
             const exams = await examsRes.json();
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
             
-            const examOptions = exams.map((e, i) => `${i}: ${e.title} (${e.questions ? e.questions.length : 0} questions)`).join("\n");
-            const selected = prompt(`Select exam to add this question to:\n\n${examOptions}`);
-            
-            if (selected === null) return;
-            const idx = parseInt(selected);
-            if (isNaN(idx) || idx < 0 || idx >= exams.length) return alert("Invalid selection.");
-            
-            const examQ = {
-                subject: q.subject || "Physics",
-                question: q.question || "",
-                questionImage: q.questionImage || null,
-                options: q.options || [],
-                optionImages: q.optionImages || [],
-                correctAnswer: (q.correctAnswers || [""])[0],
-                correctAnswers: q.correctAnswers || [],
-                section: q.section || "Single correct answer",
-                hint: q.hint || "",
-                solution: q.solution || "",
-                solutionImage: q.solutionImage || null,
-                topics: q.topics || []
-            };
+            openExamSelector("Select exam to add this question to:", async (examId, examTitle) => {
+                const examQ = {
+                    subject: q.subject || "Physics",
+                    question: q.question || "",
+                    questionImage: q.questionImage || null,
+                    options: q.options || [],
+                    optionImages: q.optionImages || [],
+                    correctAnswer: (q.correctAnswers || [""])[0],
+                    correctAnswers: q.correctAnswers || [],
+                    section: q.section || "Single correct answer",
+                    hint: q.hint || "",
+                    solution: q.solution || "",
+                    solutionImage: q.solutionImage || null,
+                    topics: q.topics || []
+                };
 
-            const importRes = await fetch(`${BACKEND_URL}/api/exams/${exams[idx].id}/import-questions`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify([examQ])
+                const importRes = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-questions`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify([examQ])
+                });
+                
+                if (importRes.ok) {
+                    alert(`Question added to "${examTitle}"! ✅`);
+                } else alert("Failed to add question to exam.");
             });
-            
-            if (importRes.ok) {
-                alert(`Question added to "${exams[idx].title}"! ✅`);
-            } else alert("Failed to add question to exam.");
         } catch (e) {
             console.error(e);
             alert("Error adding question to exam.");
+        }
+    }
+
+    // ================= EXAM SELECTOR MODAL =================
+    let examSelectorCallback = null; // Stores the callback to execute when an exam is selected
+
+    function openExamSelector(promptText, callback) {
+        examSelectorCallback = callback;
+        document.getElementById("examSelectorPrompt").innerText = promptText || "Choose an exam to add the selected item to:";
+        document.getElementById("examSelectorModal").style.display = "flex";
+        loadExamSelectorList();
+    }
+
+    function closeExamSelector() {
+        document.getElementById("examSelectorModal").style.display = "none";
+        examSelectorCallback = null;
+    }
+
+    async function loadExamSelectorList() {
+        const listDiv = document.getElementById("examSelectorList");
+        listDiv.innerHTML = '<div style="text-align: center; padding: 30px; color: #999;">Loading exams...</div>';
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            
+            if (exams.length === 0) {
+                listDiv.innerHTML = '<div style="text-align: center; padding: 30px; color: #999;">No exams exist. Create an exam first!</div>';
+                return;
+            }
+            
+            listDiv.innerHTML = "";
+            exams.forEach((exam, idx) => {
+                const qCount = exam.questions ? exam.questions.length : 0;
+                const examType = exam.examType || 'Practice';
+                const typeIcon = examType.toLowerCase().includes('mains') ? '📝' : 
+                                examType.toLowerCase().includes('advance') ? '🎯' : '📋';
+                listDiv.innerHTML += `
+                    <div class="exam-selector-item" onclick="selectExamFromModal('${exam.id}', '${exam.title.replace(/'/g, "\\'")}')">
+                        <div class="exam-icon">${typeIcon}</div>
+                        <div class="exam-info">
+                            <div class="exam-title">${exam.title}</div>
+                            <div class="exam-meta">${examType} · ${qCount} questions · ⏱️ ${exam.timerMinutes || 180} mins</div>
+                        </div>
+                        <div class="exam-select-arrow">➜</div>
+                    </div>
+                `;
+            });
+        } catch (e) {
+            console.error("Failed to load exams:", e);
+            listDiv.innerHTML = '<div style="text-align: center; padding: 30px; color: #e74c3c;">Failed to load exams.</div>';
+        }
+    }
+
+    function selectExamFromModal(examId, examTitle) {
+        closeExamSelector();
+        if (examSelectorCallback) {
+            examSelectorCallback(examId, examTitle);
         }
     }
 

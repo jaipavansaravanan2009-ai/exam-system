@@ -1023,11 +1023,6 @@
             });
             
             if (res.ok) {
-                 let message = "Exam Submitted Successfully! Total Score: " + totalScore;
-                 if (autoSubmitTriggered) {
-                     message = "⚠️ Exam Auto-Submitted!\n\nReason: " + (cheatingViolations.find(v => v.type === 'auto-submit')?.details || 'Unknown') + "\n\nTotal Score: " + totalScore;
-                 }
-                 alert(message);
                  window.location.href = "student_portal.html";
             } else {
                  let errorMsg = "API call failed";
