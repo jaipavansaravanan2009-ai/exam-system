@@ -145,21 +145,76 @@
             to { transform: translateX(0); opacity: 1; }
         }
 
-        /* Fullscreen enforcement banner */
-        #fullscreenBanner {
+        /* Max violations reached modal */
+        #maxViolationsModal {
             display: none;
             position: fixed;
-            top: 0; left: 0; width: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 10002;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(8px);
+        }
+        #maxViolationsModal.show { display: flex; }
+        .violation-modal-card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px 45px;
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalPop 0.3s ease;
+        }
+        @keyframes modalPop {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .violation-modal-card .modal-icon {
+            font-size: 64px;
+            margin-bottom: 15px;
+        }
+        .violation-modal-card h2 {
+            color: var(--red);
+            font-size: 24px;
+            margin: 0 0 10px 0;
+        }
+        .violation-modal-card p {
+            color: #555;
+            font-size: 15px;
+            line-height: 1.6;
+            margin: 5px 0;
+        }
+        .violation-modal-card .modal-reason {
+            background: #fef0ef;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 15px 0;
+            color: var(--red);
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .violation-modal-card .modal-btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
             background: var(--red);
             color: white;
-            text-align: center;
-            padding: 12px 20px;
-            font-weight: bold;
-            font-size: 18px;
-            z-index: 9998;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
         }
-        #fullscreenBanner.show { display: block; }
+        .violation-modal-card .modal-btn:hover {
+            transform: scale(1.05);
+        }
+        .violation-modal-card .modal-btn:disabled {
+            background: #bbb;
+            cursor: not-allowed;
+            transform: none;
+        }
 
         /* Disable text selection across the exam */
         .question-section, .sidebar {
@@ -261,8 +316,17 @@
 <!-- Toast notification for minor violations -->
 <div id="violationToast"></div>
 
-<!-- Fullscreen enforcement banner -->
-<div id="fullscreenBanner">⚠️ Please use fullscreen mode (Press F11) to continue the exam</div>
+<!-- Max violations reached modal -->
+<div id="maxViolationsModal">
+    <div class="violation-modal-card">
+        <div class="modal-icon">🚫</div>
+        <h2>Exam Auto-Submitted</h2>
+        <p>You have reached the maximum number of allowed violations.</p>
+        <div class="modal-reason" id="maxViolationReason">Maximum violations (3) reached.</div>
+        <p style="font-size: 13px; color: #888;">The exam has been submitted automatically. You will be redirected shortly.</p>
+        <button class="modal-btn" id="maxViolationOkBtn" onclick="redirectAfterMaxViolation()">Submitting...</button>
+    </div>
+</div>
 
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com";
@@ -327,7 +391,7 @@
         checkAutoSubmitThreshold();
     }
 
-    // Record a violation (major or minor)
+    // Record a violation (only for MAJOR offenses: tab switch, window blur, fullscreen exit, page navigate)
     function recordViolation(type, details) {
         if (autoSubmitTriggered) return;
         
@@ -402,12 +466,10 @@
         }
     }
 
-    // Auto-submit the exam with a reason
+    // Auto-submit the exam with a reason — shows a clean modal instead of alert()
     async function triggerAutoSubmit(reason) {
         if (autoSubmitTriggered) return;
         autoSubmitTriggered = true;
-        
-        alert(`⚠️ AUTO-SUBMISSION TRIGGERED\n\nReason: ${reason}\n\nThe exam will now be submitted automatically.`);
         
         // Add the auto-submit reason to violations
         cheatingViolations.push({
@@ -420,13 +482,27 @@
         // Hide overlay if showing
         document.getElementById('cheatOverlay').classList.remove('show');
         
-        // Submit the exam
-        await submitFinal();
+        // Show the clean max-violations modal
+        document.getElementById('maxViolationReason').innerText = reason;
+        document.getElementById('maxViolationsModal').classList.add('show');
+        
+        // Submit the exam (don't await so modal shows immediately)
+        submitFinal().then(() => {
+            // After submission completes, enable the OK button
+            const btn = document.getElementById('maxViolationOkBtn');
+            btn.disabled = false;
+            btn.innerText = 'OK, Take me to Dashboard';
+        });
+    }
+
+    // Redirect after max violations modal OK button click
+    function redirectAfterMaxViolation() {
+        window.location.href = 'student_portal.html';
     }
 
     // --- Event Handlers ---
 
-    // Detect when tab visibility changes (user switches tabs/minimizes)
+    // Detect when tab visibility changes (user switches tabs/minimizes) — MAJOR violation
     document.addEventListener('visibilitychange', function() {
         if (!examActive || autoSubmitTriggered) return;
         
@@ -447,7 +523,7 @@
         }
     });
 
-    // Detect window blur (Alt+Tab, clicking taskbar, etc.)
+    // Detect window blur (Alt+Tab, clicking taskbar, etc.) — MAJOR violation
     window.addEventListener('blur', function() {
         if (!examActive || autoSubmitTriggered) return;
         // Only show if not already showing an overlay
@@ -463,19 +539,15 @@
         // The away time tracking continues
     });
 
-    // Fullscreen change detection
+    // Fullscreen change detection — MAJOR violation
     document.addEventListener('fullscreenchange', function() {
         if (!examActive || autoSubmitTriggered) return;
         
         isFullscreen = !!document.fullscreenElement;
         
         if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
-            document.getElementById('fullscreenBanner').classList.add('show');
             showCheatOverlay('You exited fullscreen mode!');
             recordViolation('fullscreen-exit', 'User exited fullscreen mode');
-            showViolationToast('Fullscreen mode is required for the exam!');
-        } else {
-            document.getElementById('fullscreenBanner').classList.remove('show');
         }
     });
 
@@ -484,24 +556,20 @@
         if (!examActive || autoSubmitTriggered) return;
         isFullscreen = !!document.webkitFullscreenElement;
         if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
-            document.getElementById('fullscreenBanner').classList.add('show');
             showCheatOverlay('You exited fullscreen mode!');
             recordViolation('fullscreen-exit', 'User exited fullscreen mode');
-        } else {
-            document.getElementById('fullscreenBanner').classList.remove('show');
         }
     });
 
-    // Block right-click context menu
+    // Silently block right-click context menu (NO violation counted)
     document.addEventListener('contextmenu', function(e) {
         if (!examActive) return;
         e.preventDefault();
-        recordViolation('right-click', 'User attempted right-click');
         showViolationToast('Right-click is disabled during the exam!');
         return false;
     });
 
-    // Block copy, paste, cut, select all keyboard shortcuts
+    // Silently block keyboard shortcuts (NO violation counted, just toast)
     document.addEventListener('keydown', function(e) {
         if (!examActive || autoSubmitTriggered) return;
 
@@ -513,7 +581,6 @@
             e.preventDefault();
             e.stopPropagation();
             const actionMap = {'c': 'Copy', 'v': 'Paste', 'x': 'Cut', 'a': 'Select All', 's': 'Save'};
-            recordViolation('keyboard-shortcut', `User attempted ${actionMap[key.toLowerCase()] || key}`);
             showViolationToast(`⚠️ ${actionMap[key.toLowerCase()] || key} is disabled during the exam!`);
             return false;
         }
@@ -521,7 +588,6 @@
         // Block F12 (DevTools)
         if (key === 'F12') {
             e.preventDefault();
-            recordViolation('devtools', 'User attempted to open DevTools (F12)');
             showViolationToast('⚠️ Developer Tools are disabled during the exam!');
             return false;
         }
@@ -529,13 +595,11 @@
         // Block Ctrl+Shift+I (DevTools), Ctrl+Shift+J (Console), Ctrl+U (View Source)
         if (ctrl && e.shiftKey && ['i', 'j'].includes(key.toLowerCase())) {
             e.preventDefault();
-            recordViolation('devtools', `User attempted DevTools (Ctrl+Shift+${key.toUpperCase()})`);
             showViolationToast('⚠️ Developer Tools are disabled during the exam!');
             return false;
         }
         if (ctrl && key.toLowerCase() === 'u') {
             e.preventDefault();
-            recordViolation('view-source', 'User attempted to view page source');
             showViolationToast('⚠️ View Source is disabled during the exam!');
             return false;
         }
@@ -543,13 +607,12 @@
         // Block Ctrl+W (close tab), Ctrl+N (new window), Ctrl+T (new tab)
         if (ctrl && ['w', 'n', 't'].includes(key.toLowerCase())) {
             e.preventDefault();
-            recordViolation('tab-control', `User attempted to ${key === 'w' ? 'close' : 'open'} tab`);
             showViolationToast('⚠️ Tab operations are disabled during the exam!');
             return false;
         }
     });
 
-    // Warn before leaving/closing the page
+    // Warn before leaving/closing the page — MAJOR violation
     window.addEventListener('beforeunload', function(e) {
         if (!examActive || autoSubmitTriggered) return;
         
@@ -562,12 +625,8 @@
         return e.returnValue;
     });
 
-    // Override history.pushState and popstate to block back button
+    // Silently block back button (NO violation counted)
     (function() {
-        let blockedNav = false;
-        const origPushState = history.pushState;
-        const origReplaceState = history.replaceState;
-        
         // Push dummy states to trap back button
         history.pushState({exam: true}, '');
         history.pushState({exam: true}, '');
@@ -575,20 +634,17 @@
         window.addEventListener('popstate', function(e) {
             if (!examActive) return;
             e.preventDefault();
-            // Push state back to prevent navigation
             history.pushState({exam: true}, '');
-            recordViolation('back-button', 'User attempted to use browser back button');
             showViolationToast('⚠️ Back button is disabled during the exam!');
         });
     })();
 
-    // Request fullscreen on exam load
+    // Request fullscreen automatically on exam load (no banner shown)
     function requestFullscreen() {
         const el = document.documentElement;
         if (el.requestFullscreen) {
             el.requestFullscreen().catch(function(err) {
                 console.warn('Fullscreen request denied:', err);
-                document.getElementById('fullscreenBanner').classList.add('show');
             });
         } else if (el.webkitRequestFullscreen) {
             el.webkitRequestFullscreen();
@@ -704,7 +760,7 @@
             // ===== ACTIVATE ANTI-CHEAT SYSTEM =====
             examActive = true;
 
-            // Request fullscreen after user interaction
+            // Request fullscreen automatically after exam loads
             requestFullscreen();
 
             // Initial violation tracking setup
