@@ -906,6 +906,13 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
         question_times = result_payload.get("questionTimes", [])
         subject_times = result_payload.get("subjectTimes", {})
 
+        # Get anti-cheat data from submission
+        cheating_violations = result_payload.get("cheatingViolations", [])
+        total_violations = result_payload.get("totalViolations", 0)
+        total_away_time = result_payload.get("totalAwayTime", 0)
+        auto_submitted = result_payload.get("autoSubmitted", False)
+        auto_submit_reason = result_payload.get("autoSubmitReason", None)
+
         new_result_doc = {
             "studentName": student_name,
             "examTitle": exam_title,
@@ -916,7 +923,13 @@ async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["
             "subjectWiseBreakdown": verified_breakdown,
             "questionBreakdown": question_breakdown,
             "questionTimes": question_times,
-            "subjectTimes": subject_times
+            "subjectTimes": subject_times,
+            # Anti-cheat data
+            "cheatingViolations": cheating_violations,
+            "totalViolations": total_violations,
+            "totalAwayTime": total_away_time,
+            "autoSubmitted": auto_submitted,
+            "autoSubmitReason": auto_submit_reason
         }
 
         db.collection("results").add(new_result_doc)

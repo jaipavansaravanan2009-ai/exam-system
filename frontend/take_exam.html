@@ -25,7 +25,6 @@
         header { background: var(--nta-blue); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
         .subject-bar { background: #fff; border-bottom: 1px solid #ccc; display: flex; }
         
-        /* FIX: Smoother subject button transitions and outline removal */
         .sub-btn { padding: 12px 25px; border: none; background: none; cursor: pointer; font-weight: bold; border-right: 1px solid #eee; transition: background 0.3s, color 0.3s; outline: none; }
         .sub-btn:hover { background: #e8f0f8; }
         .sub-btn.active { background: var(--nta-blue); color: white; border-bottom: 3px solid #f39c12; }
@@ -33,7 +32,6 @@
         .main-container { display: flex; flex: 1; overflow: hidden; }
         .question-section { flex: 3; padding: 30px; overflow-y: auto; background: white; position: relative; }
         
-        /* FIX: Sidebar layout strict column flex to enable palette scrolling */
         .sidebar { flex: 1; background: #e5e7e9; border-left: 2px solid #ccc; padding: 15px; display: flex; flex-direction: column; max-height: 100%; overflow: hidden;}
 
         /* Image Handling */
@@ -46,9 +44,8 @@
         .opt-row { margin: 12px 0; padding: 10px; border: 2px solid #f0f0f0; border-radius: 6px; transition: all 0.2s ease-in-out; display: flex; align-items: center; cursor: pointer; }
         .opt-row:hover { background: #f9f9f9; border-color: #bdc3c7; }
         .opt-row.selected { border-color: var(--secondary); background: #ebf5fb; box-shadow: 0 2px 6px rgba(46, 134, 193, 0.15); } 
-        /* FIX: Ensure label takes full space to make entire row clickable */
         .opt-row label { cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0; pointer-events: none; }
-        .opt-row input[type="radio"] { pointer-events: auto; } /* Only let the custom JS trigger the row click */
+        .opt-row input[type="radio"] { pointer-events: auto; }
 
         /* Hint Button & Display */
         .hint-container { margin: 15px 0; }
@@ -79,28 +76,98 @@
         .zoom-canvas { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: center; padding: 20px; }
         #modalImg { transition: width 0.2s ease; box-shadow: 0 0 20px rgba(0,0,0,0.8); border-radius: 4px; background: white; }
 
-        /* FIX: Palette Grid & Buttons alignment and accurate NTA shapes */
         .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; flex: 1; overflow-y: auto; align-content: flex-start; padding-right: 5px; padding-bottom: 10px; }
         .p-btn { width: 40px; height: 40px; border: 1px solid #bdc3c7; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; border-radius: 4px; font-size: 14px; font-weight: bold; transition: transform 0.1s, box-shadow 0.2s; color: #333;}
         .p-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
-        /* FIX: Using solid box-shadow for active state to avoid clipping the border-radius shapes */
         .p-btn.active { box-shadow: 0 0 0 3px rgba(46, 134, 193, 0.5); border: 2px solid var(--secondary); transform: scale(1.05); z-index: 2;}
         
-        /* Accurate NTA Status Shapes */
         .p-btn.visited { background: var(--red); color: white; border-radius: 12px 12px 4px 4px; border-color: var(--red); }
         .p-btn.answered { background: var(--green); color: white; border-radius: 4px 4px 12px 12px; border-color: var(--green); }
         .p-btn.review { background: var(--purple); color: white; border-radius: 50%; border-color: var(--purple); }
         .p-btn.review-answered { background: var(--purple); color: white; border-radius: 50%; position: relative; border-color: var(--purple); }
         .p-btn.review-answered::after { content: ''; position: absolute; bottom: 0px; right: 0px; width: 12px; height: 12px; background: var(--green); border-radius: 50%; border: 2px solid white; }
 
-        /* Controls */
         .controls { margin-top: 30px; display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 20px; flex-wrap: wrap; }
         .btn { padding: 12px 20px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; color: white; transition: background 0.2s, transform 0.1s; }
-        /* FIX: Smooth hover effects for bottom controls */
     .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
         .btn:active { transform: translateY(1px); }
         #timer { font-size: 18px; font-weight: bold; background: #f39c12; padding: 5px 15px; border-radius: 5px; }
+
+        /* ===== ANTI-CHEAT STYLES ===== */
+        
+        /* Violation warning overlay (covers entire screen) */
+        #cheatOverlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(231, 76, 60, 0.95);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            text-align: center;
+            backdrop-filter: blur(8px);
+        }
+        #cheatOverlay.show { display: flex; }
+        #cheatOverlay h1 { font-size: 48px; margin: 0 0 10px 0; }
+        #cheatOverlay h2 { font-size: 28px; margin: 0 0 20px 0; font-weight: normal; }
+        #cheatOverlay p { font-size: 18px; margin: 5px 0; max-width: 600px; line-height: 1.5; }
+        #cheatOverlay .violation-count { font-size: 72px; font-weight: bold; margin: 10px 0; }
+        #cheatOverlay .return-btn {
+            margin-top: 30px; padding: 15px 40px; font-size: 20px; font-weight: bold;
+            border: none; border-radius: 8px; background: white; color: var(--red);
+            cursor: pointer; transition: transform 0.2s;
+        }
+        #cheatOverlay .return-btn:hover { transform: scale(1.05); }
+
+        /* Small popup toast for minor violations (copy/paste, right-click) */
+        #violationToast {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--red);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            z-index: 10001;
+            font-weight: bold;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+            max-width: 350px;
+        }
+        #violationToast.show { display: block; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Fullscreen enforcement banner */
+        #fullscreenBanner {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%;
+            background: var(--red);
+            color: white;
+            text-align: center;
+            padding: 12px 20px;
+            font-weight: bold;
+            font-size: 18px;
+            z-index: 9998;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        #fullscreenBanner.show { display: block; }
+
+        /* Disable text selection across the exam */
+        .question-section, .sidebar {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
 
         /* Responsive Design for Mobile */
         @media (max-width: 768px) {
@@ -111,6 +178,9 @@
             .sidebar { max-height: 40vh; }
             .palette-grid { grid-template-columns: repeat(4, 1fr); }
             .controls { flex-direction: column; gap: 8px; }
+            #cheatOverlay h1 { font-size: 32px; }
+            #cheatOverlay h2 { font-size: 20px; }
+            #cheatOverlay .violation-count { font-size: 48px; }
         }
     </style>
 </head>
@@ -175,6 +245,25 @@
     </div>
 </div>
 
+<!-- ===== ANTI-CHEAT HTML ELEMENTS ===== -->
+
+<!-- Violation blocking overlay (shown when user leaves tab/exits fullscreen) -->
+<div id="cheatOverlay">
+    <h1>⚠️ EXAM INTEGRITY VIOLATION</h1>
+    <h2 id="cheatReason">You left the exam window!</h2>
+    <div class="violation-count" id="violationCountDisplay">1 / 3</div>
+    <p>This is a serious academic offense.</p>
+    <p id="violationAwayTime"></p>
+    <p style="margin-top:10px; font-size:14px; opacity:0.8;">If you continue, the exam will be auto-submitted.</p>
+    <button class="return-btn" onclick="dismissCheatOverlay()">🔙 Return to Exam</button>
+</div>
+
+<!-- Toast notification for minor violations -->
+<div id="violationToast"></div>
+
+<!-- Fullscreen enforcement banner -->
+<div id="fullscreenBanner">⚠️ Please use fullscreen mode (Press F11) to continue the exam</div>
+
 <script>
     const BACKEND_URL = "https://jee-mock-portal.onrender.com";
     
@@ -187,6 +276,325 @@
     let questionStartTime = Date.now();
     let questionTimes = [];
     let subjectTimes = {};
+
+    // ===== ANTI-CHEAT SYSTEM =====
+    const CHEAT_CONFIG = {
+        maxViolations: 3,           // Auto-submit after N violations
+        maxAwaySeconds: 30,         // Auto-submit after total N seconds away
+        enforceFullscreen: true,    // Require fullscreen mode
+        showOverlay: true           // Show blocking overlay on focus loss
+    };
+
+    let violationCount = 0;
+    let totalAwayTime = 0;         // Total seconds away from exam
+    let awayStartTime = null;      // Timestamp when user left
+    let isFullscreen = false;
+    let examActive = false;        // Becomes true after exam loads
+    let cheatingViolations = [];   // Detailed log of all violations
+    let autoSubmitTriggered = false; // Prevent multiple auto-submissions
+
+    // Show a blocking overlay when a major violation occurs (tab switch, fullscreen exit)
+    function showCheatOverlay(reason) {
+        if (autoSubmitTriggered) return;
+        
+        const overlay = document.getElementById('cheatOverlay');
+        document.getElementById('cheatReason').innerText = reason;
+        
+        // Start tracking away time
+        if (awayStartTime === null) {
+            awayStartTime = Date.now();
+        }
+        
+        overlay.classList.add('show');
+    }
+
+    // Dismiss the overlay when student returns
+    function dismissCheatOverlay() {
+        const overlay = document.getElementById('cheatOverlay');
+        overlay.classList.remove('show');
+        
+        // Calculate away time
+        if (awayStartTime !== null) {
+            const awaySeconds = Math.round((Date.now() - awayStartTime) / 1000);
+            totalAwayTime += awaySeconds;
+            awayStartTime = null;
+            
+            document.getElementById('violationAwayTime').innerText = 
+                `Total time away: ${totalAwayTime}s / ${CHEAT_CONFIG.maxAwaySeconds}s`;
+        }
+
+        // Check if auto-submit threshold reached
+        checkAutoSubmitThreshold();
+    }
+
+    // Record a violation (major or minor)
+    function recordViolation(type, details) {
+        if (autoSubmitTriggered) return;
+        
+        violationCount++;
+        const timestamp = new Date().toISOString();
+        
+        cheatingViolations.push({
+            type: type,
+            details: details,
+            timestamp: timestamp,
+            violationNumber: violationCount
+        });
+
+        // Update violation counter in overlay
+        document.getElementById('violationCountDisplay').innerText = 
+            `${violationCount} / ${CHEAT_CONFIG.maxViolations}`;
+
+        console.warn(`🚨 ANTI-CHEAT: Violation #${violationCount} - ${type}: ${details}`);
+
+        // Show violation count in header timer area
+        updateViolationBadge();
+
+        // If max violations reached, auto-submit
+        if (violationCount >= CHEAT_CONFIG.maxViolations) {
+            triggerAutoSubmit(`Maximum violations (${CHEAT_CONFIG.maxViolations}) reached.`);
+            return;
+        }
+
+        // If max away time reached, auto-submit
+        if (totalAwayTime >= CHEAT_CONFIG.maxAwaySeconds) {
+            triggerAutoSubmit(`Total away time (${CHEAT_CONFIG.maxAwaySeconds}s) exceeded.`);
+            return;
+        }
+    }
+
+    // Show a small toast notification for minor violations
+    function showViolationToast(message) {
+        if (autoSubmitTriggered) return;
+        
+        const toast = document.getElementById('violationToast');
+        toast.innerText = `⚠️ ${message}`;
+        toast.classList.add('show');
+        
+        // Auto-hide after 3 seconds
+        clearTimeout(toast._hideTimer);
+        toast._hideTimer = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3000);
+    }
+
+    // Update a small badge next to timer showing violation count
+    function updateViolationBadge() {
+        let badge = document.getElementById('violationBadge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'violationBadge';
+            badge.style.cssText = `
+                background: var(--red); color: white; padding: 3px 10px; 
+                border-radius: 12px; font-size: 13px; margin-left: 10px;
+            `;
+            document.getElementById('timer').parentNode.appendChild(badge);
+        }
+        badge.innerText = `⚠️ ${violationCount}/${CHEAT_CONFIG.maxViolations}`;
+    }
+
+    // Check if auto-submit threshold is reached (called after overlay dismissed)
+    function checkAutoSubmitThreshold() {
+        if (violationCount >= CHEAT_CONFIG.maxViolations) {
+            triggerAutoSubmit(`Maximum violations (${CHEAT_CONFIG.maxViolations}) reached.`);
+        } else if (totalAwayTime >= CHEAT_CONFIG.maxAwaySeconds) {
+            triggerAutoSubmit(`Total away time (${CHEAT_CONFIG.maxAwaySeconds}s) exceeded.`);
+        }
+    }
+
+    // Auto-submit the exam with a reason
+    async function triggerAutoSubmit(reason) {
+        if (autoSubmitTriggered) return;
+        autoSubmitTriggered = true;
+        
+        alert(`⚠️ AUTO-SUBMISSION TRIGGERED\n\nReason: ${reason}\n\nThe exam will now be submitted automatically.`);
+        
+        // Add the auto-submit reason to violations
+        cheatingViolations.push({
+            type: 'auto-submit',
+            details: reason,
+            timestamp: new Date().toISOString(),
+            violationNumber: violationCount + 1
+        });
+        
+        // Hide overlay if showing
+        document.getElementById('cheatOverlay').classList.remove('show');
+        
+        // Submit the exam
+        await submitFinal();
+    }
+
+    // --- Event Handlers ---
+
+    // Detect when tab visibility changes (user switches tabs/minimizes)
+    document.addEventListener('visibilitychange', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        
+        if (document.hidden) {
+            // User left the tab
+            showCheatOverlay('You switched to another tab or application!');
+            recordViolation('tab-switch', 'User switched away from exam tab');
+            showViolationToast('Tab switch detected! Violation recorded.');
+        } else {
+            // User returned - dismiss overlay handled by button click
+            // But also update away time if they came back and overlay not there
+            if (awayStartTime !== null) {
+                const awaySeconds = Math.round((Date.now() - awayStartTime) / 1000);
+                totalAwayTime += awaySeconds;
+                awayStartTime = null;
+                checkAutoSubmitThreshold();
+            }
+        }
+    });
+
+    // Detect window blur (Alt+Tab, clicking taskbar, etc.)
+    window.addEventListener('blur', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        // Only show if not already showing an overlay
+        if (!document.getElementById('cheatOverlay').classList.contains('show')) {
+            showCheatOverlay('You clicked outside the exam window!');
+            recordViolation('window-blur', 'User clicked outside exam window');
+        }
+    });
+
+    // Detect window focus return
+    window.addEventListener('focus', function() {
+        // If overlay is showing, keep it until they press return button
+        // The away time tracking continues
+    });
+
+    // Fullscreen change detection
+    document.addEventListener('fullscreenchange', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        
+        isFullscreen = !!document.fullscreenElement;
+        
+        if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
+            document.getElementById('fullscreenBanner').classList.add('show');
+            showCheatOverlay('You exited fullscreen mode!');
+            recordViolation('fullscreen-exit', 'User exited fullscreen mode');
+            showViolationToast('Fullscreen mode is required for the exam!');
+        } else {
+            document.getElementById('fullscreenBanner').classList.remove('show');
+        }
+    });
+
+    // Also handle prefixed fullscreen for older browsers
+    document.addEventListener('webkitfullscreenchange', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        isFullscreen = !!document.webkitFullscreenElement;
+        if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
+            document.getElementById('fullscreenBanner').classList.add('show');
+            showCheatOverlay('You exited fullscreen mode!');
+            recordViolation('fullscreen-exit', 'User exited fullscreen mode');
+        } else {
+            document.getElementById('fullscreenBanner').classList.remove('show');
+        }
+    });
+
+    // Block right-click context menu
+    document.addEventListener('contextmenu', function(e) {
+        if (!examActive) return;
+        e.preventDefault();
+        recordViolation('right-click', 'User attempted right-click');
+        showViolationToast('Right-click is disabled during the exam!');
+        return false;
+    });
+
+    // Block copy, paste, cut, select all keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (!examActive || autoSubmitTriggered) return;
+
+        const key = e.key;
+        const ctrl = e.ctrlKey || e.metaKey;
+
+        // Block Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+A, Ctrl+S
+        if (ctrl && ['c', 'v', 'x', 'a', 's'].includes(key.toLowerCase())) {
+            e.preventDefault();
+            e.stopPropagation();
+            const actionMap = {'c': 'Copy', 'v': 'Paste', 'x': 'Cut', 'a': 'Select All', 's': 'Save'};
+            recordViolation('keyboard-shortcut', `User attempted ${actionMap[key.toLowerCase()] || key}`);
+            showViolationToast(`⚠️ ${actionMap[key.toLowerCase()] || key} is disabled during the exam!`);
+            return false;
+        }
+
+        // Block F12 (DevTools)
+        if (key === 'F12') {
+            e.preventDefault();
+            recordViolation('devtools', 'User attempted to open DevTools (F12)');
+            showViolationToast('⚠️ Developer Tools are disabled during the exam!');
+            return false;
+        }
+
+        // Block Ctrl+Shift+I (DevTools), Ctrl+Shift+J (Console), Ctrl+U (View Source)
+        if (ctrl && e.shiftKey && ['i', 'j'].includes(key.toLowerCase())) {
+            e.preventDefault();
+            recordViolation('devtools', `User attempted DevTools (Ctrl+Shift+${key.toUpperCase()})`);
+            showViolationToast('⚠️ Developer Tools are disabled during the exam!');
+            return false;
+        }
+        if (ctrl && key.toLowerCase() === 'u') {
+            e.preventDefault();
+            recordViolation('view-source', 'User attempted to view page source');
+            showViolationToast('⚠️ View Source is disabled during the exam!');
+            return false;
+        }
+
+        // Block Ctrl+W (close tab), Ctrl+N (new window), Ctrl+T (new tab)
+        if (ctrl && ['w', 'n', 't'].includes(key.toLowerCase())) {
+            e.preventDefault();
+            recordViolation('tab-control', `User attempted to ${key === 'w' ? 'close' : 'open'} tab`);
+            showViolationToast('⚠️ Tab operations are disabled during the exam!');
+            return false;
+        }
+    });
+
+    // Warn before leaving/closing the page
+    window.addEventListener('beforeunload', function(e) {
+        if (!examActive || autoSubmitTriggered) return;
+        
+        // Record violation
+        recordViolation('page-navigate', 'User attempted to leave/refresh page');
+        
+        // Standard beforeunload warning
+        e.preventDefault();
+        e.returnValue = '⚠️ You are currently taking an exam. Leaving will be recorded as a violation!';
+        return e.returnValue;
+    });
+
+    // Override history.pushState and popstate to block back button
+    (function() {
+        let blockedNav = false;
+        const origPushState = history.pushState;
+        const origReplaceState = history.replaceState;
+        
+        // Push dummy states to trap back button
+        history.pushState({exam: true}, '');
+        history.pushState({exam: true}, '');
+        
+        window.addEventListener('popstate', function(e) {
+            if (!examActive) return;
+            e.preventDefault();
+            // Push state back to prevent navigation
+            history.pushState({exam: true}, '');
+            recordViolation('back-button', 'User attempted to use browser back button');
+            showViolationToast('⚠️ Back button is disabled during the exam!');
+        });
+    })();
+
+    // Request fullscreen on exam load
+    function requestFullscreen() {
+        const el = document.documentElement;
+        if (el.requestFullscreen) {
+            el.requestFullscreen().catch(function(err) {
+                console.warn('Fullscreen request denied:', err);
+                document.getElementById('fullscreenBanner').classList.add('show');
+            });
+        } else if (el.webkitRequestFullscreen) {
+            el.webkitRequestFullscreen();
+        }
+        isFullscreen = true;
+    }
 
     // --- ZOOM LOGIC ---
     let imgZoomLevel = 100;
@@ -292,6 +700,19 @@
             
             filterSubject('Physics');
             startTimer();
+
+            // ===== ACTIVATE ANTI-CHEAT SYSTEM =====
+            examActive = true;
+
+            // Request fullscreen after user interaction
+            requestFullscreen();
+
+            // Initial violation tracking setup
+            console.log('🔒 Anti-cheat system activated');
+            console.log(`   Max violations: ${CHEAT_CONFIG.maxViolations}`);
+            console.log(`   Max away time: ${CHEAT_CONFIG.maxAwaySeconds}s`);
+            console.log(`   Fullscreen required: ${CHEAT_CONFIG.enforceFullscreen}`);
+
         } catch (err) {
             alert("Error loading exam. Redirecting back to dashboard.");
             window.location.href = "student_portal.html"; 
@@ -383,9 +804,8 @@
                 
                 const isChecked = studentAnswers[index] === opt ? 'checked' : '';
                 const isSelectedClass = isChecked ? 'selected' : '';
-                const safeOptValue = opt.replace(/"/g, '&quot;');
+                const safeOptValue = opt.replace(/"/g, '"');
                 
-                // FIX: Updated option row structure to handle clicks smoothly without double event bubbling
                 optionsHTML += `
                     <div class="opt-row ${isSelectedClass}" onclick="handleRowClick(this)">
                         <label>
@@ -404,7 +824,6 @@
         renderMath();
     }
 
-    // FIX: Function to handle clicking anywhere on the option row for better UX and preventing buggy multi-fires
     function handleRowClick(rowDiv) {
         const radio = rowDiv.querySelector('input[type="radio"]');
         if (radio && !radio.checked) {
@@ -413,7 +832,6 @@
         }
     }
 
-    // FIX: Safely highlight ONLY the selected row
     function updateRowStyles(selectedRadio) {
         document.querySelectorAll('.opt-row').forEach(row => row.classList.remove('selected'));
         if (selectedRadio) {
@@ -430,13 +848,11 @@
             if (q.subject === currentSub) {
                 let cls = statusMap[i] || '';
                 if (i === currentIdx) cls += ' active';
-                // FIX: Added smooth scroll-to-view if palette is long
                 paletteHTML += `<div class="p-btn ${cls}" id="pbtn-${i}" onclick="showQuestion(${i})">${i + 1}</div>`;
             }
         });
         grid.innerHTML = paletteHTML;
         
-        // Auto-scroll palette to active button
         const activeBtn = document.getElementById(`pbtn-${currentIdx}`);
         if(activeBtn) {
             activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -507,7 +923,6 @@
             let h = Math.floor(timeLeft / 3600);
             let m = Math.floor((timeLeft % 3600) / 60);
             let s = timeLeft % 60;
-            // Proper zero-padding for all time components
             document.getElementById("timer").innerText = 
                 `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
             
@@ -519,11 +934,17 @@
     }
 
     async function submitFinal() {
-        if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
+        // If it's a regular submission (not auto), confirm
+        if (!autoSubmitTriggered) {
+            if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
+        }
         
         if (currentIdx !== -1 && studentAnswers[currentIdx] === undefined) {
             statusMap[currentIdx] = 'visited';
         }
+        
+        // Stop anti-cheat system
+        examActive = false;
         
         document.getElementById("examUI").style.pointerEvents = "none";
         document.getElementById("qText").innerHTML = "<h3 style='text-align:center; color: var(--nta-blue); margin-top: 50px;'>Submitting your exam, please wait... ⏳</h3>";
@@ -572,6 +993,12 @@
         // Record final time on current question before submitting
         recordTimeOnCurrentQuestion();
 
+        // If away time is still being tracked, finalize it
+        if (awayStartTime !== null) {
+            totalAwayTime += Math.round((Date.now() - awayStartTime) / 1000);
+            awayStartTime = null;
+        }
+
         const payload = {
             studentName: localStorage.getItem("userName") || "Guest Student",
             examTitle: examData.title || "Untitled Exam", 
@@ -579,7 +1006,13 @@
             subjectWiseBreakdown: subjectWiseData,
             questionAnswers: studentAnswers,
             questionTimes: questionTimes,
-            subjectTimes: subjectTimes
+            subjectTimes: subjectTimes,
+            // ANTI-CHEAT DATA
+            cheatingViolations: cheatingViolations,
+            totalViolations: violationCount,
+            totalAwayTime: totalAwayTime,
+            autoSubmitted: autoSubmitTriggered,
+            autoSubmitReason: autoSubmitTriggered ? (cheatingViolations.find(v => v.type === 'auto-submit')?.details || 'Unknown') : null
         };
         
         try {
@@ -590,7 +1023,11 @@
             });
             
             if (res.ok) {
-                 alert("Exam Submitted Successfully! Total Score: " + totalScore);
+                 let message = "Exam Submitted Successfully! Total Score: " + totalScore;
+                 if (autoSubmitTriggered) {
+                     message = "⚠️ Exam Auto-Submitted!\n\nReason: " + (cheatingViolations.find(v => v.type === 'auto-submit')?.details || 'Unknown') + "\n\nTotal Score: " + totalScore;
+                 }
+                 alert(message);
                  window.location.href = "student_portal.html";
             } else {
                  let errorMsg = "API call failed";
@@ -610,6 +1047,9 @@
             } else {
                 document.getElementById("qText").innerHTML = "<h3 style='color: var(--red);'>Submission failed. Please try again.</h3>";
             }
+            // Re-enable anti-cheat if submission failed
+            examActive = true;
+            autoSubmitTriggered = false;
         }
     }
 
