@@ -383,6 +383,93 @@
     let questionStartTime = Date.now();
     let questionTimes = [];
     let subjectTimes = {};
+    let currentExamId = null; // Stores the exam ID for use across functions
+
+    // ===== EMERGENCY SHUTDOWN RECOVERY SYSTEM =====
+    let autoSaveInterval = null;
+    let lastSaveTime = 0;
+    const AUTO_SAVE_INTERVAL_MS = 30000; // Save every 30 seconds
+
+    // Save current exam progress to backend
+    async function saveProgressToBackend() {
+        if (!examActive || autoSubmitTriggered || !examData) return;
+        
+        // Record time on current question before saving
+        recordTimeOnCurrentQuestion();
+        
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        const examId = new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId');
+        
+        const progressPayload = {
+            examId: examId,
+            studentAnswers: studentAnswers,
+            statusMap: statusMap,
+            timeLeft: timeLeft,
+            currentIdx: currentIdx,
+            currentSub: currentSub,
+            questionTimes: questionTimes,
+            subjectTimes: subjectTimes,
+            violationCount: violationCount,
+            totalAwayTime: totalAwayTime,
+            cheatingViolations: cheatingViolations,
+            autoSubmitTriggered: autoSubmitTriggered
+        };
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/save-progress`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify(progressPayload)
+            });
+            
+            if (res.ok) {
+                lastSaveTime = Date.now();
+                console.log('💾 Exam progress auto-saved at', new Date().toLocaleTimeString());
+            }
+        } catch (err) {
+            // Silently fail - don't disrupt the exam experience
+            console.warn('⚠️ Failed to auto-save progress:', err.message);
+        }
+    }
+
+    // Restore exam progress from backend
+    async function restoreExamProgress(examId) {
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}/progress`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            if (!res.ok) return null;
+            
+            const data = await res.json();
+            if (!data.hasProgress) return null;
+            
+            return data;
+        } catch (err) {
+            console.warn('⚠️ Failed to restore exam progress:', err.message);
+            return null;
+        }
+    }
+
+    // Delete exam progress from backend
+    async function deleteExamProgress(examId) {
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        
+        try {
+            await fetch(`${BACKEND_URL}/api/public/exams/${examId}/progress`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            console.log('🗑️ Exam progress deleted after submission');
+        } catch (err) {
+            console.warn('⚠️ Failed to delete exam progress:', err.message);
+        }
+    }
 
     // ===== ANTI-CHEAT SYSTEM =====
     const CHEAT_CONFIG = {
@@ -817,11 +904,81 @@
             document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
             const allocatedMinutes = examData.timerMinutes || 180;
             timeLeft = allocatedMinutes * 60; 
+            currentExamId = examId; // Store globally for progress save/delete
 
             document.getElementById("examUI").style.display = "flex";
             
-            filterSubject('Physics');
+            // ===== CHECK FOR SAVED PROGRESS (EMERGENCY RECOVERY) =====
+            const savedProgress = await restoreExamProgress(examId);
+            
+            if (savedProgress) {
+                // Restore all state from saved progress
+                studentAnswers = savedProgress.studentAnswers || {};
+                statusMap = savedProgress.statusMap || {};
+                timeLeft = savedProgress.timeLeft || timeLeft;
+                currentIdx = savedProgress.currentIdx ?? -1;
+                currentSub = savedProgress.currentSub || 'Physics';
+                questionTimes = savedProgress.questionTimes || [];
+                subjectTimes = savedProgress.subjectTimes || {};
+                violationCount = savedProgress.violationCount || 0;
+                totalAwayTime = savedProgress.totalAwayTime || 0;
+                cheatingViolations = savedProgress.cheatingViolations || [];
+                autoSubmitTriggered = savedProgress.autoSubmitTriggered || false;
+                
+                // Show restoration banner at the top
+                const restoreBanner = document.createElement('div');
+                const lastSaved = savedProgress.updatedAt 
+                    ? new Date(savedProgress.updatedAt).toLocaleString() 
+                    : 'a previous session';
+                restoreBanner.style.cssText = `
+                    background: #d4edda; color: #155724; padding: 12px 20px; 
+                    text-align: center; font-weight: bold; font-size: 16px;
+                    border-bottom: 2px solid #c3e6cb;
+                `;
+                restoreBanner.id = 'restoreBanner';
+                restoreBanner.innerHTML = `📋 <strong>Session Restored!</strong> We found your previous exam progress from ${lastSaved}. Your answers have been restored.`;
+                document.body.insertBefore(restoreBanner, document.body.firstChild);
+                
+                // Auto-dismiss the banner after 8 seconds
+                setTimeout(() => {
+                    const banner = document.getElementById('restoreBanner');
+                    if (banner) {
+                        banner.style.transition = 'opacity 0.5s';
+                        banner.style.opacity = '0';
+                        setTimeout(() => banner.remove(), 500);
+                    }
+                }, 8000);
+                
+                // Set the active subject button
+                document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === currentSub));
+                
+                // If we have a valid current index, show that question
+                if (currentIdx >= 0 && currentIdx < examData.questions.length) {
+                    showQuestion(currentIdx);
+                } else {
+                    filterSubject(currentSub);
+                }
+                
+                // Restore violation badge display
+                if (violationCount > 0) {
+                    updateViolationBadge();
+                }
+                if (totalAwayTime > 0) {
+                    document.getElementById('violationAwayTime').innerText = 
+                        `Total time away: ${totalAwayTime}s / ${CHEAT_CONFIG.maxAwaySeconds}s`;
+                }
+                
+                console.log(`♻️ Exam session restored! Resumed at question ${currentIdx + 1}, ${timeLeft}s remaining, ${violationCount} violations`);
+            } else {
+                // Fresh start
+                filterSubject('Physics');
+            }
+            
             startTimer();
+
+            // ===== ACTIVATE AUTO-SAVE INTERVAL =====
+            if (autoSaveInterval) clearInterval(autoSaveInterval);
+            autoSaveInterval = setInterval(saveProgressToBackend, AUTO_SAVE_INTERVAL_MS);
 
             // ===== ACTIVATE ANTI-CHEAT SYSTEM =====
             examActive = true;
@@ -1145,6 +1302,9 @@
             });
             
             if (res.ok) {
+                 // Delete saved progress after successful submission
+                 const submitExamId = new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId');
+                 await deleteExamProgress(submitExamId);
                  window.location.href = "student_portal.html";
             } else {
                  let errorMsg = "API call failed";

@@ -831,6 +831,85 @@ async def get_my_results(user = Depends(authorize(["student"]))):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch your results: {str(e)}")
 
+@app.post("/api/public/exams/save-progress")
+async def save_exam_progress(result_payload: dict, user = Depends(authorize(["student"]))):
+    """Save/update exam progress for emergency shutdown recovery"""
+    student_id = user.get("id")
+    exam_id = result_payload.get("examId")
+    
+    if not exam_id:
+        raise HTTPException(status_code=400, detail="examId is required")
+    
+    try:
+        progress_data = {
+            "studentId": student_id,
+            "examId": exam_id,
+            "studentAnswers": result_payload.get("studentAnswers", {}),
+            "statusMap": result_payload.get("statusMap", {}),
+            "timeLeft": result_payload.get("timeLeft", 0),
+            "currentIdx": result_payload.get("currentIdx", -1),
+            "currentSub": result_payload.get("currentSub", "Physics"),
+            "questionTimes": result_payload.get("questionTimes", []),
+            "subjectTimes": result_payload.get("subjectTimes", {}),
+            "violationCount": result_payload.get("violationCount", 0),
+            "totalAwayTime": result_payload.get("totalAwayTime", 0),
+            "cheatingViolations": result_payload.get("cheatingViolations", []),
+            "autoSubmitTriggered": result_payload.get("autoSubmitTriggered", False),
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        }
+        
+        progress_doc_id = f"{student_id}_{exam_id}"
+        db.collection("exam_progress").document(progress_doc_id).set(progress_data)
+        return {"message": "Progress saved successfully ✅"}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to save progress: {str(e)}")
+
+
+@app.get("/api/public/exams/{exam_id}/progress")
+async def get_exam_progress(exam_id: str, user = Depends(authorize(["student"]))):
+    """Retrieve saved exam progress for the current student"""
+    student_id = user.get("id")
+    progress_doc_id = f"{student_id}_{exam_id}"
+    
+    try:
+        doc = db.collection("exam_progress").document(progress_doc_id).get()
+        if not doc.exists:
+            return {"hasProgress": False}
+        
+        data = doc.to_dict()
+        # Convert Firestore timestamp to string if present
+        updated_at = data.get("updatedAt")
+        if updated_at and hasattr(updated_at, 'isoformat'):
+            data["updatedAt"] = updated_at.isoformat()
+        else:
+            data["updatedAt"] = str(updated_at) if updated_at else None
+            
+        data["hasProgress"] = True
+        return data
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch progress: {str(e)}")
+
+
+@app.delete("/api/public/exams/{exam_id}/progress")
+async def delete_exam_progress(exam_id: str, user = Depends(authorize(["student"]))):
+    """Delete exam progress after successful submission"""
+    student_id = user.get("id")
+    progress_doc_id = f"{student_id}_{exam_id}"
+    
+    try:
+        db.collection("exam_progress").document(progress_doc_id).delete()
+        return {"message": "Progress deleted successfully 🗑️"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete progress: {str(e)}")
+
+
 @app.post("/api/public/submit")
 async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["student"]))):
     student_name = user.get("name") or user.get("email")
