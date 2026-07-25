@@ -2157,6 +2157,20 @@
         btn.innerText = "Searching... ⏳";
         
         try {
+            // Fetch the current list detail to know which questions are already in it
+            let existingQuestionIds = new Set();
+            if (currentQlDetailId) {
+                try {
+                    const listRes = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}`, { headers: { "Authorization": `Bearer ${token}` } });
+                    const listData = await listRes.json();
+                    if (listData.questions) {
+                        existingQuestionIds = new Set(listData.questions.map(q => q.id));
+                    }
+                } catch (e) {
+                    console.error("Could not fetch list details for existing questions check:", e);
+                }
+            }
+
             const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
             qbCacheForListImport = await res.json();
             
@@ -2182,16 +2196,20 @@
                 addBtn.style.display = "none";
             } else {
                 filtered.forEach(q => {
+                    const alreadyInList = existingQuestionIds.has(q.id);
                     const qText = q.question ? q.question.substring(0, 80) + '...' : '<i>[Image]</i>';
+                    const disabledAttr = alreadyInList ? 'disabled' : '';
+                    const bgColor = alreadyInList ? '#f0f0f0' : '#fafafa';
+                    const statusBadge = alreadyInList ? '<span style="margin-left: 8px; font-size: 10px; color: var(--success); font-weight: bold;">✓ Already in list</span>' : '';
                     resDiv.innerHTML += `
-                        <div style="display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; background: #fafafa; margin-bottom: 5px; border-radius: 4px;">
-                            <input type="checkbox" class="ql-add-cb" value="${q.id}" style="margin-right: 15px; width: 18px; height: 18px;">
+                        <div style="display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; background: ${bgColor}; margin-bottom: 5px; border-radius: 4px; ${alreadyInList ? 'opacity: 0.7;' : ''}">
+                            <input type="checkbox" class="ql-add-cb" value="${q.id}" style="margin-right: 15px; width: 18px; height: 18px;" ${disabledAttr}>
                             <div style="flex: 1;">
                                 <div class="badges" style="margin-bottom: 5px;">
                                     <span class="badge badge-subject" style="font-size: 9px; padding: 2px 6px;">${q.subject}</span>
                                     <span class="badge badge-section" style="font-size: 9px; padding: 2px 6px;">${q.section}</span>
                                 </div>
-                                <span style="font-size: 13px;">${qText}</span>
+                                <span style="font-size: 13px;">${qText}${statusBadge}</span>
                             </div>
                         </div>
                     `;
@@ -2451,6 +2469,7 @@
                 alert("Question added to list! ✅");
                 loadQBFolders();
                 if (qbSelectedListId === listId) selectQBListFolder(listId);
+                loadQuestionBank();  // Refresh to update dropdown states
             } else alert("Failed to add question to list.");
         } catch(e) { console.error(e); }
         selectEl.value = '';
