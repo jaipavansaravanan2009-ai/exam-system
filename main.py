@@ -672,6 +672,147 @@ async def get_question_list_detail(list_id: str, user=Depends(authorize(["admin"
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch question list: {str(e)}")
 
+@app.post("/api/question_lists/{list_id}/bulk-upload-zip")
+async def ql_bulk_upload_zip(list_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin", "setter"]))):
+    if not file.filename.lower().endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Only .zip files are allowed.")
+
+    try:
+        # Verify the list exists
+        list_ref = db.collection("question_lists").document(list_id)
+        list_doc = list_ref.get()
+        if not list_doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+
+        contents = await file.read()
+        csv_data = None
+        images_data = {}
+        
+        with zipfile.ZipFile(io.BytesIO(contents)) as z:
+            for filename in z.namelist():
+                base_name = filename.split('/')[-1]
+                if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
+                    continue
+                    
+                if filename.lower().endswith(".csv"):
+                    raw_csv = z.read(filename)
+                    try:
+                        csv_data = raw_csv.decode('utf-8-sig')
+                    except UnicodeDecodeError:
+                        try:
+                            csv_data = raw_csv.decode('cp1252')
+                        except UnicodeDecodeError:
+                            csv_data = raw_csv.decode('latin-1')
+                            
+                elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                    img_bytes = z.read(filename)
+                    try:
+                        with Image.open(io.BytesIO(img_bytes)) as img:
+                            if img.mode in ("RGBA", "P"):
+                                img = img.convert("RGB")
+                            max_width = 700
+                            if img.width > max_width:
+                                ratio = max_width / img.width
+                                new_height = int(img.height * ratio)
+                                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                
+                            buffer = io.BytesIO()
+                            img.save(buffer, format="JPEG", quality=60)
+                            b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                            mime_type = "image/jpeg"
+                    except Exception as e:
+                        mime_type, _ = mimetypes.guess_type(filename)
+                        if not mime_type: mime_type = "image/jpeg"
+                        b64_str = base64.b64encode(img_bytes).decode('utf-8')
+
+                    clean_name = base_name.lower().strip()
+                    images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
+
+        if not csv_data:
+            raise HTTPException(status_code=400, detail="Could not find a valid .csv file inside the ZIP.")
+
+        reader = csv.DictReader(io.StringIO(csv_data))
+        reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field]
+        
+        def get_val(row, possible_keys):
+            for k in possible_keys:
+                if k in row and row[k]: return str(row[k]).strip()
+            return ""
+
+        def get_img(row, possible_keys):
+            img_name = get_val(row, possible_keys)
+            if not img_name: return None
+            if img_name.startswith("http"): return img_name
+            return images_data.get(img_name.lower().strip(), None)
+
+        added_count = 0
+        new_question_ids = []
+        batch = db.batch() 
+        qb_ref = db.collection("question_bank")
+
+        for row in reader:
+            if not any(row.values()): continue
+
+            img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
+            img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
+            img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
+            img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
+            img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
+            img_sol = get_img(row, ["SolutionImage", "Solution_Image"])
+
+            opt_a_text = get_val(row, ["OptionA", "Option A"])
+            opt_b_text = get_val(row, ["OptionB", "Option B"])
+            opt_c_text = get_val(row, ["OptionC", "Option C"])
+            opt_d_text = get_val(row, ["OptionD", "Option D"])
+            
+            section_val = get_val(row, ["Section", "section"]) or "Single correct answer"
+            numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
+
+            correct_ans_list = [opt_a_text] if opt_a_text else []
+            if "integer" in section_val.lower() or "numerical" in section_val.lower():
+                correct_ans_list = [numerical_ans] if numerical_ans else []
+
+            new_q = {
+                "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
+                "subject": get_val(row, ["Subject", "subject"]) or "Physics",
+                "section": section_val,
+                "question": get_val(row, ["QuestionText", "Question", "question"]),
+                "questionImage": img_q,
+                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
+                "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
+                "correctAnswers": correct_ans_list,
+                "hint": get_val(row, ["Hint", "hint"]),
+                "solution": get_val(row, ["Solution", "solution"]),
+                "solutionImage": img_sol,
+                "topics": [t.strip() for t in get_val(row, ["Topics", "topics"]).split(",") if t.strip()],
+                "createdAt": datetime.now(timezone.utc),
+                "createdBy": user.get("id")
+            }
+            
+            new_doc_ref = qb_ref.document()
+            batch.set(new_doc_ref, new_q)
+            new_question_ids.append(new_doc_ref.id)
+            added_count += 1
+            
+            if added_count % 450 == 0:
+                batch.commit()
+                batch = db.batch()
+                
+        batch.commit()
+
+        # Add all new question IDs to the list
+        if new_question_ids:
+            list_ref.update({
+                "questionIds": firestore.ArrayUnion(new_question_ids)
+            })
+
+        return {"message": f"Successfully unpacked ZIP and added {added_count} questions to Bank & List! ✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
+
 @app.post("/api/question_lists/{list_id}/questions")
 async def add_questions_to_list(list_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
     try:
