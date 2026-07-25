@@ -316,6 +316,7 @@
                         </div>
                         <div>
                             <button class="btn btn-primary btn-small" onclick="openAddToListModal()">➕ Add from Bank</button>
+                            <button class="btn btn-success btn-small" onclick="addNewQuestionToList()">➕ Add New Question</button>
                             <button class="btn btn-success btn-small" onclick="importListToExam()">📥 Add All to Exam</button>
                         </div>
                     </div>
@@ -1194,11 +1195,38 @@
             });
 
             if(res.ok) {
-                alert(editingQBId ? "Question Updated! ✅" : "Question added to Bank! ✅");
+                const responseData = await res.json();
+                
+                // If in "add to list" mode, also add the question to the current list
+                if (addingToListMode && currentQlDetailId) {
+                    const newQuestionId = responseData.id;
+                    if (newQuestionId) {
+                        const addToListRes = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}/questions`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                            body: JSON.stringify({ questionIds: [newQuestionId] })
+                        });
+                        if (addToListRes.ok) {
+                            alert("Question added to Bank & List! ✅");
+                        } else {
+                            alert("Question saved to Bank, but failed to add to list.");
+                        }
+                    }
+                } else {
+                    alert(editingQBId ? "Question Updated! ✅" : "Question added to Bank! ✅");
+                }
+                
                 closeQBEditor();
+                if (addingToListMode && currentQlDetailId) {
+                    openListDetail(currentQlDetailId);
+                }
             } else alert("Failed to save question.");
         } catch(e) { console.error(e); alert("Error saving question.");
-        } finally { btn.innerText = "Add to Question Bank ✅"; btn.disabled = false; }
+        } finally { 
+            btn.innerText = "Add to Question Bank ✅"; 
+            btn.disabled = false; 
+            addingToListMode = false; 
+        }
     }
 
     async function uploadQBZIP() { 
@@ -1839,6 +1867,7 @@
     // ================= QUESTION LIST FUNCTIONS =================
     let editingQlId = null;
     let quickCreateFromBank = false; // When true, a newly created list is auto-selected in the Question Bank folder sidebar
+    let addingToListMode = false; // When true, submitNewQBQuestion will also add the question to the current list
 
     async function loadQuestionLists() {
         try {
@@ -2098,6 +2127,16 @@
             console.error(e);
             alert("Error adding question to exam.");
         }
+    }
+
+    function addNewQuestionToList() {
+        if (!currentQlDetailId) return alert("No list selected.");
+        addingToListMode = true;
+        resetQBForm();
+        document.getElementById("qbFormTitle").innerText = "Add New Question to List";
+        document.getElementById("addQBBtn").innerText = "Add to Bank & List ✅";
+        document.getElementById("qbEditorModal").style.display = "flex";
+        handleSectionChange();
     }
 
     function openAddToListModal() {
