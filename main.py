@@ -857,30 +857,39 @@ async def remove_question_from_list(list_id: str, question_id: str, user=Depends
         raise HTTPException(status_code=500, detail=f"Failed to remove question: {str(e)}")
 
 @app.post("/api/exams/{exam_id}/import-question-list/{list_id}")
-async def import_question_list_to_exam(exam_id: str, list_id: str, user=Depends(authorize(["admin", "setter"]))):
+async def import_question_list_to_exam(exam_id: str, list_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
     try:
+        print(f"📥 import_question_list_to_exam called: exam_id={exam_id}, list_id={list_id}, user={user.get('name')}")
+        
         # Get the exam
         exam_ref = db.collection("exams").document(exam_id)
         exam_doc = exam_ref.get()
         if not exam_doc.exists:
+            print(f"❌ Exam not found: {exam_id}")
             raise HTTPException(status_code=404, detail="Exam not found")
+        print(f"✅ Exam found: {exam_doc.to_dict().get('title', 'Unknown')}")
         
         # Get the question list with full data
         list_doc = db.collection("question_lists").document(list_id).get()
         if not list_doc.exists:
+            print(f"❌ Question list not found: {list_id}")
             raise HTTPException(status_code=404, detail="Question list not found")
         
         list_data = list_doc.to_dict()
         question_ids = list_data.get("questionIds", [])
+        print(f"✅ List found: '{list_data.get('name', 'Unknown')}' with {len(question_ids)} question IDs")
         
         if not question_ids:
+            print(f"❌ Question list is empty: {list_id}")
             raise HTTPException(status_code=400, detail="Question list is empty")
         
         # Fetch all questions from bank and convert to exam format
         questions_to_add = []
+        found_count = 0
         for q_id in question_ids:
             q_doc = db.collection("question_bank").document(q_id).get()
             if q_doc.exists:
+                found_count += 1
                 q = q_doc.to_dict()
                 exam_q = {
                     "subject": q.get("subject", "Physics"),
@@ -898,16 +907,22 @@ async def import_question_list_to_exam(exam_id: str, list_id: str, user=Depends(
                 }
                 questions_to_add.append(exam_q)
         
+        print(f"📊 Found {found_count} out of {len(question_ids)} questions in the bank")
+        
         # Add to exam
         exam_data = exam_doc.to_dict()
         existing_questions = exam_data.get("questions", [])
         existing_questions.extend(questions_to_add)
         exam_ref.update({"questions": existing_questions})
         
+        print(f"✅ Successfully added {len(questions_to_add)} questions to exam")
+        
         return {"message": f"{len(questions_to_add)} questions imported from list '{list_data.get('name', '')}'! ✅"}
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ import_question_list_to_exam error: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to import question list: {str(e)}")
 
 # ==========================================

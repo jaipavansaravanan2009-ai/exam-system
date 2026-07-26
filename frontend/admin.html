@@ -2290,30 +2290,61 @@
     }
 
     async function importListToExam() {
-        if (!currentQlDetailId) return;
+        if (!currentQlDetailId) {
+            console.error("importListToExam: currentQlDetailId is not set");
+            return alert("No list selected. Please open a list first.");
+        }
         
         try {
+            console.log("importListToExam: Starting import for list", currentQlDetailId);
+            
+            // First, verify the list has questions
+            const listRes = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            if (!listRes.ok) {
+                const errData = await listRes.json();
+                return alert("Failed to load list: " + (errData.detail || "Unknown error"));
+            }
+            const listData = await listRes.json();
+            const questionIds = listData.questionIds || [];
+            if (questionIds.length === 0) {
+                return alert("This question list is empty. Add questions to the list first!");
+            }
+            console.log(`importListToExam: List has ${questionIds.length} questions`);
+
             const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
             const exams = await examsRes.json();
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
 
-            const listInfo = currentQuestionLists.find(l => l.id === currentQlDetailId);
-            const listName = listInfo ? listInfo.name : '';
+            const listName = listData.name || '';
+            const listId = currentQlDetailId;
             
-            openExamSelector(`Select exam to import the list "${listName}" into:`, async (examId, examTitle) => {
-                const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${currentQlDetailId}`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
-                
-                const data = await res.json();
-                if (res.ok) {
-                    alert(data.message || "Questions imported! ✅");
-                } else alert("Failed to import: " + (data.detail || "Unknown error"));
+            openExamSelector(`Select exam to import the list "${listName}" (${questionIds.length} questions) into:`, async (examId, examTitle) => {
+                console.log(`importListToExam: Importing list ${listId} into exam ${examId}`);
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                        method: "POST",
+                        headers: { 
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}` 
+                        }
+                    });
+                    
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message || "Questions imported! ✅");
+                    } else {
+                        alert("Failed to import: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("importListToExam: Fetch error", e);
+                    alert("Network error importing list to exam.");
+                }
             });
         } catch (e) {
-            console.error(e);
-            alert("Error importing list to exam.");
+            console.error("importListToExam: Error", e);
+            alert("Error importing list to exam: " + e.message);
         }
     }
 
@@ -2324,15 +2355,26 @@
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
             
             openExamSelector(`Select exam to add "${listName}" to:`, async (examId, examTitle) => {
-                const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
-                
-                const data = await res.json();
-                if (res.ok) {
-                    alert(data.message || "Questions imported! ✅");
-                } else alert("Failed to import: " + (data.detail || "Unknown error"));
+                console.log(`addListToExam: Importing list ${listId} into exam ${examId}`);
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                        method: "POST",
+                        headers: { 
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}` 
+                        }
+                    });
+                    
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message || "Questions imported! ✅");
+                    } else {
+                        alert("Failed to import: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("addListToExam: Fetch error", e);
+                    alert("Network error importing list to exam.");
+                }
             });
         } catch (e) {
             console.error(e);
@@ -2430,15 +2472,26 @@
             if (exams.length === 0) return alert("No exams exist. Create an exam first!");
             
             openExamSelector(`Select exam to add "${listName}" to:`, async (examId, examTitle) => {
-                const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
-                
-                const data = await res.json();
-                if (res.ok) {
-                    alert(data.message || "Questions imported! ✅");
-                } else alert("Failed to import: " + (data.detail || "Unknown error"));
+                console.log(`addListToExamFromBank: Importing list ${listId} into exam ${examId}`);
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                        method: "POST",
+                        headers: { 
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}` 
+                        }
+                    });
+                    
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message || "Questions imported! ✅");
+                    } else {
+                        alert("Failed to import: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("addListToExamFromBank: Fetch error", e);
+                    alert("Network error importing list to exam.");
+                }
             });
         } catch (e) {
             console.error(e);
