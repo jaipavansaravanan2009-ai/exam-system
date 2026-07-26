@@ -12,6 +12,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from dotenv import load_dotenv
 from fastapi import UploadFile, File
+from typing import List
 import csv
 import io
 import zipfile
@@ -261,131 +262,157 @@ async def get_all_exams(user=Depends(authorize(["admin", "setter"]))):
     return [{**doc.to_dict(), "id": doc.id} for doc in docs]
 
 @app.post("/api/exams/{exam_id}/bulk-upload-zip")
-async def bulk_upload_zip(exam_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin", "setter"]))):
-    if not file.filename.lower().endswith('.zip'):
-        raise HTTPException(status_code=400, detail="Only .zip files are allowed.")
+async def bulk_upload_zip(exam_id: str, files: List[UploadFile] = File(...), user=Depends(authorize(["admin", "setter"]))):
+    exam_ref = db.collection("exams").document(exam_id)
+    doc = exam_ref.get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    
+    data = doc.to_dict()
+    questions = data.get("questions", [])
+    
+    total_added = 0
+    file_results = []
 
     try:
-        contents = await file.read()
-        csv_data = None
-        images_data = {}
-        
-        with zipfile.ZipFile(io.BytesIO(contents)) as z:
-            for filename in z.namelist():
-                base_name = filename.split('/')[-1]
-                if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
+        for file in files:
+            if not file.filename.lower().endswith('.zip'):
+                file_results.append({"file": file.filename, "status": "skipped", "reason": "Not a ZIP file"})
+                continue
+
+            try:
+                contents = await file.read()
+                csv_data = None
+                images_data = {}
+                
+                with zipfile.ZipFile(io.BytesIO(contents)) as z:
+                    for filename in z.namelist():
+                        base_name = filename.split('/')[-1]
+                        if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
+                            continue
+                            
+                        if filename.lower().endswith(".csv"):
+                            raw_csv = z.read(filename)
+                            try:
+                                csv_data = raw_csv.decode('utf-8-sig')
+                            except UnicodeDecodeError:
+                                try:
+                                    csv_data = raw_csv.decode('cp1252')
+                                except UnicodeDecodeError:
+                                    csv_data = raw_csv.decode('latin-1')
+                                    
+                        elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                            img_bytes = z.read(filename)
+                            try:
+                                with Image.open(io.BytesIO(img_bytes)) as img:
+                                    if img.mode in ("RGBA", "P"):
+                                        img = img.convert("RGB")
+                                    
+                                    max_width = 700
+                                    if img.width > max_width:
+                                        ratio = max_width / img.width
+                                        new_height = int(img.height * ratio)
+                                        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                        
+                                    buffer = io.BytesIO()
+                                    img.save(buffer, format="JPEG", quality=60)
+                                    b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                                    mime_type = "image/jpeg"
+                            except Exception as e:
+                                print(f"Image compression failed for {filename}, skipping compression.")
+                                mime_type, _ = mimetypes.guess_type(filename)
+                                if not mime_type: mime_type = "image/jpeg"
+                                b64_str = base64.b64encode(img_bytes).decode('utf-8')
+
+                        clean_name = base_name.lower().strip()
+                        images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
+
+                if not csv_data:
+                    file_results.append({"file": file.filename, "status": "failed", "reason": "No CSV found in ZIP"})
                     continue
+
+                reader = csv.DictReader(io.StringIO(csv_data))
+                if not reader.fieldnames:
+                     file_results.append({"file": file.filename, "status": "failed", "reason": "CSV missing headers"})
+                     continue
+                     
+                reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field]
+                
+                def get_val(row, possible_keys):
+                    for k in possible_keys:
+                        if k in row and row[k]: return str(row[k]).strip()
+                    return ""
+
+                def get_img(row, possible_keys):
+                    img_name = get_val(row, possible_keys)
+                    if not img_name: return None
+                    if img_name.startswith("http"): return img_name
+                    return images_data.get(img_name.lower().strip(), None)
+
+                file_added = 0
+                for row in reader:
+                    if not any(row.values()): continue
+
+                    img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
+                    img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
+                    img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
+                    img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
+                    img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
+
+                    def smart_text(val, img, default):
+                        val = val.strip()
+                        if val: return val
+                        if img: return ""  
+                        return default    
+
+                    opt_a_text = smart_text(get_val(row, ["OptionA", "Option A"]), img_a, "Option A")
+                    opt_b_text = smart_text(get_val(row, ["OptionB", "Option B"]), img_b, "Option B")
+                    opt_c_text = smart_text(get_val(row, ["OptionC", "Option C"]), img_c, "Option C")
+                    opt_d_text = smart_text(get_val(row, ["OptionD", "Option D"]), img_d, "Option D")
                     
-                if filename.lower().endswith(".csv"):
-                    raw_csv = z.read(filename)
-                    try:
-                        csv_data = raw_csv.decode('utf-8-sig')
-                    except UnicodeDecodeError:
-                        try:
-                            csv_data = raw_csv.decode('cp1252')
-                        except UnicodeDecodeError:
-                            csv_data = raw_csv.decode('latin-1')
-                            
-                elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                    img_bytes = z.read(filename)
-                    try:
-                        with Image.open(io.BytesIO(img_bytes)) as img:
-                            if img.mode in ("RGBA", "P"):
-                                img = img.convert("RGB")
-                            
-                            max_width = 700
-                            if img.width > max_width:
-                                ratio = max_width / img.width
-                                new_height = int(img.height * ratio)
-                                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                                
-                            buffer = io.BytesIO()
-                            img.save(buffer, format="JPEG", quality=60)
-                            b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                            mime_type = "image/jpeg"
-                    except Exception as e:
-                        print(f"Image compression failed for {filename}, skipping compression.")
-                        mime_type, _ = mimetypes.guess_type(filename)
-                        if not mime_type: mime_type = "image/jpeg"
-                        b64_str = base64.b64encode(img_bytes).decode('utf-8')
+                    section_type = get_val(row, ["Section", "section"]) or "Single correct answer"
+                    numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
 
-                    clean_name = base_name.lower().strip()
-                    images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
+                    correct_ans = opt_a_text
+                    if "integer" in section_type.lower() or "numerical" in section_type.lower():
+                        correct_ans = numerical_ans
+                        opt_a_text, opt_b_text, opt_c_text, opt_d_text = "", "", "", ""
 
-        if not csv_data:
-            raise HTTPException(status_code=400, detail="Could not find a valid .csv file inside the ZIP.")
-
-        reader = csv.DictReader(io.StringIO(csv_data))
-        if not reader.fieldnames:
-             raise HTTPException(status_code=400, detail="CSV file is completely empty or missing headers.")
-             
-        reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field]
+                    new_q = {
+                        "subject": get_val(row, ["Subject", "subject"]) or "Physics",
+                        "section": section_type,
+                        "question": get_val(row, ["QuestionText", "Question", "question"]),
+                        "questionImage": img_q,
+                        "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
+                        "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
+                        "correctAnswer": correct_ans
+                    }
+                    questions.append(new_q)
+                    file_added += 1
+                
+                file_results.append({"file": file.filename, "status": "success", "added": file_added})
+                total_added += file_added
+                
+            except Exception as file_error:
+                file_results.append({"file": file.filename, "status": "error", "reason": str(file_error)})
         
-        exam_ref = db.collection("exams").document(exam_id)
-        doc = exam_ref.get()
-        if not doc.exists:
-            raise HTTPException(status_code=404, detail="Exam not found")
-
-        data = doc.to_dict()
-        questions = data.get("questions", [])
-        
-        def get_val(row, possible_keys):
-            for k in possible_keys:
-                if k in row and row[k]: return str(row[k]).strip()
-            return ""
-
-        def get_img(row, possible_keys):
-            img_name = get_val(row, possible_keys)
-            if not img_name: return None
-            if img_name.startswith("http"): return img_name
-            return images_data.get(img_name.lower().strip(), None)
-
-        added_count = 0
-        for row in reader:
-            if not any(row.values()): continue
-
-            img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
-            img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
-            img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
-            img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
-            img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
-
-            def smart_text(val, img, default):
-                val = val.strip()
-                if val: return val
-                if img: return ""  
-                return default    
-
-            opt_a_text = smart_text(get_val(row, ["OptionA", "Option A"]), img_a, "Option A")
-            opt_b_text = smart_text(get_val(row, ["OptionB", "Option B"]), img_b, "Option B")
-            opt_c_text = smart_text(get_val(row, ["OptionC", "Option C"]), img_c, "Option C")
-            opt_d_text = smart_text(get_val(row, ["OptionD", "Option D"]), img_d, "Option D")
-            
-            # 🔥 NEW: Extract Section and Numerical fields
-            section_type = get_val(row, ["Section", "section"]) or "Single correct answer"
-            numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
-
-            correct_ans = opt_a_text
-            # 🔥 NEW: Logic to override option A if it's a numerical question
-            if "integer" in section_type.lower() or "numerical" in section_type.lower():
-                correct_ans = numerical_ans
-                opt_a_text, opt_b_text, opt_c_text, opt_d_text = "", "", "", "" # Erase multiple choice options
-
-            new_q = {
-                "subject": get_val(row, ["Subject", "subject"]) or "Physics",
-                "section": section_type,
-                "question": get_val(row, ["QuestionText", "Question", "question"]),
-                "questionImage": img_q,
-                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
-                "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
-                "correctAnswer": correct_ans
-            }
-            questions.append(new_q)
-            added_count += 1
-            
         exam_ref.update({"questions": questions})
-        return {"message": f"Successfully unpacked ZIP, compressed images, and added {added_count} questions! ✅"}
+        
+        success_files = [r for r in file_results if r["status"] == "success"]
+        failed_files = [r for r in file_results if r["status"] != "success"]
+        
+        response = {
+            "message": f"Processed {len(files)} ZIP file(s). Total questions added: {total_added} ✅",
+            "total_added": total_added,
+            "files_processed": len(files),
+            "successful_files": len(success_files),
+            "failed_files": len(failed_files),
+            "details": file_results
+        }
+        return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
@@ -458,128 +485,152 @@ async def delete_qb_question(q_id: str, user=Depends(authorize(["admin"]))):
         raise HTTPException(status_code=500, detail="Failed to delete question")
 
 @app.post("/api/question_bank/bulk-upload-zip")
-async def qb_bulk_upload_zip(file: UploadFile = File(...), user=Depends(authorize(["admin", "setter"]))):
-    if not file.filename.lower().endswith('.zip'):
-        raise HTTPException(status_code=400, detail="Only .zip files are allowed.")
+async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), user=Depends(authorize(["admin", "setter"]))):
+    total_added = 0
+    file_results = []
+    qb_ref = db.collection("question_bank")
 
     try:
-        contents = await file.read()
-        csv_data = None
-        images_data = {}
-        
-        with zipfile.ZipFile(io.BytesIO(contents)) as z:
-            for filename in z.namelist():
-                base_name = filename.split('/')[-1]
-                if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
-                    continue
-                    
-                if filename.lower().endswith(".csv"):
-                    raw_csv = z.read(filename)
-                    try:
-                        csv_data = raw_csv.decode('utf-8-sig')
-                    except UnicodeDecodeError:
-                        try:
-                            csv_data = raw_csv.decode('cp1252')
-                        except UnicodeDecodeError:
-                            csv_data = raw_csv.decode('latin-1')
-                            
-                elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                    img_bytes = z.read(filename)
-                    try:
-                        with Image.open(io.BytesIO(img_bytes)) as img:
-                            if img.mode in ("RGBA", "P"):
-                                img = img.convert("RGB")
-                            max_width = 700
-                            if img.width > max_width:
-                                ratio = max_width / img.width
-                                new_height = int(img.height * ratio)
-                                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                                
-                            buffer = io.BytesIO()
-                            img.save(buffer, format="JPEG", quality=60)
-                            b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                            mime_type = "image/jpeg"
-                    except Exception as e:
-                        mime_type, _ = mimetypes.guess_type(filename)
-                        if not mime_type: mime_type = "image/jpeg"
-                        b64_str = base64.b64encode(img_bytes).decode('utf-8')
+        for file in files:
+            if not file.filename.lower().endswith('.zip'):
+                file_results.append({"file": file.filename, "status": "skipped", "reason": "Not a ZIP file"})
+                continue
 
-                    clean_name = base_name.lower().strip()
-                    images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
-
-        if not csv_data:
-            raise HTTPException(status_code=400, detail="Could not find a valid .csv file inside the ZIP.")
-
-        reader = csv.DictReader(io.StringIO(csv_data))
-        reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field]
-        
-        def get_val(row, possible_keys):
-            for k in possible_keys:
-                if k in row and row[k]: return str(row[k]).strip()
-            return ""
-
-        def get_img(row, possible_keys):
-            img_name = get_val(row, possible_keys)
-            if not img_name: return None
-            if img_name.startswith("http"): return img_name
-            return images_data.get(img_name.lower().strip(), None)
-
-        added_count = 0
-        batch = db.batch() 
-        qb_ref = db.collection("question_bank")
-
-        for row in reader:
-            if not any(row.values()): continue
-
-            img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
-            img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
-            img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
-            img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
-            img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
-            img_sol = get_img(row, ["SolutionImage", "Solution_Image"])
-
-            opt_a_text = get_val(row, ["OptionA", "Option A"])
-            opt_b_text = get_val(row, ["OptionB", "Option B"])
-            opt_c_text = get_val(row, ["OptionC", "Option C"])
-            opt_d_text = get_val(row, ["OptionD", "Option D"])
-            
-            # 🔥 NEW: Extract Section and Numerical Answer
-            section_val = get_val(row, ["Section", "section"]) or "Single correct answer"
-            numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
-
-            # 🔥 NEW: Handle numerical override for correct answer array
-            correct_ans_list = [opt_a_text] if opt_a_text else []
-            if "integer" in section_val.lower() or "numerical" in section_val.lower():
-                correct_ans_list = [numerical_ans] if numerical_ans else []
-
-            new_q = {
-                "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
-                "subject": get_val(row, ["Subject", "subject"]) or "Physics",
-                "section": section_val,
-                "question": get_val(row, ["QuestionText", "Question", "question"]),
-                "questionImage": img_q,
-                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
-                "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
-                "correctAnswers": correct_ans_list,
-                "hint": get_val(row, ["Hint", "hint"]),
-                "solution": get_val(row, ["Solution", "solution"]),
-                "solutionImage": img_sol,
-                "topics": [t.strip() for t in get_val(row, ["Topics", "topics"]).split(",") if t.strip()],
-                "createdAt": datetime.now(timezone.utc),
-                "createdBy": user.get("id")
-            }
-            
-            new_doc_ref = qb_ref.document()
-            batch.set(new_doc_ref, new_q)
-            added_count += 1
-            
-            if added_count % 450 == 0:
-                batch.commit()
-                batch = db.batch()
+            try:
+                contents = await file.read()
+                csv_data = None
+                images_data = {}
                 
-        batch.commit()
-        return {"message": f"Successfully unpacked ZIP and added {added_count} questions to the Question Bank! ✅"}
+                with zipfile.ZipFile(io.BytesIO(contents)) as z:
+                    for filename in z.namelist():
+                        base_name = filename.split('/')[-1]
+                        if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
+                            continue
+                            
+                        if filename.lower().endswith(".csv"):
+                            raw_csv = z.read(filename)
+                            try:
+                                csv_data = raw_csv.decode('utf-8-sig')
+                            except UnicodeDecodeError:
+                                try:
+                                    csv_data = raw_csv.decode('cp1252')
+                                except UnicodeDecodeError:
+                                    csv_data = raw_csv.decode('latin-1')
+                                    
+                        elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                            img_bytes = z.read(filename)
+                            try:
+                                with Image.open(io.BytesIO(img_bytes)) as img:
+                                    if img.mode in ("RGBA", "P"):
+                                        img = img.convert("RGB")
+                                    max_width = 700
+                                    if img.width > max_width:
+                                        ratio = max_width / img.width
+                                        new_height = int(img.height * ratio)
+                                        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                        
+                                    buffer = io.BytesIO()
+                                    img.save(buffer, format="JPEG", quality=60)
+                                    b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                                    mime_type = "image/jpeg"
+                            except Exception as e:
+                                mime_type, _ = mimetypes.guess_type(filename)
+                                if not mime_type: mime_type = "image/jpeg"
+                                b64_str = base64.b64encode(img_bytes).decode('utf-8')
 
+                        clean_name = base_name.lower().strip()
+                        images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
+
+                if not csv_data:
+                    file_results.append({"file": file.filename, "status": "failed", "reason": "No CSV found in ZIP"})
+                    continue
+
+                reader = csv.DictReader(io.StringIO(csv_data))
+                reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field]
+                
+                def get_val(row, possible_keys):
+                    for k in possible_keys:
+                        if k in row and row[k]: return str(row[k]).strip()
+                    return ""
+
+                def get_img(row, possible_keys):
+                    img_name = get_val(row, possible_keys)
+                    if not img_name: return None
+                    if img_name.startswith("http"): return img_name
+                    return images_data.get(img_name.lower().strip(), None)
+
+                added_count = 0
+                batch = db.batch()
+
+                for row in reader:
+                    if not any(row.values()): continue
+
+                    img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
+                    img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
+                    img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
+                    img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
+                    img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
+                    img_sol = get_img(row, ["SolutionImage", "Solution_Image"])
+
+                    opt_a_text = get_val(row, ["OptionA", "Option A"])
+                    opt_b_text = get_val(row, ["OptionB", "Option B"])
+                    opt_c_text = get_val(row, ["OptionC", "Option C"])
+                    opt_d_text = get_val(row, ["OptionD", "Option D"])
+                    
+                    section_val = get_val(row, ["Section", "section"]) or "Single correct answer"
+                    numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
+
+                    correct_ans_list = [opt_a_text] if opt_a_text else []
+                    if "integer" in section_val.lower() or "numerical" in section_val.lower():
+                        correct_ans_list = [numerical_ans] if numerical_ans else []
+
+                    new_q = {
+                        "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
+                        "subject": get_val(row, ["Subject", "subject"]) or "Physics",
+                        "section": section_val,
+                        "question": get_val(row, ["QuestionText", "Question", "question"]),
+                        "questionImage": img_q,
+                        "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
+                        "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
+                        "correctAnswers": correct_ans_list,
+                        "hint": get_val(row, ["Hint", "hint"]),
+                        "solution": get_val(row, ["Solution", "solution"]),
+                        "solutionImage": img_sol,
+                        "topics": [t.strip() for t in get_val(row, ["Topics", "topics"]).split(",") if t.strip()],
+                        "createdAt": datetime.now(timezone.utc),
+                        "createdBy": user.get("id")
+                    }
+                    
+                    new_doc_ref = qb_ref.document()
+                    batch.set(new_doc_ref, new_q)
+                    added_count += 1
+                    
+                    if added_count % 450 == 0:
+                        batch.commit()
+                        batch = db.batch()
+                
+                batch.commit()
+                file_results.append({"file": file.filename, "status": "success", "added": added_count})
+                total_added += added_count
+                    
+            except Exception as file_error:
+                file_results.append({"file": file.filename, "status": "error", "reason": str(file_error)})
+        
+        success_files = [r for r in file_results if r["status"] == "success"]
+        failed_files = [r for r in file_results if r["status"] != "success"]
+        
+        response = {
+            "message": f"Processed {len(files)} ZIP file(s). Total questions added: {total_added} ✅",
+            "total_added": total_added,
+            "files_processed": len(files),
+            "successful_files": len(success_files),
+            "failed_files": len(failed_files),
+            "details": file_results
+        }
+        return response
+
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
@@ -696,140 +747,165 @@ async def clear_question_list(list_id: str, user=Depends(authorize(["admin", "se
         raise HTTPException(status_code=500, detail=f"Failed to clear question list: {str(e)}")
 
 @app.post("/api/question_lists/{list_id}/bulk-upload-zip")
-async def ql_bulk_upload_zip(list_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin", "setter"]))):
-    if not file.filename.lower().endswith('.zip'):
-        raise HTTPException(status_code=400, detail="Only .zip files are allowed.")
+async def ql_bulk_upload_zip(list_id: str, files: List[UploadFile] = File(...), user=Depends(authorize(["admin", "setter"]))):
+    # Verify the list exists
+    list_ref = db.collection("question_lists").document(list_id)
+    list_doc = list_ref.get()
+    if not list_doc.exists:
+        raise HTTPException(status_code=404, detail="Question list not found")
+
+    total_added = 0
+    file_results = []
+    qb_ref = db.collection("question_bank")
 
     try:
-        # Verify the list exists
-        list_ref = db.collection("question_lists").document(list_id)
-        list_doc = list_ref.get()
-        if not list_doc.exists:
-            raise HTTPException(status_code=404, detail="Question list not found")
+        for file in files:
+            if not file.filename.lower().endswith('.zip'):
+                file_results.append({"file": file.filename, "status": "skipped", "reason": "Not a ZIP file"})
+                continue
 
-        contents = await file.read()
-        csv_data = None
-        images_data = {}
-        
-        with zipfile.ZipFile(io.BytesIO(contents)) as z:
-            for filename in z.namelist():
-                base_name = filename.split('/')[-1]
-                if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
-                    continue
-                    
-                if filename.lower().endswith(".csv"):
-                    raw_csv = z.read(filename)
-                    try:
-                        csv_data = raw_csv.decode('utf-8-sig')
-                    except UnicodeDecodeError:
-                        try:
-                            csv_data = raw_csv.decode('cp1252')
-                        except UnicodeDecodeError:
-                            csv_data = raw_csv.decode('latin-1')
-                            
-                elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                    img_bytes = z.read(filename)
-                    try:
-                        with Image.open(io.BytesIO(img_bytes)) as img:
-                            if img.mode in ("RGBA", "P"):
-                                img = img.convert("RGB")
-                            max_width = 700
-                            if img.width > max_width:
-                                ratio = max_width / img.width
-                                new_height = int(img.height * ratio)
-                                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                                
-                            buffer = io.BytesIO()
-                            img.save(buffer, format="JPEG", quality=60)
-                            b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                            mime_type = "image/jpeg"
-                    except Exception as e:
-                        mime_type, _ = mimetypes.guess_type(filename)
-                        if not mime_type: mime_type = "image/jpeg"
-                        b64_str = base64.b64encode(img_bytes).decode('utf-8')
-
-                    clean_name = base_name.lower().strip()
-                    images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
-
-        if not csv_data:
-            raise HTTPException(status_code=400, detail="Could not find a valid .csv file inside the ZIP.")
-
-        reader = csv.DictReader(io.StringIO(csv_data))
-        reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field]
-        
-        def get_val(row, possible_keys):
-            for k in possible_keys:
-                if k in row and row[k]: return str(row[k]).strip()
-            return ""
-
-        def get_img(row, possible_keys):
-            img_name = get_val(row, possible_keys)
-            if not img_name: return None
-            if img_name.startswith("http"): return img_name
-            return images_data.get(img_name.lower().strip(), None)
-
-        added_count = 0
-        new_question_ids = []
-        batch = db.batch() 
-        qb_ref = db.collection("question_bank")
-
-        for row in reader:
-            if not any(row.values()): continue
-
-            img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
-            img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
-            img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
-            img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
-            img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
-            img_sol = get_img(row, ["SolutionImage", "Solution_Image"])
-
-            opt_a_text = get_val(row, ["OptionA", "Option A"])
-            opt_b_text = get_val(row, ["OptionB", "Option B"])
-            opt_c_text = get_val(row, ["OptionC", "Option C"])
-            opt_d_text = get_val(row, ["OptionD", "Option D"])
-            
-            section_val = get_val(row, ["Section", "section"]) or "Single correct answer"
-            numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
-
-            correct_ans_list = [opt_a_text] if opt_a_text else []
-            if "integer" in section_val.lower() or "numerical" in section_val.lower():
-                correct_ans_list = [numerical_ans] if numerical_ans else []
-
-            new_q = {
-                "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
-                "subject": get_val(row, ["Subject", "subject"]) or "Physics",
-                "section": section_val,
-                "question": get_val(row, ["QuestionText", "Question", "question"]),
-                "questionImage": img_q,
-                "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
-                "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
-                "correctAnswers": correct_ans_list,
-                "hint": get_val(row, ["Hint", "hint"]),
-                "solution": get_val(row, ["Solution", "solution"]),
-                "solutionImage": img_sol,
-                "topics": [t.strip() for t in get_val(row, ["Topics", "topics"]).split(",") if t.strip()],
-                "createdAt": datetime.now(timezone.utc),
-                "createdBy": user.get("id")
-            }
-            
-            new_doc_ref = qb_ref.document()
-            batch.set(new_doc_ref, new_q)
-            new_question_ids.append(new_doc_ref.id)
-            added_count += 1
-            
-            if added_count % 450 == 0:
-                batch.commit()
-                batch = db.batch()
+            try:
+                contents = await file.read()
+                csv_data = None
+                images_data = {}
                 
-        batch.commit()
+                with zipfile.ZipFile(io.BytesIO(contents)) as z:
+                    for filename in z.namelist():
+                        base_name = filename.split('/')[-1]
+                        if "__MACOSX" in filename or base_name.startswith(".") or base_name.startswith("._") or filename.endswith("/"):
+                            continue
+                            
+                        if filename.lower().endswith(".csv"):
+                            raw_csv = z.read(filename)
+                            try:
+                                csv_data = raw_csv.decode('utf-8-sig')
+                            except UnicodeDecodeError:
+                                try:
+                                    csv_data = raw_csv.decode('cp1252')
+                                except UnicodeDecodeError:
+                                    csv_data = raw_csv.decode('latin-1')
+                                    
+                        elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                            img_bytes = z.read(filename)
+                            try:
+                                with Image.open(io.BytesIO(img_bytes)) as img:
+                                    if img.mode in ("RGBA", "P"):
+                                        img = img.convert("RGB")
+                                    max_width = 700
+                                    if img.width > max_width:
+                                        ratio = max_width / img.width
+                                        new_height = int(img.height * ratio)
+                                        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                        
+                                    buffer = io.BytesIO()
+                                    img.save(buffer, format="JPEG", quality=60)
+                                    b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                                    mime_type = "image/jpeg"
+                            except Exception as e:
+                                mime_type, _ = mimetypes.guess_type(filename)
+                                if not mime_type: mime_type = "image/jpeg"
+                                b64_str = base64.b64encode(img_bytes).decode('utf-8')
 
-        # Add all new question IDs to the list
-        if new_question_ids:
-            list_ref.update({
-                "questionIds": firestore.ArrayUnion(new_question_ids)
-            })
+                        clean_name = base_name.lower().strip()
+                        images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
 
-        return {"message": f"Successfully unpacked ZIP and added {added_count} questions to Bank & List! ✅"}
+                if not csv_data:
+                    file_results.append({"file": file.filename, "status": "failed", "reason": "No CSV found in ZIP"})
+                    continue
+
+                reader = csv.DictReader(io.StringIO(csv_data))
+                reader.fieldnames = [str(field).strip() for field in reader.fieldnames if field]
+                
+                def get_val(row, possible_keys):
+                    for k in possible_keys:
+                        if k in row and row[k]: return str(row[k]).strip()
+                    return ""
+
+                def get_img(row, possible_keys):
+                    img_name = get_val(row, possible_keys)
+                    if not img_name: return None
+                    if img_name.startswith("http"): return img_name
+                    return images_data.get(img_name.lower().strip(), None)
+
+                file_added = 0
+                new_question_ids = []
+                batch = db.batch()
+
+                for row in reader:
+                    if not any(row.values()): continue
+
+                    img_q = get_img(row, ["QuestionImage", "QuestionImageURL", "question_image"])
+                    img_a = get_img(row, ["OptionA_Image", "OptionA_ImageURL", "ImageA"])
+                    img_b = get_img(row, ["OptionB_Image", "OptionB_ImageURL", "ImageB"])
+                    img_c = get_img(row, ["OptionC_Image", "OptionC_ImageURL", "ImageC"])
+                    img_d = get_img(row, ["OptionD_Image", "OptionD_ImageURL", "ImageD"])
+                    img_sol = get_img(row, ["SolutionImage", "Solution_Image"])
+
+                    opt_a_text = get_val(row, ["OptionA", "Option A"])
+                    opt_b_text = get_val(row, ["OptionB", "Option B"])
+                    opt_c_text = get_val(row, ["OptionC", "Option C"])
+                    opt_d_text = get_val(row, ["OptionD", "Option D"])
+                    
+                    section_val = get_val(row, ["Section", "section"]) or "Single correct answer"
+                    numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
+
+                    correct_ans_list = [opt_a_text] if opt_a_text else []
+                    if "integer" in section_val.lower() or "numerical" in section_val.lower():
+                        correct_ans_list = [numerical_ans] if numerical_ans else []
+
+                    new_q = {
+                        "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
+                        "subject": get_val(row, ["Subject", "subject"]) or "Physics",
+                        "section": section_val,
+                        "question": get_val(row, ["QuestionText", "Question", "question"]),
+                        "questionImage": img_q,
+                        "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
+                        "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
+                        "correctAnswers": correct_ans_list,
+                        "hint": get_val(row, ["Hint", "hint"]),
+                        "solution": get_val(row, ["Solution", "solution"]),
+                        "solutionImage": img_sol,
+                        "topics": [t.strip() for t in get_val(row, ["Topics", "topics"]).split(",") if t.strip()],
+                        "createdAt": datetime.now(timezone.utc),
+                        "createdBy": user.get("id")
+                    }
+                    
+                    new_doc_ref = qb_ref.document()
+                    batch.set(new_doc_ref, new_q)
+                    new_question_ids.append(new_doc_ref.id)
+                    file_added += 1
+                    
+                    if file_added % 450 == 0:
+                        batch.commit()
+                        batch = db.batch()
+                
+                batch.commit()
+                
+                # Add all new question IDs to the list
+                if new_question_ids:
+                    list_ref.update({
+                        "questionIds": firestore.ArrayUnion(new_question_ids)
+                    })
+                
+                file_results.append({"file": file.filename, "status": "success", "added": file_added})
+                total_added += file_added
+                    
+            except Exception as file_error:
+                file_results.append({"file": file.filename, "status": "error", "reason": str(file_error)})
+        
+        success_files = [r for r in file_results if r["status"] == "success"]
+        failed_files = [r for r in file_results if r["status"] != "success"]
+        
+        response = {
+            "message": f"Processed {len(files)} ZIP file(s). Total questions added to Bank & List: {total_added} ✅",
+            "total_added": total_added,
+            "files_processed": len(files),
+            "successful_files": len(success_files),
+            "failed_files": len(failed_files),
+            "details": file_results
+        }
+        return response
+
     except HTTPException:
         raise
     except Exception as e:
