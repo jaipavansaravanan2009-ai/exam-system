@@ -315,9 +315,10 @@
                             <p id="qlDetailDesc" style="color: #777; font-size: 13px;"></p>
                         </div>
                         <div>
-                            <button class="btn btn-primary btn-small" onclick="openAddToListModal()">➕ Add from Bank</button>
+                            <button class="btn btn-outline btn-small" onclick="openAddToListModal()">➕ Add from Bank</button>
                             <button class="btn btn-success btn-small" onclick="addNewQuestionToList()">➕ Add New Question</button>
                             <button class="btn btn-success btn-small" onclick="importListToExam()">📥 Add All to Exam</button>
+                            <button class="btn btn-primary btn-small" style="background:#e74c3c; border:none;" onclick="clearListQuestions()">🗑️ Clear All Questions</button>
                         </div>
                     </div>
                     <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #1abc9c;">
@@ -2028,6 +2029,30 @@
                 loadQuestionLists();
             } else alert("Failed to delete list.");
         } catch (e) { console.error(e); }
+    }
+
+    async function clearListQuestions() {
+        if (!currentQlDetailId) return alert("No list selected.");
+        if (!confirm("Are you sure you want to remove ALL questions from this list? This action cannot be undone.")) return;
+        if (!confirm("This will permanently clear the list. Are you absolutely sure?")) return;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}/questions`, { 
+                method: "DELETE", headers: { "Authorization": `Bearer ${token}` } 
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || "List cleared successfully! ✅");
+                openListDetail(currentQlDetailId);
+                loadQBFolders();
+                loadQuestionLists();
+            } else {
+                alert("Failed to clear list: " + (data.detail || "Unknown error"));
+            }
+        } catch (e) { 
+            console.error(e); 
+            alert("Error clearing list.");
+        }
     }
 
     async function openListDetail(id) {

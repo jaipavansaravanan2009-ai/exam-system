@@ -672,6 +672,29 @@ async def get_question_list_detail(list_id: str, user=Depends(authorize(["admin"
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch question list: {str(e)}")
 
+# 🔥 NEW: Clear all questions from a question list (but keep the list itself)
+@app.delete("/api/question_lists/{list_id}/questions")
+async def clear_question_list(list_id: str, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        list_ref = db.collection("question_lists").document(list_id)
+        doc = list_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+        
+        data = doc.to_dict()
+        question_count = len(data.get("questionIds", []))
+        
+        list_ref.update({
+            "questionIds": [],
+            "updatedAt": datetime.now(timezone.utc)
+        })
+        
+        return {"message": f"Cleared {question_count} question(s) from list! 🗑️✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear question list: {str(e)}")
+
 @app.post("/api/question_lists/{list_id}/bulk-upload-zip")
 async def ql_bulk_upload_zip(list_id: str, file: UploadFile = File(...), user=Depends(authorize(["admin", "setter"]))):
     if not file.filename.lower().endswith('.zip'):
@@ -997,419 +1020,324 @@ async def save_exam_progress(result_payload: dict, user = Depends(authorize(["st
         raise HTTPException(status_code=400, detail="examId is required")
     
     try:
-        progress_data = {
-            "studentId": student_id,
-            "examId": exam_id,
-            "studentAnswers": result_payload.get("studentAnswers", {}),
-            "statusMap": result_payload.get("statusMap", {}),
-            "timeLeft": result_payload.get("timeLeft", 0),
-            "currentIdx": result_payload.get("currentIdx", -1),
-            "currentSub": result_payload.get("currentSub", "Physics"),
-            "questionTimes": result_payload.get("questionTimes", []),
-            "subjectTimes": result_payload.get("subjectTimes", {}),
-            "violationCount": result_payload.get("violationCount", 0),
-            "totalAwayTime": result_payload.get("totalAwayTime", 0),
-            "cheatingViolations": result_payload.get("cheatingViolations", []),
-            "autoSubmitTriggered": result_payload.get("autoSubmitTriggered", False),
-            "updatedAt": firestore.SERVER_TIMESTAMP
-        }
+        progress_data = result_payload.get("progressData", {})
         
-        progress_doc_id = f"{student_id}_{exam_id}"
-        db.collection("exam_progress").document(progress_doc_id).set(progress_data)
+        # Check if progress already exists for this student+exam
+        existing_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
+        existing_doc = None
+        for doc in existing_query:
+            existing_doc = doc
+            break
+        
+        if existing_doc:
+            # Update existing progress
+            existing_doc.reference.update({
+                "progressData": progress_data,
+                "updatedAt": datetime.now(timezone.utc)
+            })
+        else:
+            # Create new progress entry
+            db.collection("exam_progress").add({
+                "studentId": student_id,
+                "examId": exam_id,
+                "progressData": progress_data,
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc)
+            })
+        
         return {"message": "Progress saved successfully ✅"}
-        
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to save progress: {str(e)}")
-
 
 @app.get("/api/public/exams/{exam_id}/progress")
 async def get_exam_progress(exam_id: str, user = Depends(authorize(["student"]))):
-    """Retrieve saved exam progress for the current student"""
+    """Get saved exam progress for emergency recovery"""
     student_id = user.get("id")
-    progress_doc_id = f"{student_id}_{exam_id}"
     
     try:
-        doc = db.collection("exam_progress").document(progress_doc_id).get()
-        if not doc.exists:
-            return {"hasProgress": False}
+        existing_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
+        for doc in existing_query:
+            data = doc.to_dict()
+            progress_data = data.get("progressData", {})
+            return {
+                "hasProgress": True,
+                "updatedAt": data.get("updatedAt"),
+                **progress_data
+            }
         
-        data = doc.to_dict()
-        # Convert Firestore timestamp to string if present
-        updated_at = data.get("updatedAt")
-        if updated_at and hasattr(updated_at, 'isoformat'):
-            data["updatedAt"] = updated_at.isoformat()
-        else:
-            data["updatedAt"] = str(updated_at) if updated_at else None
-            
-        data["hasProgress"] = True
-        return data
-        
+        return {"hasProgress": False}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch progress: {str(e)}")
-
 
 @app.delete("/api/public/exams/{exam_id}/progress")
 async def delete_exam_progress(exam_id: str, user = Depends(authorize(["student"]))):
-    """Delete exam progress after successful submission"""
+    """Delete saved exam progress after submission"""
     student_id = user.get("id")
-    progress_doc_id = f"{student_id}_{exam_id}"
     
     try:
-        db.collection("exam_progress").document(progress_doc_id).delete()
-        return {"message": "Progress deleted successfully 🗑️"}
+        existing_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
+        for doc in existing_query:
+            doc.reference.delete()
         
+        return {"message": "Progress deleted ✅"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete progress: {str(e)}")
 
-
-@app.post("/api/public/submit")
-async def submit_exam_detailed(result_payload: dict, user = Depends(authorize(["student"]))):
-    student_name = user.get("name") or user.get("email")
-    exam_title = result_payload.get("examTitle")
-    exam_id = result_payload.get("examId")
-    rich_breakdown = result_payload.get("subjectWiseBreakdown")
-
-    if not all([exam_title, exam_id, rich_breakdown]):
-        raise HTTPException(status_code=400, detail="Incomplete results data.")
-
+@app.post("/api/public/exams/submit")
+async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
+    """Submit exam answers and calculate score"""
     try:
-        exam_doc = db.collection("exams").document(exam_id).get()
-        if not exam_doc.exists:
-            raise HTTPException(status_code=404, detail="Exam associated with this result not found.")
-        exam_data = exam_doc.to_dict()
-        exam_questions = exam_data.get("questions", [])
-
-        total_questions_count = len(exam_questions)
-        questions_count_per_subject = {}
-        for q in exam_questions:
-            subject = q.get("subject") or "Physics"
-            questions_count_per_subject[subject] = questions_count_per_subject.get(subject, 0) + 1
-
-        verified_breakdown = {}
-        calculated_total_score = 0
-
-        for subject, frontend_section in rich_breakdown.items():
-            backend_q_count = questions_count_per_subject.get(subject, frontend_section.get('subjectQuestionsCount', 1))
-            section_total_available_marks = 4 * backend_q_count
-            
-            expected_score = (frontend_section.get('correct', 0) * 4) - (frontend_section.get('incorrect', 0) * 1)
-            calculated_total_score += expected_score
-
-            verified_section = {
-                "score": expected_score,
-                "correct": frontend_section.get('correct', 0),
-                "incorrect": frontend_section.get('incorrect', 0),
-                "notAttempted": frontend_section.get('notAttempted', 0),
-                "markedForReviewCount": frontend_section.get('markedForReviewCount', 0),
-                "subjectTotalMarks": section_total_available_marks,
-                "subjectQuestionsCount": backend_q_count
-            }
-            verified_breakdown[subject] = verified_section
-
-        # Build question-wise breakdown for detailed analysis
-        question_breakdown = []
-        for q in exam_questions:
-            q_index = exam_questions.index(q)
-            student_ans = result_payload.get("questionAnswers", {}).get(str(q_index))
-            correct_ans = q.get("correctAnswer", "")
-            is_correct = (student_ans == correct_ans) if student_ans else False
-            is_attempted = student_ans is not None and student_ans != "" and student_ans != "null"
-
-            question_breakdown.append({
-                "questionIndex": q_index,
-                "questionText": q.get("question", ""),
-                "questionImage": q.get("questionImage"),
-                "subject": q.get("subject", "Physics"),
-                "section": q.get("section", "Single correct answer"),
-                "topics": q.get("topics", []),
-                "options": q.get("options", []),
-                "optionImages": q.get("optionImages", []),
-                "correctAnswer": correct_ans,
-                "studentAnswer": student_ans,
-                "isCorrect": is_correct,
-                "isAttempted": is_attempted,
-                "hint": q.get("hint", ""),
-                "solution": q.get("solution", ""),
-                "solutionImage": q.get("solutionImage", "")
-            })
-
-        # Get time tracking data from submission
-        question_times = result_payload.get("questionTimes", [])
-        subject_times = result_payload.get("subjectTimes", {})
-
-        # Get anti-cheat data from submission
-        cheating_violations = result_payload.get("cheatingViolations", [])
-        total_violations = result_payload.get("totalViolations", 0)
-        total_away_time = result_payload.get("totalAwayTime", 0)
-        auto_submitted = result_payload.get("autoSubmitted", False)
-        auto_submit_reason = result_payload.get("autoSubmitReason", None)
-
-        new_result_doc = {
-            "studentName": student_name,
-            "examTitle": exam_title,
-            "examId": exam_id,
-            "submittedAt": firestore.SERVER_TIMESTAMP, 
-            "examQuestionsCount": total_questions_count,
-            "totalScore": calculated_total_score,
-            "subjectWiseBreakdown": verified_breakdown,
-            "questionBreakdown": question_breakdown,
-            "questionTimes": question_times,
-            "subjectTimes": subject_times,
-            # Anti-cheat data
-            "cheatingViolations": cheating_violations,
-            "totalViolations": total_violations,
-            "totalAwayTime": total_away_time,
-            "autoSubmitted": auto_submitted,
-            "autoSubmitReason": auto_submit_reason
-        }
-
-        db.collection("results").add(new_result_doc)
-        return {"message": "Exam submitted successfully!"}
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to submit result: {str(e)}")
-
-@app.get("/api/public/results/{result_id}/question-analysis")
-async def get_question_analysis(result_id: str, user = Depends(authorize(["student"]))):
-    """Get detailed question-wise analysis for a student's exam result"""
-    try:
-        result_doc = db.collection("results").document(result_id).get()
-        if not result_doc.exists:
-            raise HTTPException(status_code=404, detail="Result not found.")
+        body = await request.json()
+        exam_id = body.get("examId")
+        student_answers = body.get("studentAnswers", {})
+        status_map = body.get("statusMap", {})
+        time_left = body.get("timeLeft", 0)
+        question_times = body.get("questionTimes", [])
+        subject_times = body.get("subjectTimes", {})
+        violation_count = body.get("violationCount", 0)
+        total_away_time = body.get("totalAwayTime", 0)
+        cheating_violations = body.get("cheatingViolations", [])
+        auto_submit_triggered = body.get("autoSubmitTriggered", False)
+        auto_submit_reason = body.get("autoSubmitReason", "")
         
-        my_result = result_doc.to_dict()
+        if not exam_id:
+            raise HTTPException(status_code=400, detail="examId is required")
         
-        if my_result["studentName"] != user["name"]:
-            raise HTTPException(status_code=403, detail="Unauthorized to view this result.")
-        
-        # Return the question breakdown directly from the result
-        question_breakdown = my_result.get("questionBreakdown", [])
-        
-        return {
-            "examTitle": my_result.get("examTitle", ""),
-            "totalScore": my_result.get("totalScore", 0),
-            "totalQuestions": my_result.get("examQuestionsCount", 0),
-            "questionBreakdown": question_breakdown
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/results/{exam_id}/detailed-analysis")
-async def get_exam_detailed_analysis(exam_id: str, user = Depends(authorize(["admin"]))):
-    """Get detailed analysis for all students who took a specific exam"""
-    try:
-        # Get all results for this exam
-        all_results_query = db.collection("results").where("examId", "==", exam_id).stream()
-        
-        results = []
-        for doc in all_results_query:
-            data = doc.to_dict()
-            submitted_time = data.get("submittedAt")
-            if submitted_time and hasattr(submitted_time, 'isoformat'):
-                time_str = submitted_time.isoformat()
-            else:
-                time_str = str(submitted_time) if submitted_time else None
-            
-            results.append({
-                "id": doc.id,
-                "submittedAt": time_str,
-                **data
-            })
-        
-        # Calculate question-wise statistics
+        # Fetch exam data
         exam_doc = db.collection("exams").document(exam_id).get()
         if not exam_doc.exists:
             raise HTTPException(status_code=404, detail="Exam not found")
         
         exam_data = exam_doc.to_dict()
-        exam_questions = exam_data.get("questions", [])
+        questions = exam_data.get("questions", [])
         
-        question_stats = []
-        for i, q in enumerate(exam_questions):
-            correct_count = 0
-            incorrect_count = 0
-            not_attempted_count = 0
+        # Calculate score
+        total_score = 0
+        correct_count = 0
+        incorrect_count = 0
+        not_attempted_count = 0
+        subject_wise = {}
+        
+        for i, q in enumerate(questions):
+            q_id = str(i)
+            student_ans = student_answers.get(q_id)
+            correct_ans = q.get("correctAnswer", "")
+            subject = q.get("subject", "Unknown")
             
-            for result in results:
-                qb = result.get("questionBreakdown", [])
-                if i < len(qb):
-                    q_data = qb[i]
-                    if q_data.get("isAttempted", False):
-                        if q_data.get("isCorrect", False):
-                            correct_count += 1
-                        else:
-                            incorrect_count += 1
-                    else:
-                        not_attempted_count += 1
+            if subject not in subject_wise:
+                subject_wise[subject] = {
+                    "score": 0,
+                    "correct": 0,
+                    "incorrect": 0,
+                    "notAttempted": 0,
+                    "subjectTotalMarks": 0
+                }
             
-            total_students = len(results)
-            question_stats.append({
-                "questionIndex": i,
-                "questionText": q.get("question", "")[:100],
-                "subject": q.get("subject", "Physics"),
-                "topics": q.get("topics", []),
-                "totalStudents": total_students,
-                "correctCount": correct_count,
-                "incorrectCount": incorrect_count,
-                "notAttemptedCount": not_attempted_count,
-                "correctPercentage": round((correct_count / total_students * 100), 1) if total_students > 0 else 0
-            })
+            # Each question is worth 4 marks
+            subject_wise[subject]["subjectTotalMarks"] += 4
+            
+            if student_ans is None or student_ans == "":
+                not_attempted_count += 1
+                subject_wise[subject]["notAttempted"] += 1
+            elif student_ans == correct_ans:
+                total_score += 4
+                correct_count += 1
+                subject_wise[subject]["score"] += 4
+                subject_wise[subject]["correct"] += 1
+            else:
+                total_score -= 1
+                incorrect_count += 1
+                subject_wise[subject]["score"] -= 1
+                subject_wise[subject]["incorrect"] += 1
         
-        # Calculate overall statistics
-        total_students = len(results)
-        avg_score = round(sum(r.get("totalScore", 0) for r in results) / total_students, 1) if total_students > 0 else 0
-        top_score = max((r.get("totalScore", 0) for r in results), default=0)
+        # Calculate total marks possible
+        total_marks_possible = len(questions) * 4
         
-        return {
-            "examTitle": exam_data.get("title", ""),
-            "totalStudents": total_students,
-            "avgScore": avg_score,
-            "topScore": top_score,
-            "results": results,
-            "questionStats": question_stats
+        # Prepare result data
+        result_data = {
+            "studentId": user.get("id"),
+            "studentName": user.get("name") or user.get("email"),
+            "examId": exam_id,
+            "examTitle": exam_data.get("title", "Untitled Exam"),
+            "examQuestionsCount": len(questions),
+            "totalScore": total_score,
+            "totalMarksPossible": total_marks_possible,
+            "correctCount": correct_count,
+            "incorrectCount": incorrect_count,
+            "notAttemptedCount": not_attempted_count,
+            "subjectWiseBreakdown": subject_wise,
+            "studentAnswers": student_answers,
+            "statusMap": status_map,
+            "timeLeft": time_left,
+            "questionTimes": question_times,
+            "subjectTimes": subject_times,
+            "violationCount": violation_count,
+            "totalAwayTime": total_away_time,
+            "cheatingViolations": cheating_violations,
+            "autoSubmitted": auto_submit_triggered,
+            "autoSubmitReason": auto_submit_reason,
+            "submittedAt": datetime.now(timezone.utc)
         }
         
+        # Save result
+        db.collection("results").add(result_data)
+        
+        # Delete saved progress
+        try:
+            existing_query = db.collection("exam_progress").where("studentId", "==", user.get("id")).where("examId", "==", exam_id).stream()
+            for doc in existing_query:
+                doc.reference.delete()
+        except:
+            pass
+        
+        return {
+            "message": "Exam submitted successfully! ✅",
+            "totalScore": total_score,
+            "correctCount": correct_count,
+            "incorrectCount": incorrect_count,
+            "notAttemptedCount": not_attempted_count
+        }
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Failed to submit exam: {str(e)}")
 
 @app.get("/api/public/results/{result_id}/analysis")
-async def get_live_analysis(result_id: str, user = Depends(authorize(["student", "admin"]))):
+async def get_result_analysis(result_id: str, user = Depends(authorize(["admin", "setter", "student"]))):
+    """Get detailed analysis for a result including rankings"""
     try:
         result_doc = db.collection("results").document(result_id).get()
         if not result_doc.exists:
-            raise HTTPException(status_code=404, detail="Result not found.")
+            raise HTTPException(status_code=404, detail="Result not found")
         
-        my_result = result_doc.to_dict()
+        result_data = result_doc.to_dict()
+        exam_id = result_data.get("examId")
         
-        # Allow admin users to view any student's analysis
-        if user.get("role") != "admin" and my_result["studentName"] != user["name"]:
-            raise HTTPException(status_code=403, detail="Unauthorized to view this result.")
-            
-        exam_id = my_result["examId"]
-        my_total_score = my_result.get("totalScore", 0)
-        my_subjects = my_result.get("subjectWiseBreakdown", {})
+        if not exam_id:
+            raise HTTPException(status_code=400, detail="Exam ID not found in result")
         
-        all_results_query = db.collection("results").where("examId", "==", exam_id).stream()
+        # Get all results for this exam to calculate rankings
+        all_results = db.collection("results").where("examId", "==", exam_id).stream()
         
-        total_scores = []
+        scores = []
         subject_scores = {}
         
-        for doc in all_results_query:
+        for doc in all_results:
             data = doc.to_dict()
-            total_scores.append(data.get("totalScore", 0))
+            score = data.get("totalScore", 0)
+            scores.append(score)
             
-            breakdown = data.get("subjectWiseBreakdown", {})
-            for sub, details in breakdown.items():
-                if sub not in subject_scores:
-                    subject_scores[sub] = []
-                subject_scores[sub].append(details.get("score", 0))
-                
-        total_scores.sort(reverse=True)
-        for sub in subject_scores:
-            subject_scores[sub].sort(reverse=True)
-            
-        total_students = len(total_scores)
+            # Collect subject-wise scores
+            swb = data.get("subjectWiseBreakdown", {})
+            for subject, stats in swb.items():
+                if subject not in subject_scores:
+                    subject_scores[subject] = []
+                subject_scores[subject].append(stats.get("score", 0))
         
-        analysis = {
-            "totalStudents": total_students,
-            "overall": {
-                "myScore": my_total_score,
-                "rank": total_scores.index(my_total_score) + 1,
-                "avg": round(sum(total_scores) / total_students, 1) if total_students else 0,
-                "top": total_scores[0] if total_students else 0
-            },
-            "subjects": {}
-        }
+        # Calculate overall rank
+        my_score = result_data.get("totalScore", 0)
+        scores.sort(reverse=True)
+        overall_rank = 1
+        for s in scores:
+            if s > my_score:
+                overall_rank += 1
         
-        for sub, details in my_subjects.items():
-            my_sub_score = details.get("score", 0)
-            sub_list = subject_scores.get(sub, [my_sub_score])
-            
-            analysis["subjects"][sub] = {
-                "myScore": my_sub_score,
-                "rank": sub_list.index(my_sub_score) + 1,
-                "avg": round(sum(sub_list) / len(sub_list), 1) if sub_list else 0,
-                "top": sub_list[0] if sub_list else 0
+        # Calculate subject ranks
+        subject_ranks = {}
+        for subject, sub_scores in subject_scores.items():
+            sub_scores.sort(reverse=True)
+            my_sub_score = result_data.get("subjectWiseBreakdown", {}).get(subject, {}).get("score", 0)
+            rank = 1
+            for s in sub_scores:
+                if s > my_sub_score:
+                    rank += 1
+            avg = sum(sub_scores) / len(sub_scores) if sub_scores else 0
+            subject_ranks[subject] = {
+                "rank": rank,
+                "avg": round(avg, 1),
+                "top": max(sub_scores) if sub_scores else 0,
+                "myScore": my_sub_score
             }
         
-        # Add question-wise analysis for detailed breakdown
-        question_breakdown = my_result.get("questionBreakdown", [])
-        question_analysis = []
-        question_times = my_result.get("questionTimes", [])
+        # Build question analysis
+        exam_doc = db.collection("exams").document(exam_id).get()
+        questions = exam_doc.to_dict().get("questions", []) if exam_doc.exists else []
         
-        for i, qb in enumerate(question_breakdown):
+        question_analysis = []
+        student_answers = result_data.get("studentAnswers", {})
+        question_times = result_data.get("questionTimes", [])
+        
+        for i, q in enumerate(questions):
+            q_id = str(i)
+            student_ans = student_answers.get(q_id)
+            correct_ans = q.get("correctAnswer", "")
+            is_attempted = student_ans is not None and student_ans != ""
+            is_correct = is_attempted and student_ans == correct_ans
+            
+            time_spent = None
+            if i < len(question_times):
+                time_spent = question_times[i]
+            
             question_analysis.append({
-                "question": qb.get("questionText", ""),
-                "questionImage": qb.get("questionImage"),
-                "subject": qb.get("subject", "Physics"),
-                "topics": qb.get("topics", []),
-                "options": qb.get("options", []),
-                "optionImages": qb.get("optionImages", []),
-                "correctAnswer": qb.get("correctAnswer", ""),
-                "studentAnswer": qb.get("studentAnswer"),
-                "isCorrect": qb.get("isCorrect", False),
-                "isAttempted": qb.get("isAttempted", False),
-                "solution": qb.get("solution", ""),
-                "solutionImage": qb.get("solutionImage"),
-                "hint": qb.get("hint", ""),
-                "timeSpent": question_times[i] if i < len(question_times) else None
+                "question": q.get("question", ""),
+                "questionImage": q.get("questionImage"),
+                "options": q.get("options", []),
+                "optionImages": q.get("optionImages", []),
+                "correctAnswer": correct_ans,
+                "studentAnswer": student_ans if is_attempted else None,
+                "isAttempted": is_attempted,
+                "isCorrect": is_correct,
+                "subject": q.get("subject", "Unknown"),
+                "topics": q.get("topics", []),
+                "timeSpent": time_spent,
+                "solution": q.get("solution", ""),
+                "solutionImage": q.get("solutionImage")
             })
         
-        analysis["questionAnalysis"] = question_analysis
-        analysis["subjectTimes"] = my_result.get("subjectTimes", {})
-            
-        return analysis
-        
+        return {
+            "overall": {
+                "myScore": my_score,
+                "rank": overall_rank,
+                "top": max(scores) if scores else 0,
+                "totalStudents": len(scores)
+            },
+            "subjects": subject_ranks,
+            "subjectTimes": result_data.get("subjectTimes", {}),
+            "questionAnalysis": question_analysis,
+            "totalStudents": len(scores),
+            "cheatingViolations": result_data.get("cheatingViolations", []),
+            "totalViolations": result_data.get("violationCount", 0),
+            "totalAwayTime": result_data.get("totalAwayTime", 0),
+            "autoSubmitted": result_data.get("autoSubmitted", False),
+            "autoSubmitReason": result_data.get("autoSubmitReason", "")
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to fetch analysis: {str(e)}")
 
-
-# Admin-only endpoint to fetch all results
 @app.get("/api/results")
 async def get_all_results(user=Depends(authorize(["admin"]))):
+    """Get all exam results for admin view"""
     try:
-        docs = db.collection("results").stream()
-        results_list = []
+        docs = db.collection("results").order_by("submittedAt", direction=firestore.Query.DESCENDING).stream()
+        results = []
         for doc in docs:
             data = doc.to_dict()
-            submitted_time = data.get("submittedAt")
-            if submitted_time and hasattr(submitted_time, 'isoformat'):
-                time_str = submitted_time.isoformat()
-            else:
-                time_str = str(submitted_time) if submitted_time else None
-            
-            results_list.append({
+            results.append({
                 "id": doc.id,
-                "submittedAt": time_str,
-                **data
+                "studentName": data.get("studentName", "Unknown"),
+                "examTitle": data.get("examTitle", "Unknown"),
+                "totalScore": data.get("totalScore", 0),
+                "submittedAt": data.get("submittedAt")
             })
-        
-        results_list.sort(key=lambda x: x.get("submittedAt") or "", reverse=True)
-        return results_list
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch results: {str(e)}")
 
-
-if os.path.exists("frontend"):
-    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
-else:
-    print("⚠️ WARNING: 'frontend' folder not found!")
+# ==========================================
+# 📁 STATIC FILES SERVING
+# ==========================================
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
