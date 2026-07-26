@@ -2657,9 +2657,10 @@
     }
 
     function selectExamFromModal(examId, examTitle) {
+        const callback = examSelectorCallback;
         closeExamSelector();
-        if (examSelectorCallback) {
-            examSelectorCallback(examId, examTitle);
+        if (callback) {
+            callback(examId, examTitle);
         }
     }
 
