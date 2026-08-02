@@ -1141,9 +1141,14 @@
     function saveAndNext() {
         if (currentIdx === -1) return;
         
-        const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
-        if (sel && sel.value !== "") {
-            studentAnswers[currentIdx] = sel.value;
+        const radioSel = document.querySelector('input[name="ans"]:checked');
+        const numSel = document.getElementById("numAns");
+        
+        if (radioSel) {
+            studentAnswers[currentIdx] = radioSel.value;
+            statusMap[currentIdx] = 'answered';
+        } else if (numSel && numSel.value !== "") {
+            studentAnswers[currentIdx] = numSel.value;
             statusMap[currentIdx] = 'answered';
         } else {
             statusMap[currentIdx] = 'visited';
@@ -1154,9 +1159,14 @@
     function markForReview() {
         if (currentIdx === -1) return;
         
-        const sel = document.querySelector('input[name="ans"]:checked') || document.getElementById("numAns");
-        if (sel && sel.value !== "") {
-            studentAnswers[currentIdx] = sel.value;
+        const radioSel = document.querySelector('input[name="ans"]:checked');
+        const numSel = document.getElementById("numAns");
+        
+        if (radioSel) {
+            studentAnswers[currentIdx] = radioSel.value;
+            statusMap[currentIdx] = 'review-answered';
+        } else if (numSel && numSel.value !== "") {
+            studentAnswers[currentIdx] = numSel.value;
             statusMap[currentIdx] = 'review-answered';
         } else {
             statusMap[currentIdx] = 'review';

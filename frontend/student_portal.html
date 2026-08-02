@@ -238,21 +238,33 @@
             border: 1px solid #b2dfb2;
         }
         .solution-box {
-            background: #fff9e6;
-            border: 1px solid #ffe082;
-            border-radius: 6px;
-            padding: 12px;
-            margin-top: 10px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 2px solid #4a90e2;
+            border-radius: 10px;
+            padding: 18px;
+            margin-top: 15px;
+            box-shadow: 0 3px 12px rgba(74, 144, 226, 0.15);
         }
         .solution-box h4 {
-            color: #f57f17;
-            margin-bottom: 8px;
-            font-size: 14px;
+            color: #2c3e50;
+            margin-bottom: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         .solution-text {
-            font-size: 14px;
-            line-height: 1.6;
-            color: #333;
+            font-size: 15px;
+            line-height: 1.7;
+            color: #2c3e50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .solution-text p {
+            margin-bottom: 10px;
+        }
+        .solution-text p:last-child {
+            margin-bottom: 0;
         }
         .status-badge {
             padding: 4px 12px;
@@ -297,6 +309,86 @@
             display: flex;
             align-items: center;
             gap: 5px;
+        }
+        
+        /* Solution Enhancement Styles */
+        .solution-container {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+            border-left: 5px solid #4a90e2;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .solution-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .solution-icon {
+            font-size: 24px;
+            background: #4a90e2;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        .solution-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin: 0;
+        }
+        .solution-content {
+            font-size: 15px;
+            line-height: 1.8;
+            color: #2c3e50;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .solution-content p {
+            margin-bottom: 12px;
+        }
+        .solution-content p:last-child {
+            margin-bottom: 0;
+        }
+        .solution-formula {
+            background: #fffef5;
+            padding: 15px;
+            margin: 12px 0;
+            border-left: 4px solid #f39c12;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+        .solution-step {
+            background: #e8f4fd;
+            padding: 12px 15px;
+            margin: 10px 0;
+            border-radius: 6px;
+            border-left: 4px solid #4a90e2;
+        }
+        .solution-step-number {
+            display: inline-block;
+            background: #4a90e2;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 24px;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 13px;
         }
     </style>
 </head>
@@ -864,12 +956,23 @@
                                     </div>
                                 </div>
                                 ${qa.solution ? `
-                                <div class="solution-box">
-                                    <h4>💡 Detailed Solution</h4>
-                                    <div class="solution-text">${qa.solution}</div>
-                                    ${solutionImgHtml}
+                                <div class="solution-container">
+                                    <div class="solution-header">
+                                        <div class="solution-icon">✓</div>
+                                        <div class="solution-title">Detailed Solution</div>
+                                    </div>
+                                    <div class="solution-content">${qa.solution}</div>
+                                    ${solutionImgHtml ? `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e9ecef;">${solutionImgHtml}</div>` : ''}
                                 </div>
-                                ` : solutionImgHtml ? `<div class="solution-box">${solutionImgHtml}</div>` : ''}
+                                ` : solutionImgHtml ? `
+                                <div class="solution-container">
+                                    <div class="solution-header">
+                                        <div class="solution-icon">🖼</div>
+                                        <div class="solution-title">Solution Image</div>
+                                    </div>
+                                    <div class="solution-content" style="padding: 10px; background: white;">${solutionImgHtml}</div>
+                                </div>
+                                ` : ''}
                             </div>
                         </div>
                     `;
@@ -906,6 +1009,18 @@
             MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
         }
     }
+    
+    // Enhanced MathJax configuration for better LaTeX support
+    function initMathJax() {
+        if (window.MathJax) {
+            window.MathJax.startup.promise.then(() => {
+                console.log('MathJax initialized successfully');
+            }).catch((err) => console.log('MathJax initialization error:', err));
+        }
+    }
+    
+    // Initialize MathJax on page load
+    window.addEventListener('load', initMathJax);
 
     // ================= ZOOM FUNCTIONS FOR STUDENT PORTAL =================
     let studentZoomLevel = 100;
