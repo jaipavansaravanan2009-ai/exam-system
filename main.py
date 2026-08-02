@@ -307,13 +307,13 @@ async def bulk_upload_zip(exam_id: str, files: List[UploadFile] = File(...), use
                                 with Image.open(io.BytesIO(img_bytes)) as img:
                                     if img.mode in ("RGBA", "P"):
                                         img = img.convert("RGB")
-                                    
+                                
                                     max_width = 700
                                     if img.width > max_width:
                                         ratio = max_width / img.width
                                         new_height = int(img.height * ratio)
                                         img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                                        
+                                
                                     buffer = io.BytesIO()
                                     img.save(buffer, format="JPEG", quality=60)
                                     b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
@@ -323,9 +323,9 @@ async def bulk_upload_zip(exam_id: str, files: List[UploadFile] = File(...), use
                                 mime_type, _ = mimetypes.guess_type(filename)
                                 if not mime_type: mime_type = "image/jpeg"
                                 b64_str = base64.b64encode(img_bytes).decode('utf-8')
-
-                        clean_name = base_name.lower().strip()
-                        images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
+                            
+                            clean_name = base_name.lower().strip()
+                            images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
 
                 if not csv_data:
                     file_results.append({"file": file.filename, "status": "failed", "reason": "No CSV found in ZIP"})
@@ -528,7 +528,7 @@ async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), user=Depends(a
                                         ratio = max_width / img.width
                                         new_height = int(img.height * ratio)
                                         img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                                        
+                                
                                     buffer = io.BytesIO()
                                     img.save(buffer, format="JPEG", quality=60)
                                     b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
@@ -537,9 +537,9 @@ async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), user=Depends(a
                                 mime_type, _ = mimetypes.guess_type(filename)
                                 if not mime_type: mime_type = "image/jpeg"
                                 b64_str = base64.b64encode(img_bytes).decode('utf-8')
-
-                        clean_name = base_name.lower().strip()
-                        images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
+                            
+                            clean_name = base_name.lower().strip()
+                            images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
 
                 if not csv_data:
                     file_results.append({"file": file.filename, "status": "failed", "reason": "No CSV found in ZIP"})
@@ -796,7 +796,7 @@ async def ql_bulk_upload_zip(list_id: str, files: List[UploadFile] = File(...), 
                                         ratio = max_width / img.width
                                         new_height = int(img.height * ratio)
                                         img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                                        
+                                
                                     buffer = io.BytesIO()
                                     img.save(buffer, format="JPEG", quality=60)
                                     b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
@@ -805,9 +805,9 @@ async def ql_bulk_upload_zip(list_id: str, files: List[UploadFile] = File(...), 
                                 mime_type, _ = mimetypes.guess_type(filename)
                                 if not mime_type: mime_type = "image/jpeg"
                                 b64_str = base64.b64encode(img_bytes).decode('utf-8')
-
-                        clean_name = base_name.lower().strip()
-                        images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
+                            
+                            clean_name = base_name.lower().strip()
+                            images_data[clean_name] = f"data:{mime_type};base64,{b64_str}"
 
                 if not csv_data:
                     file_results.append({"file": file.filename, "status": "failed", "reason": "No CSV found in ZIP"})
