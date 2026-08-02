@@ -1283,7 +1283,8 @@
             examTitle: examData.title || "Untitled Exam", 
             examId: new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId'),
             subjectWiseBreakdown: subjectWiseData,
-            questionAnswers: studentAnswers,
+            studentAnswers: studentAnswers,
+            statusMap: statusMap,
             questionTimes: questionTimes,
             subjectTimes: subjectTimes,
             // ANTI-CHEAT DATA
@@ -1302,9 +1303,15 @@
             });
             
             if (res.ok) {
+                 const responseData = await res.json();
+                 
                  // Delete saved progress after successful submission
                  const submitExamId = new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId');
                  await deleteExamProgress(submitExamId);
+                 
+                 // Show success pop-up with score
+                 alert(`✅ Exam Submitted Successfully!\n\nYour Score: ${responseData.totalScore}\nCorrect: ${responseData.correctCount}\nIncorrect: ${responseData.incorrectCount}\nNot Attempted: ${responseData.notAttemptedCount}\n\nRedirecting to dashboard...`);
+                 
                  window.location.href = "student_portal.html";
             } else {
                  let errorMsg = "API call failed";
