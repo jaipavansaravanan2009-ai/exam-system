@@ -1258,7 +1258,37 @@
         try {
             const res = await fetch(`${BACKEND_URL}/api/question_bank/bulk-upload-zip`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });
             const data = await res.json();
-            if (res.ok) { alert(data.message); fileInput.value = ""; closeQBEditor(); } 
+            if (res.ok) { 
+                alert(data.message); 
+                fileInput.value = ""; 
+                closeQBEditor(); 
+                
+                // If a question list is selected in the folder sidebar, add the newly uploaded questions to it
+                if (qbSelectedListId && data.total_added > 0) {
+                    try {
+                        // Fetch the question bank to get the most recently added questions
+                        const qbRes = await fetch(`${BACKEND_URL}/api/question_bank`, { 
+                            headers: { "Authorization": `Bearer ${token}` } 
+                        });
+                        if (qbRes.ok) {
+                            const allQb = await qbRes.json();
+                            // Get the most recently added questions (last N based on total_added)
+                            const newQuestions = allQb.slice(-data.total_added);
+                            const newQuestionIds = newQuestions.map(q => q.id);
+                            
+                            if (newQuestionIds.length > 0) {
+                                await fetch(`${BACKEND_URL}/api/question_lists/${qbSelectedListId}/questions`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                                    body: JSON.stringify({ questionIds: newQuestionIds })
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error adding uploaded questions to list:", e);
+                    }
+                }
+            } 
             else alert("Upload Failed: " + (data.detail || "Unknown error"));
         } catch (e) { console.error(e); alert("Connection error during upload."); } 
         finally { btn.innerText = "Upload ZIP(s)"; btn.disabled = false; }
