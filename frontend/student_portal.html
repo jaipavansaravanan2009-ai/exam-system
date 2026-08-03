@@ -314,26 +314,27 @@
         /* Solution Enhancement Styles */
         .solution-container {
             background: #ffffff;
-            border-radius: 10px;
-            padding: 20px;
+            border-radius: 8px;
+            padding: 0;
             margin-top: 15px;
-            border-left: 5px solid #4a90e2;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border: 2px solid #1e3d59;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         .solution-header {
+            background: #1e3d59;
+            color: white;
+            padding: 15px 20px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #e9ecef;
+            gap: 12px;
         }
         .solution-icon {
-            font-size: 24px;
-            background: #4a90e2;
-            color: white;
-            width: 40px;
-            height: 40px;
+            font-size: 20px;
+            background: white;
+            color: #1e3d59;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -341,19 +342,17 @@
             font-weight: bold;
         }
         .solution-title {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
-            color: #2c3e50;
+            color: white;
             margin: 0;
         }
         .solution-content {
             font-size: 15px;
             line-height: 1.8;
             color: #2c3e50;
-            padding: 15px;
+            padding: 20px;
             background: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
         }
         .solution-content p {
             margin-bottom: 12px;
@@ -375,11 +374,11 @@
             padding: 12px 15px;
             margin: 10px 0;
             border-radius: 6px;
-            border-left: 4px solid #4a90e2;
+            border-left: 4px solid #2e86c1;
         }
         .solution-step-number {
             display: inline-block;
-            background: #4a90e2;
+            background: #2e86c1;
             color: white;
             width: 24px;
             height: 24px;
@@ -955,22 +954,16 @@
                                         <div style="font-size: 16px; font-weight: bold; color: var(--success);">${qa.correctAnswer}</div>
                                     </div>
                                 </div>
-                                ${qa.solution ? `
+                                ${qa.solution || solutionImgHtml ? `
                                 <div class="solution-container">
                                     <div class="solution-header">
-                                        <div class="solution-icon">✓</div>
-                                        <div class="solution-title">Detailed Solution</div>
+                                        <div class="solution-icon">${qa.solution ? '💡' : '🖼'}</div>
+                                        <div class="solution-title">${qa.solution ? 'Detailed Solution' : 'Solution Image'}</div>
                                     </div>
-                                    <div class="solution-content">${qa.solution}</div>
-                                    ${solutionImgHtml ? `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e9ecef;">${solutionImgHtml}</div>` : ''}
-                                </div>
-                                ` : solutionImgHtml ? `
-                                <div class="solution-container">
-                                    <div class="solution-header">
-                                        <div class="solution-icon">🖼</div>
-                                        <div class="solution-title">Solution Image</div>
+                                    <div class="solution-content">
+                                        ${qa.solution ? qa.solution : ''}
+                                        ${solutionImgHtml}
                                     </div>
-                                    <div class="solution-content" style="padding: 10px; background: white;">${solutionImgHtml}</div>
                                 </div>
                                 ` : ''}
                             </div>

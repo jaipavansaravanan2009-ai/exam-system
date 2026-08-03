@@ -1032,17 +1032,16 @@
         // Record time spent on current question before switching
         recordTimeOnCurrentQuestion();
         
+        // Mark the previous question as visited if it wasn't already marked
         if (currentIdx !== -1 && !statusMap[currentIdx]) {
             statusMap[currentIdx] = 'visited';
         }
         
         currentIdx = index;
         
+        // Only set to visited if this question has never been accessed before
+        // Preserve 'answered' and 'review-answered' statuses
         if (!statusMap[currentIdx]) {
-            statusMap[currentIdx] = 'visited';
-        } else if (statusMap[currentIdx] === 'answered' || statusMap[currentIdx] === 'review-answered') {
-            // Keep existing answered status - do not overwrite
-        } else if (!statusMap[currentIdx]) {
             statusMap[currentIdx] = 'visited';
         }
         
