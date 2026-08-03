@@ -1477,13 +1477,29 @@ async def get_all_results(user=Depends(authorize(["admin"]))):
         results = []
         for doc in docs:
             data = doc.to_dict()
+            
+            # Smart detection: Check if exam was auto-submitted
+            # 1. Check explicit flag (new feature)
+            # 2. Check violation count (>= 3 means auto-submitted)
+            # 3. Check away time (>= 30s means auto-submitted)
+            is_auto_submitted = data.get("autoSubmitted", False)
+            
+            # If not explicitly marked, check violation patterns
+            if not is_auto_submitted:
+                violation_count = data.get("totalViolations", 0)
+                total_away_time = data.get("totalAwayTime", 0)
+                
+                # Auto-submitted if max violations reached OR max away time exceeded
+                if violation_count >= 3 or total_away_time >= 30:
+                    is_auto_submitted = True
+            
             results.append({
                 "id": doc.id,
                 "studentName": data.get("studentName", "Unknown"),
                 "examTitle": data.get("examTitle", "Unknown"),
                 "totalScore": data.get("totalScore", 0),
                 "submittedAt": data.get("submittedAt"),
-                "autoSubmitted": data.get("autoSubmitted", False)
+                "autoSubmitted": is_auto_submitted
             })
         return results
     except Exception as e:
@@ -1502,8 +1518,20 @@ async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
         
         result_data = result_doc.to_dict()
         
+        # Smart detection: Check if exam was auto-submitted
+        is_auto_submitted = result_data.get("autoSubmitted", False)
+        
+        # If not explicitly marked, check violation patterns
+        if not is_auto_submitted:
+            violation_count = result_data.get("totalViolations", 0)
+            total_away_time = result_data.get("totalAwayTime", 0)
+            
+            # Auto-submitted if max violations reached OR max away time exceeded
+            if violation_count >= 3 or total_away_time >= 30:
+                is_auto_submitted = True
+        
         # Check if it was auto-submitted
-        if not result_data.get("autoSubmitted", False):
+        if not is_auto_submitted:
             raise HTTPException(status_code=400, detail="Only auto-submitted exams can be resumed")
         
         student_id = result_data.get("studentId")
