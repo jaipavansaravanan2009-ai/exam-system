@@ -1040,6 +1040,10 @@
         
         if (!statusMap[currentIdx]) {
             statusMap[currentIdx] = 'visited';
+        } else if (statusMap[currentIdx] === 'answered' || statusMap[currentIdx] === 'review-answered') {
+            // Keep existing answered status - do not overwrite
+        } else if (!statusMap[currentIdx]) {
+            statusMap[currentIdx] = 'visited';
         }
         
         const q = examData.questions[index];
@@ -1074,7 +1078,7 @@
                     imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
                 }
                 
-                const isChecked = studentAnswers[index] === opt ? 'checked' : '';
+        const isChecked = studentAnswers[index] && studentAnswers[index].trim() === opt.trim() ? 'checked' : '';
                 const isSelectedClass = isChecked ? 'selected' : '';
                 const safeOptValue = opt.replace(/"/g, '"');
                 
@@ -1087,9 +1091,33 @@
                         </label>
                     </div>`;
             });
-            optDiv.innerHTML = optionsHTML;
+        optDiv.innerHTML = optionsHTML;
+        
+        // Add event listeners to radio buttons to track changes immediately
+        optDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    studentAnswers[currentIdx] = this.value;
+                    statusMap[currentIdx] = 'answered';
+                    updateRowStyles(this);
+                    renderPalette();
+                }
+            });
+        });
         } else {
             optDiv.innerHTML = `<input type="number" step="any" id="numAns" value="${studentAnswers[index] !== undefined ? studentAnswers[index] : ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px; border: 2px solid #ccc; border-radius: 4px;">`;
+            
+            // Add input listener for numeric answers
+            const numInput = document.getElementById("numAns");
+            if (numInput) {
+                numInput.addEventListener('input', function() {
+                    if (this.value !== "") {
+                        studentAnswers[currentIdx] = this.value;
+                        statusMap[currentIdx] = 'answered';
+                        renderPalette();
+                    }
+                });
+            }
         }
         
         renderPalette();
