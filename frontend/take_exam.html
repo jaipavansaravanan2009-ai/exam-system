@@ -1077,14 +1077,15 @@
                     imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
                 }
                 
-        const isChecked = studentAnswers[index] && studentAnswers[index].trim() === opt.trim() ? 'checked' : '';
+                // Simple comparison - check if this option index matches the stored answer
+                const storedAnswer = studentAnswers[index];
+                const isChecked = storedAnswer && storedAnswer == idx ? 'checked' : '';
                 const isSelectedClass = isChecked ? 'selected' : '';
-                const safeOptValue = opt.replace(/"/g, '"');
                 
                 optionsHTML += `
                     <div class="opt-row ${isSelectedClass}" onclick="handleRowClick(this)">
                         <label>
-                            <input type="radio" name="ans" value="${safeOptValue}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);">
+                            <input type="radio" name="ans" value="${idx}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);">
                             <span style="font-size: 16px;">${opt}</span>
                             ${imgHTML}
                         </label>
@@ -1096,7 +1097,7 @@
         optDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
             radio.addEventListener('change', function() {
                 if (this.checked) {
-                    studentAnswers[currentIdx] = this.value;
+                    studentAnswers[currentIdx] = parseInt(this.value);
                     statusMap[currentIdx] = 'answered';
                     updateRowStyles(this);
                     renderPalette();
