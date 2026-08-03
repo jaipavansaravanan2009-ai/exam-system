@@ -698,6 +698,38 @@ async def delete_question_list(list_id: str, user=Depends(authorize(["admin", "s
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to delete question list")
 
+# 🗑️ Delete entire question list with all questions (from bank too)
+@app.delete("/api/question_lists/{list_id}/full-delete")
+async def full_delete_question_list(list_id: str, user=Depends(authorize(["admin"]))):
+    try:
+        list_ref = db.collection("question_lists").document(list_id)
+        list_doc = list_ref.get()
+        
+        if not list_doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+        
+        list_data = list_doc.to_dict()
+        question_ids = list_data.get("questionIds", [])
+        
+        # Delete all questions from question_bank
+        batch = db.batch()
+        for q_id in question_ids:
+            q_ref = db.collection("question_bank").document(q_id)
+            batch.delete(q_ref)
+        
+        # Delete the list itself
+        batch.delete(list_ref)
+        
+        # Commit all deletions
+        batch.commit()
+        
+        return {"message": f"Deleted list and {len(question_ids)} question(s) completely! 🗑️✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fully delete list: {str(e)}")
+
 @app.get("/api/question_lists/{list_id}")
 async def get_question_list_detail(list_id: str, user=Depends(authorize(["admin", "setter"]))):
     try:
@@ -954,6 +986,49 @@ async def remove_question_from_list(list_id: str, question_id: str, user=Depends
         return {"message": "Question removed from list! ✅"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to remove question: {str(e)}")
+
+# 🔄 Replace a question in a list (maintains order)
+@app.put("/api/question_lists/{list_id}/questions/{old_question_id}")
+async def replace_question_in_list(list_id: str, old_question_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):
+    try:
+        body = await request.json()
+        
+        # Validate list exists
+        list_ref = db.collection("question_lists").document(list_id)
+        list_doc = list_ref.get()
+        if not list_doc.exists:
+            raise HTTPException(status_code=404, detail="Question list not found")
+        
+        list_data = list_doc.to_dict()
+        question_ids = list_data.get("questionIds", [])
+        
+        # Validate old question exists in list
+        if old_question_id not in question_ids:
+            raise HTTPException(status_code=400, detail="Question not found in this list")
+        
+        # Create new question in question_bank
+        body["createdAt"] = datetime.now(timezone.utc)
+        body["createdBy"] = user.get("id")
+        body["creatorRole"] = user.get("role")
+        
+        new_q_ref = db.collection("question_bank").document()
+        new_q_ref.set(body)
+        new_question_id = new_q_ref.id
+        
+        # Replace old question ID with new one (maintaining position)
+        updated_ids = [new_question_id if qid == old_question_id else qid for qid in question_ids]
+        
+        list_ref.update({
+            "questionIds": updated_ids,
+            "updatedAt": datetime.now(timezone.utc)
+        })
+        
+        return {"message": "Question replaced successfully! ✅", "newQuestionId": new_question_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to replace question: {str(e)}")
 
 @app.post("/api/exams/{exam_id}/import-question-list/{list_id}")
 async def import_question_list_to_exam(exam_id: str, list_id: str, request: Request, user=Depends(authorize(["admin", "setter"]))):

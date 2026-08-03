@@ -772,6 +772,7 @@
 
     let currentQuestionLists = [];
     let currentQlDetailId = null;
+    let currentQlDetailQuestions = [];
     let qbCacheForListImport = [];
 
     function switchTab(tabId, btnElement) {
@@ -1990,7 +1991,8 @@
                         <div style="display: flex; gap: 8px; flex-direction: row; min-width: 180px; justify-content: flex-end;">
                             <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); addListToExam('${list.id}', '${list.name.replace(/'/g, "\\'")}')">📥 Add to Exam</button>
                             <button class="btn btn-outline btn-small" onclick="event.stopPropagation(); openEditListModal('${list.id}')">✏️</button>
-                            <button class="btn btn-primary btn-small" style="background:#e74c3c; border:none;" onclick="event.stopPropagation(); deleteList('${list.id}')">🗑️</button>
+                            <button class="btn btn-outline btn-small" onclick="event.stopPropagation(); deleteListOnly('${list.id}')" title="Delete list only">🗑️ List</button>
+                            <button class="btn btn-primary btn-small" style="background:#e74c3c; border:none;" onclick="event.stopPropagation(); fullDeleteList('${list.id}')" title="Delete list and all questions">🔥 Delete All</button>
                         </div>
                     </div>
                 `;
@@ -2075,14 +2077,34 @@
         }
     }
 
-    async function deleteList(id) {
-        if (!confirm("Delete this question list? The questions themselves will NOT be deleted from the bank.")) return;
+    async function deleteListOnly(id) {
+        if (!confirm("Delete this question list only? The questions will remain in the Question Bank.")) return;
         try {
             const res = await fetch(`${BACKEND_URL}/api/question_lists/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
             if (res.ok) {
                 loadQuestionLists();
+                loadQBFolders();
             } else alert("Failed to delete list.");
         } catch (e) { console.error(e); }
+    }
+
+    async function fullDeleteList(id) {
+        const list = currentQuestionLists.find(l => l.id === id);
+        const qCount = list && list.questionIds ? list.questionIds.length : 0;
+        if (!confirm(`PERMANENTLY DELETE this list AND all ${qCount} questions from the Question Bank?\n\nThis action CANNOT be undone!`)) return;
+        if (!confirm(`Are you absolutely sure? All ${qCount} questions will be permanently removed from the bank.`)) return;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${id}/full-delete`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || "List and questions deleted successfully! ✅");
+                loadQuestionLists();
+                loadQBFolders();
+            } else {
+                alert("Failed to fully delete: " + (data.detail || "Unknown error"));
+            }
+        } catch (e) { console.error(e); alert("Error deleting list."); }
     }
 
     async function clearListQuestions() {
@@ -2127,9 +2149,11 @@
 
             if (!data.questions || data.questions.length === 0) {
                 container.innerHTML = "<div style='padding: 20px; text-align: center; color: #777;'>This list is empty. Add questions from the bank!</div>";
+                currentQlDetailQuestions = [];
                 return;
             }
 
+            currentQlDetailQuestions = data.questions;
             data.questions.forEach((q, i) => {
                 let optionsHTML = "";
                 if (q.options && q.options.length > 0) {
@@ -2158,6 +2182,7 @@
                             <div style="display: flex; gap: 8px; flex-direction: column; min-width: 120px;">
                                 <button class="btn btn-outline btn-small" onclick="toggleView('ql-q-details-${i}')" style="width: 100%;">👁️ View</button>
                                 <button class="btn btn-primary btn-small" onclick="addSingleQuestionToExam('${q.id}')" style="width: 100%;">📥 Add to Exam</button>
+                                <button class="btn btn-outline btn-small" onclick="replaceQuestionInList('${id}', '${q.id}')" style="width: 100%;">🔄 Replace</button>
                                 <button class="btn btn-primary btn-small" style="background:#ff7675; border:none; width: 100%;" onclick="removeQuestionFromList('${id}', '${q.id}')">✖ Remove</button>
                             </div>
                         </div>
@@ -2195,6 +2220,52 @@
                 openListDetail(listId);
             } else alert("Failed to remove question.");
         } catch (e) { console.error(e); }
+    }
+
+    async function replaceQuestionInList(listId, questionId) {
+        if (!confirm("Replace this question with a new one? You'll need to enter the new question details.")) return;
+        
+        try {
+            const q = currentQlDetailQuestions.find(x => x.id === questionId);
+            if (!q) return alert("Question not found.");
+            
+            const newQuestionText = prompt("Enter new question text:", q.question || "");
+            if (newQuestionText === null) return;
+            if (!newQuestionText.trim()) return alert("Question text is required.");
+            
+            const payload = {
+                question: newQuestionText.trim(),
+                subject: q.subject || "Physics",
+                section: q.section || "Single correct answer",
+                options: q.options || [],
+                optionImages: q.optionImages || [],
+                correctAnswers: q.correctAnswers || [],
+                correctAnswer: q.correctAnswer || "",
+                questionImage: q.questionImage || null,
+                hint: q.hint || "",
+                solution: q.solution || "",
+                solutionImage: q.solutionImage || null,
+                topics: q.topics || [],
+                exam_type: q.exam_type || "Practice"
+            };
+            
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${listId}/questions/${questionId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await res.json();
+            if (res.ok) {
+                alert("Question replaced successfully! ✅");
+                openListDetail(listId);
+            } else {
+                alert("Failed to replace: " + (data.detail || "Unknown error"));
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error replacing question.");
+        }
     }
 
     async function addSingleQuestionToExam(questionId) {
