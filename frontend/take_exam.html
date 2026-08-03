@@ -377,6 +377,7 @@
     let currentSub = 'Physics';
     let studentAnswers = {};
     let statusMap = {};
+    let selectedOptionIndex = {}; // Track selected option index for visual restoration
     let timeLeft = 180 * 60;
     let questionStartTime = Date.now();
     let questionTimes = [];
@@ -1077,9 +1078,9 @@
                     imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
                 }
                 
-                // Simple comparison - check if this option index matches the stored answer
-                const storedAnswer = studentAnswers[index];
-                const isChecked = storedAnswer && storedAnswer == idx ? 'checked' : '';
+                // Check if this option index matches the stored selection
+                const selectedIdx = selectedOptionIndex[index];
+                const isChecked = selectedIdx !== undefined && selectedIdx == idx ? 'checked' : '';
                 const isSelectedClass = isChecked ? 'selected' : '';
                 
                 optionsHTML += `
@@ -1097,7 +1098,9 @@
         optDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
             radio.addEventListener('change', function() {
                 if (this.checked) {
-                    studentAnswers[currentIdx] = parseInt(this.value);
+                    const selectedIdx = parseInt(this.value);
+                    selectedOptionIndex[currentIdx] = selectedIdx;
+                    studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
                     statusMap[currentIdx] = 'answered';
                     updateRowStyles(this);
                     renderPalette();
@@ -1166,7 +1169,9 @@
         const numSel = document.getElementById("numAns");
         
         if (radioSel) {
-            studentAnswers[currentIdx] = radioSel.value;
+            const selectedIdx = parseInt(radioSel.value);
+            selectedOptionIndex[currentIdx] = selectedIdx;
+            studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
             statusMap[currentIdx] = 'answered';
         } else if (numSel && numSel.value !== "") {
             studentAnswers[currentIdx] = numSel.value;
@@ -1184,7 +1189,9 @@
         const numSel = document.getElementById("numAns");
         
         if (radioSel) {
-            studentAnswers[currentIdx] = radioSel.value;
+            const selectedIdx = parseInt(radioSel.value);
+            selectedOptionIndex[currentIdx] = selectedIdx;
+            studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
             statusMap[currentIdx] = 'review-answered';
         } else if (numSel && numSel.value !== "") {
             studentAnswers[currentIdx] = numSel.value;
