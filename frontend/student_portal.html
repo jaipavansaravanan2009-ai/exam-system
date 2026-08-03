@@ -311,83 +311,136 @@
             gap: 5px;
         }
         
-        /* Solution Enhancement Styles */
+        /* Enhanced Solution Styles */
         .solution-container {
-            background: #ffffff;
-            border-radius: 8px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border-radius: 12px;
             padding: 0;
-            margin-top: 15px;
-            border: 2px solid #1e3d59;
+            margin-top: 20px;
+            border: 2px solid #4a90e2;
             overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.2);
+            position: relative;
+        }
+        .solution-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #2e86c1, #4a90e2, #2e86c1);
         }
         .solution-header {
-            background: #1e3d59;
+            background: linear-gradient(135deg, #1e3d59 0%, #2c3e50 100%);
             color: white;
-            padding: 15px 20px;
+            padding: 18px 24px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .solution-icon {
-            font-size: 20px;
-            background: white;
+            font-size: 24px;
+            background: linear-gradient(135deg, #f39c12, #f1c40f);
             color: #1e3d59;
-            width: 36px;
-            height: 36px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
+            box-shadow: 0 2px 6px rgba(243, 156, 18, 0.3);
         }
         .solution-title {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 700;
             color: white;
             margin: 0;
+            letter-spacing: 0.5px;
         }
         .solution-content {
             font-size: 15px;
-            line-height: 1.8;
+            line-height: 1.9;
             color: #2c3e50;
-            padding: 20px;
-            background: #f8f9fa;
+            padding: 24px;
+            background: #ffffff;
         }
         .solution-content p {
-            margin-bottom: 12px;
+            margin-bottom: 14px;
+            padding: 10px;
+            border-radius: 6px;
+            background: #f8f9fa;
+            border-left: 3px solid #dee2e6;
+            transition: all 0.3s ease;
+        }
+        .solution-content p:hover {
+            background: #e9ecef;
+            border-left-color: #4a90e2;
+            transform: translateX(2px);
         }
         .solution-content p:last-child {
             margin-bottom: 0;
         }
         .solution-formula {
-            background: #fffef5;
-            padding: 15px;
-            margin: 12px 0;
-            border-left: 4px solid #f39c12;
-            border-radius: 6px;
+            background: linear-gradient(135deg, #fffef5 0%, #fffbf0 100%);
+            padding: 18px;
+            margin: 16px 0;
+            border-left: 5px solid #f39c12;
+            border-radius: 8px;
             font-family: 'Courier New', monospace;
             overflow-x: auto;
+            box-shadow: 0 2px 8px rgba(243, 156, 18, 0.15);
+            font-size: 14px;
+            font-weight: 600;
+            color: #d68910;
         }
         .solution-step {
-            background: #e8f4fd;
-            padding: 12px 15px;
-            margin: 10px 0;
-            border-radius: 6px;
-            border-left: 4px solid #2e86c1;
+            background: linear-gradient(135deg, #e8f4fd 0%, #d6eaf8 100%);
+            padding: 14px 18px;
+            margin: 12px 0;
+            border-radius: 8px;
+            border-left: 5px solid #2e86c1;
+            box-shadow: 0 2px 6px rgba(46, 134, 193, 0.1);
+            transition: all 0.3s ease;
+        }
+        .solution-step:hover {
+            transform: translateX(3px);
+            box-shadow: 0 4px 12px rgba(46, 134, 193, 0.2);
         }
         .solution-step-number {
             display: inline-block;
-            background: #2e86c1;
+            background: linear-gradient(135deg, #2e86c1, #3498db);
             color: white;
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
             text-align: center;
-            line-height: 24px;
+            line-height: 26px;
             font-weight: bold;
-            margin-right: 10px;
-            font-size: 13px;
+            margin-right: 12px;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(46, 134, 193, 0.3);
+        }
+        .solution-image-wrapper {
+            margin-top: 16px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 2px dashed #dee2e6;
+            text-align: center;
+        }
+        .solution-image-wrapper img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            cursor: zoom-in;
+            transition: transform 0.3s ease;
+        }
+        .solution-image-wrapper img:hover {
+            transform: scale(1.02);
         }
     </style>
 </head>
@@ -961,8 +1014,8 @@
                                         <div class="solution-title">${qa.solution ? 'Detailed Solution' : 'Solution Image'}</div>
                                     </div>
                                     <div class="solution-content">
-                                        ${qa.solution ? qa.solution : ''}
-                                        ${solutionImgHtml}
+                                        ${qa.solution ? enhanceSolutionText(qa.solution) : ''}
+                                        ${solutionImgHtml ? `<div class="solution-image-wrapper">${solutionImgHtml}</div>` : ''}
                                     </div>
                                 </div>
                                 ` : ''}
@@ -980,6 +1033,33 @@
         
         // Render MathJax after content is loaded
         reRenderMathJax();
+    }
+
+    // Helper function to enhance solution text with step/formula formatting
+    function enhanceSolutionText(solutionText) {
+        if (!solutionText) return '';
+        
+        let enhanced = solutionText;
+        
+        // Enhance paragraphs with better styling
+        enhanced = enhanced.replace(/<p>/gi, '<p style="padding: 10px; border-radius: 6px; background: #f8f9fa; border-left: 3px solid #dee2e6;">');
+        
+        // Highlight formulas wrapped in $$ or \[ \] (LaTeX display math)
+        enhanced = enhanced.replace(/\$\$([^$]+)\$\$/g, '<div class="solution-formula">$$$1$$</div>');
+        enhanced = enhanced.replace(/\\\[([^\]]+)\\\]/g, '<div class="solution-formula">\\[$1\\]</div>');
+        
+        // Highlight inline formulas
+        enhanced = enhanced.replace(/\$([^$]+)\$/g, '<span style="background: #fffef5; padding: 2px 6px; border-radius: 3px; font-family: Courier New, monospace; font-weight: 600; color: #d68910;">$$$1$$</span>');
+        
+        // Enhance step-by-step solutions (lines starting with "Step" or numbered)
+        enhanced = enhanced.replace(/(Step\s+\d+[:\s]+)/gi, '<div class="solution-step"><span class="solution-step-number">$1</span>');
+        enhanced = enhanced.replace(/(\d+\.\s+)/g, '<div class="solution-step"><span class="solution-step-number">$1</span>');
+        
+        // Close unclosed step divs
+        const stepOpenCount = (enhanced.match(/<div class="solution-step">/g) || []).length;
+        const stepCloseCount = (enhanced.match(/<\/div>\s*<\/div>\s*<\/p>/g) || []).length;
+        
+        return enhanced;
     }
 
     function toggleQuestionAnalysis(headerElement) {
