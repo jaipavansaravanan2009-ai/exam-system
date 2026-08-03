@@ -1702,13 +1702,24 @@
                             dateDisplay = date.toLocaleDateString() + " " + date.toLocaleTimeString().substring(0,5);
                         }
                         const score = r.totalScore || r.score || 0;
+                        const isAutoSubmitted = r.autoSubmitted || false;
+                        
+                        // Add auto-submit badge if applicable
+                        const autoBadge = isAutoSubmitted ? `<span style="background: var(--danger); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 5px; font-weight: bold;">🚫 AUTO</span>` : '';
+                        
+                        // Add resume button if auto-submitted
+                        const actionButtons = isAutoSubmitted 
+                            ? `<button class="btn btn-success btn-small" onclick="resumeExam('${r.id}')" style="margin-right: 3px;">🔄 Resume</button>
+                               <button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 Analysis</button>`
+                            : `<button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 View Analysis</button>`;
+                        
                         html += `<div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;">
-                            <div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}</div>
+                            <div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}${autoBadge}</div>
                             <div style="flex: 3; color: #555;">${r.examTitle}</div>
                             <div style="flex: 1; text-align: right; color: #777; font-size: 13px;">${dateDisplay}</div>
                             <div style="flex: 1; text-align: right; font-weight: bold; color: ${score >= 0 ? 'var(--success)' : 'var(--danger)'};">${score}</div>
-                            <div style="width: 150px; text-align: right;">
-                                <button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 View Analysis</button>
+                            <div style="width: 180px; text-align: right;">
+                                ${actionButtons}
                             </div>
                         </div>`;
                     });
@@ -1716,6 +1727,40 @@
                 }
             } else document.getElementById("resultsList").innerHTML = "<div>Cannot fetch results.</div>";
         } catch(e) { console.error("Could not load results:", e); }
+    }
+
+    async function resumeExam(resultId) {
+        if (!confirm("Are you sure you want to resume this exam?\n\nThe student will be able to continue from where they left off. Their previous answers and progress will be restored.")) {
+            return;
+        }
+        
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = "Resuming... ⏳";
+        btn.disabled = true;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/resume`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert("✅ Exam resumed successfully!\n\nThe student can now continue the exam from where they left off. Their saved progress has been preserved.");
+                loadResults(); // Refresh the results list
+            } else {
+                alert("Failed to resume exam: " + (data.detail || "Unknown error"));
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            console.error("Error resuming exam:", e);
+            alert("Error resuming exam. Please try again.");
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
     }
 
     async function viewAdminAnalysis(resultId) {
@@ -1905,9 +1950,44 @@
                                 `).join('')}
                             </div>
                         </details>` : ''}
+                        ${autoSubmitted ? `
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee;">
+                            <button class="btn btn-success" onclick="resumeExamFromAnalysis('${resultId}')" style="font-size: 15px; padding: 12px 24px;">
+                                🔄 Resume Exam for Candidate
+                            </button>
+                            <p style="font-size: 12px; color: #888; margin-top: 8px;">This will allow the student to continue the exam from where they left off.</p>
+                        </div>
+                        ` : ''}
                     </div>
                 `;
             }
+
+            // Add resume function to modal scope
+            window.resumeExamFromAnalysis = async function(resultId) {
+                if (!confirm("Are you sure you want to resume this exam?\n\nThe student will be able to continue from where they left off. Their previous answers and progress will be restored.")) {
+                    return;
+                }
+                
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/resume`, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    
+                    const data = await res.json();
+                    
+                    if (res.ok) {
+                        alert("✅ Exam resumed successfully!\n\nThe student can now continue the exam from where they left off.");
+                        modal.remove(); // Close the modal
+                        loadResults(); // Refresh the results list
+                    } else {
+                        alert("Failed to resume exam: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("Error resuming exam:", e);
+                    alert("Error resuming exam. Please try again.");
+                }
+            };
 
             modal.innerHTML = `
                 <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 950px; max-height: 90vh; overflow-y: auto;">

@@ -1482,11 +1482,49 @@ async def get_all_results(user=Depends(authorize(["admin"]))):
                 "studentName": data.get("studentName", "Unknown"),
                 "examTitle": data.get("examTitle", "Unknown"),
                 "totalScore": data.get("totalScore", 0),
-                "submittedAt": data.get("submittedAt")
+                "submittedAt": data.get("submittedAt"),
+                "autoSubmitted": data.get("autoSubmitted", False)
             })
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch results: {str(e)}")
+
+@app.post("/api/admin/results/{result_id}/resume")
+async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
+    """Resume an auto-submitted exam by deleting the result and keeping progress"""
+    try:
+        # Get the result document
+        result_ref = db.collection("results").document(result_id)
+        result_doc = result_ref.get()
+        
+        if not result_doc.exists:
+            raise HTTPException(status_code=404, detail="Result not found")
+        
+        result_data = result_doc.to_dict()
+        
+        # Check if it was auto-submitted
+        if not result_data.get("autoSubmitted", False):
+            raise HTTPException(status_code=400, detail="Only auto-submitted exams can be resumed")
+        
+        student_id = result_data.get("studentId")
+        exam_id = result_data.get("examId")
+        
+        # Delete the result document
+        result_ref.delete()
+        
+        # Note: We keep the exam_progress intact so student can resume
+        # The progress is already saved in the exam_progress collection
+        
+        return {
+            "message": "Exam resumed successfully! The student can now continue the exam from where they left off. ✅",
+            "studentId": student_id,
+            "examId": exam_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to resume exam: {str(e)}")
 
 # ==========================================
 # 📁 STATIC FILES SERVING

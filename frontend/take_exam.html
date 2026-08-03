@@ -864,6 +864,7 @@
 
         const urlParams = new URLSearchParams(window.location.search);
         const examId = urlParams.get('id') || urlParams.get('examId'); 
+        const isResuming = urlParams.get('resume') === 'true';
 
         if (!examId) {
             alert("Invalid Exam ID.");
@@ -930,15 +931,17 @@
                     ? new Date(savedProgress.updatedAt).toLocaleString() 
                     : 'a previous session';
                 restoreBanner.style.cssText = `
-                    background: #d4edda; color: #155724; padding: 12px 20px; 
-                    text-align: center; font-weight: bold; font-size: 16px;
-                    border-bottom: 2px solid #c3e6cb;
+                    background: ${isResuming ? '#fff3cd' : '#d4edda'}; color: ${isResuming ? '#856404' : '#155724'}; 
+                    padding: 12px 20px; text-align: center; font-weight: bold; font-size: 16px;
+                    border-bottom: 2px solid ${isResuming ? '#ffeeba' : '#c3e6cb'};
                 `;
                 restoreBanner.id = 'restoreBanner';
-                restoreBanner.innerHTML = `📋 <strong>Session Restored!</strong> We found your previous exam progress from ${lastSaved}. Your answers have been restored.`;
+                restoreBanner.innerHTML = isResuming 
+                    ? `🔄 <strong>Resuming Exam!</strong> Your previous progress has been restored from ${lastSaved}. Continue from where you left off.`
+                    : `📋 <strong>Session Restored!</strong> We found your previous exam progress from ${lastSaved}. Your answers have been restored.`;
                 document.body.insertBefore(restoreBanner, document.body.firstChild);
                 
-                // Auto-dismiss the banner after 8 seconds
+                // Auto-dismiss the banner after 10 seconds (longer for resume)
                 setTimeout(() => {
                     const banner = document.getElementById('restoreBanner');
                     if (banner) {
@@ -946,7 +949,7 @@
                         banner.style.opacity = '0';
                         setTimeout(() => banner.remove(), 500);
                     }
-                }, 8000);
+                }, 10000);
                 
                 // Set the active subject button
                 document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === currentSub));
@@ -967,7 +970,10 @@
                         `Total time away: ${totalAwayTime}s / ${CHEAT_CONFIG.maxAwaySeconds}s`;
                 }
                 
-                console.log(`♻️ Exam session restored! Resumed at question ${currentIdx + 1}, ${timeLeft}s remaining, ${violationCount} violations`);
+                console.log(isResuming 
+                    ? `🔄 Exam session resumed from question ${currentIdx + 1}, ${timeLeft}s remaining, ${violationCount} violations`
+                    : `♻️ Exam session restored! Resumed at question ${currentIdx + 1}, ${timeLeft}s remaining, ${violationCount} violations`
+                );
             } else {
                 // Fresh start
                 filterSubject('Physics');
