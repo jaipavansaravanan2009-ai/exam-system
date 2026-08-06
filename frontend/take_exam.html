@@ -758,16 +758,22 @@
         }
     });
 
-    // Warn before leaving/closing the page — MAJOR violation
+    // Warn before leaving/closing the page
+    // NOTE: We do NOT record a violation here anymore.
+    // Accidental closing, power cuts, or browser crashes should be recoverable
+    // without penalty. The auto-save system will restore the exam state when
+    // the student comes back. Only intentional tab-switching (visibilitychange)
+    // counts as a violation.
     window.addEventListener('beforeunload', function(e) {
         if (!examActive || autoSubmitTriggered) return;
         
-        // Record violation
-        recordViolation('page-navigate', 'User attempted to leave/refresh page');
+        // Save progress one final time before potential shutdown
+        // (async, best-effort — fire and forget)
+        saveProgressToBackend();
         
         // Standard beforeunload warning
         e.preventDefault();
-        e.returnValue = '⚠️ You are currently taking an exam. Leaving will be recorded as a violation!';
+        e.returnValue = '⚠️ Are you sure you want to leave the exam? Your progress has been saved and you can resume later.';
         return e.returnValue;
     });
 
@@ -882,6 +888,15 @@
             
             // ===== CHECK FOR SAVED PROGRESS FIRST (BEFORE SHUFFLING) =====
             const savedProgress = await restoreExamProgress(examId);
+            
+            // ===== CHECK IF ADMIN APPROVAL IS REQUIRED BEFORE RESUMING =====
+            // If the exam was auto-submitted due to integrity violations,
+            // the student CANNOT resume until an admin approves it.
+            if (savedProgress && savedProgress.requiresAdminResume && !savedProgress.adminApproved) {
+                alert("⛔ This exam was auto-submitted due to exam integrity violations.\n\nAn admin must approve the resume before you can continue this exam.\n\nPlease contact your exam administrator.");
+                window.location.href = "student_portal.html";
+                return;
+            }
             
             // Only shuffle options if this is NOT a resume (fresh exam)
             // For resumed exams, keep the original order to match saved progress

@@ -604,8 +604,8 @@
                 attemptedCountMap[examId] = (attemptedCountMap[examId] || 0) + 1;
             });
 
-            // Check for saved exam progress (for admin-resumed exams)
-            const progressMap = {};
+            // Check for saved exam progress (for admin-resumed exams and interrupted exams)
+            const progressMap = {};  // examId -> { hasProgress, requiresAdminResume, adminApproved }
             for (const exam of exams) {
                 try {
                     const progRes = await fetch(`${BACKEND_URL}/api/public/exams/${exam.id}/progress`, { 
@@ -614,7 +614,10 @@
                     if (progRes.ok) {
                         const progData = await progRes.json();
                         if (progData.hasProgress) {
-                            progressMap[exam.id] = true;
+                            progressMap[exam.id] = {
+                                requiresAdminResume: progData.requiresAdminResume || false,
+                                adminApproved: progData.adminApproved || false
+                            };
                         }
                     }
                 } catch (e) {
@@ -636,36 +639,40 @@
                     hasAutoSubmittedResult = examResults.some(r => r.autoSubmitted === true);
                 }
 
-                // Check if there's saved progress (admin may have resumed the exam)
-                const hasSavedProgress = progressMap[exam.id] === true;
+                // Check if there's saved progress and its status
+                const progressInfo = progressMap[exam.id];
+                const hasSavedProgress = !!progressInfo;
+                const requiresAdminResume = progressInfo ? progressInfo.requiresAdminResume : false;
+                const adminApproved = progressInfo ? progressInfo.adminApproved : false;
 
                 // Skip rendering if already attempted and not auto-submitted and no saved progress
                 if (isAttempted && !hasAutoSubmittedResult && !hasSavedProgress) {
                     return; 
                 }
 
-                // If auto-submitted, show resume button instead of start button
-                if (hasAutoSubmittedResult) {
+                // Case 1: Auto-submitted due to integrity violations, admin has NOT approved yet
+                // The exam is marked as completed only - student CANNOT resume
+                if (hasAutoSubmittedResult && (!hasSavedProgress || (requiresAdminResume && !adminApproved))) {
                     grid.innerHTML += `
                         <div class="exam-card" style="border-top-color: var(--danger);">
                             <div class="exam-title">
                                 ${exam.title}
-                                <span style="background: var(--danger); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px; font-weight: bold;">🚫 AUTO-SUBMITTED</span>
+                                <span style="background: var(--danger); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px; font-weight: bold;">🚫 COMPLETED</span>
                             </div>
                             <div class="exam-meta">
                                 <span><b>Questions:</b> ${qCount}</span>
                                 <span><b>Total Marks:</b> ${qCount * 4}</span>
                             </div>
-                            <button class="btn btn-success start-btn" onclick="resumeExam('${exam.id}')">🔄 Resume Exam</button>
-                            <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">Your previous progress has been saved. You can continue from where you left off.</p>
+                            <button class="btn start-btn" style="background: #bbb; cursor: not-allowed;" disabled>⏳ Pending Admin Review</button>
+                            <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">This exam was auto-submitted due to integrity violations. An admin must approve the resume before you can continue.</p>
                         </div>
                     `;
                     hasAvailableExams = true;
                     return;
                 }
 
-                // If there's saved progress (admin resumed the exam), show Continue button
-                if (hasSavedProgress) {
+                // Case 2: Admin has approved the resume - student can continue
+                if (hasAutoSubmittedResult && adminApproved) {
                     grid.innerHTML += `
                         <div class="exam-card" style="border-top-color: var(--secondary);">
                             <div class="exam-title">
@@ -678,6 +685,26 @@
                             </div>
                             <button class="btn btn-success start-btn" onclick="resumeExam('${exam.id}')">🔄 Continue Exam</button>
                             <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">An admin has resumed your exam. Continue from where you left off.</p>
+                        </div>
+                    `;
+                    hasAvailableExams = true;
+                    return;
+                }
+
+                // Case 3: Saved progress from interruption (power cut / accidental close) - auto-resume without admin
+                if (hasSavedProgress && !requiresAdminResume && !hasAutoSubmittedResult) {
+                    grid.innerHTML += `
+                        <div class="exam-card" style="border-top-color: #f39c12;">
+                            <div class="exam-title">
+                                ${exam.title}
+                                <span style="background: #f39c12; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px; font-weight: bold;">🔄 IN PROGRESS</span>
+                            </div>
+                            <div class="exam-meta">
+                                <span><b>Questions:</b> ${qCount}</span>
+                                <span><b>Total Marks:</b> ${qCount * 4}</span>
+                            </div>
+                            <button class="btn btn-success start-btn" onclick="resumeExam('${exam.id}')">🔄 Resume Exam</button>
+                            <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">Your previous session was interrupted. You can resume from where you left off.</p>
                         </div>
                     `;
                     hasAvailableExams = true;
@@ -732,6 +759,39 @@
         window.location.href = `take_exam.html?id=${examId}&resume=true`;
     }
 
+    // Check if an auto-submitted exam can be resumed (admin approval status)
+    async function checkResumeStatus(examId) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}/resume-status`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            if (!res.ok) {
+                alert("Could not check resume status. Please try again.");
+                return;
+            }
+            
+            const data = await res.json();
+            
+            if (data.canResume) {
+                if (data.adminApproved) {
+                    if(confirm("✅ An admin has approved the resume for this exam.\n\nDo you want to continue from where you left off?")) {
+                        window.location.href = `take_exam.html?id=${examId}&resume=true`;
+                    }
+                } else {
+                    if(confirm("You have saved progress for this exam.\n\nDo you want to continue from where you left off?")) {
+                        window.location.href = `take_exam.html?id=${examId}&resume=true`;
+                    }
+                }
+            } else {
+                alert("⛔ " + (data.reason || "This exam cannot be resumed yet. An admin must approve the resume first."));
+            }
+        } catch (e) {
+            console.error("Error checking resume status:", e);
+            alert("Error checking resume status. Please try again.");
+        }
+    }
+
 
     // ============================================
     // TAB 2: MY PAST RESULTS LOGIC
@@ -770,10 +830,15 @@
                 const isAutoSubmitted = result.autoSubmitted || false;
                 const autoBadge = isAutoSubmitted ? `<span style="background: var(--danger); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 5px; font-weight: bold;">🚫 AUTO</span>` : '';
                 
-                // Show resume button if auto-submitted
-                const actionButton = isAutoSubmitted 
-                    ? `<button class="btn btn-success" onclick="resumeExam('${result.examId}')">🔄 Resume Exam</button>`
-                    : `<button class="btn btn-primary" onclick="viewResultAnalysis('${result.id}')">View Detailed Analysis 📊</button>`;
+                // For auto-submitted results, we need to check if admin has approved the resume
+                let actionButton;
+                if (isAutoSubmitted) {
+                    // Determine if this result can be resumed by checking saved progress status
+                    // We'll fetch resume status for this exam
+                    actionButton = `<button class="btn btn-primary" onclick="checkResumeStatus('${result.examId}')">🔄 Check Resume</button>`;
+                } else {
+                    actionButton = `<button class="btn btn-primary" onclick="viewResultAnalysis('${result.id}')">View Detailed Analysis 📊</button>`;
+                }
 
                 resultsList.innerHTML += `
                     <div class="result-item">

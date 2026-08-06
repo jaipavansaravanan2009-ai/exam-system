@@ -1146,9 +1146,32 @@ async def get_my_results(user = Depends(authorize(["student"]))):
             else:
                 time_str = str(submitted_time) if submitted_time else None
 
+            # Smart detection: Check if exam was auto-submitted
+            # 1. Check explicit flag
+            # 2. Check violation count (>= 3 means auto-submitted)
+            # 3. Check away time (>= 300s / 5 min means auto-submitted)
+            is_auto_submitted = data.get("autoSubmitted", False)
+            
+            if not is_auto_submitted:
+                violation_count = data.get("violationCount", data.get("totalViolations", 0))
+                total_away_time = data.get("totalAwayTime", 0)
+                
+                # Auto-submitted if max violations reached OR max away time exceeded
+                if violation_count >= 3 or total_away_time >= 300:
+                    is_auto_submitted = True
+            
+            # Fallback: if violationCount is 0 but cheatingViolations array has entries, use its length
+            violation_count = data.get("violationCount", data.get("totalViolations", 0))
+            cheating_violations = data.get("cheatingViolations", [])
+            if violation_count == 0 and isinstance(cheating_violations, list) and len(cheating_violations) > 0:
+                violation_count = len(cheating_violations)
+                if violation_count >= 3:
+                    is_auto_submitted = True
+
             results_list.append({
                 "id": doc.id,
                 "submittedAt": time_str,
+                "autoSubmitted": is_auto_submitted,
                 **data
             })
             
@@ -1213,12 +1236,61 @@ async def get_exam_progress(exam_id: str, user = Depends(authorize(["student"]))
             return {
                 "hasProgress": True,
                 "updatedAt": data.get("updatedAt"),
+                "requiresAdminResume": data.get("requiresAdminResume", False),
+                "adminApproved": data.get("adminApproved", False),
+                "autoSubmittedAt": data.get("autoSubmittedAt"),
+                "autoSubmitReason": data.get("autoSubmitReason", ""),
+                "resumedAt": data.get("resumedAt"),
+                "resumedBy": data.get("resumedBy"),
                 **progress_data
             }
         
         return {"hasProgress": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch progress: {str(e)}")
+
+@app.get("/api/public/exams/{exam_id}/resume-status")
+async def get_exam_resume_status(exam_id: str, user = Depends(authorize(["student"]))):
+    """Check if the student can resume an exam without admin approval.
+    
+    Returns:
+    - canResume: True if the student can resume the exam
+    - requiresAdmin: True if admin approval is needed before resuming
+    - adminApproved: True if admin has already approved the resume
+    - reason: Human-readable explanation
+    """
+    student_id = user.get("id")
+    
+    try:
+        existing_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
+        for doc in existing_query:
+            data = doc.to_dict()
+            requires_admin = data.get("requiresAdminResume", False)
+            admin_approved = data.get("adminApproved", False)
+            
+            if requires_admin and not admin_approved:
+                return {
+                    "canResume": False,
+                    "requiresAdmin": True,
+                    "adminApproved": False,
+                    "reason": "This exam was auto-submitted due to integrity violations. An admin must approve the resume before you can continue."
+                }
+            
+            return {
+                "canResume": True,
+                "requiresAdmin": requires_admin,
+                "adminApproved": admin_approved,
+                "reason": "You can resume this exam."
+            }
+        
+        return {
+            "canResume": True,
+            "requiresAdmin": False,
+            "adminApproved": False,
+            "reason": "No saved progress found. You can start fresh."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check resume status: {str(e)}")
 
 @app.delete("/api/public/exams/{exam_id}/progress")
 async def delete_exam_progress(exam_id: str, user = Depends(authorize(["student"]))):
@@ -1346,6 +1418,21 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
                     doc.reference.delete()
             except:
                 pass
+        else:
+            # Auto-submitted due to integrity violations - mark progress as
+            # requiring admin approval before the student can resume.
+            try:
+                existing_query = db.collection("exam_progress").where("studentId", "==", user.get("id")).where("examId", "==", exam_id).stream()
+                for doc in existing_query:
+                    doc.reference.update({
+                        "requiresAdminResume": True,
+                        "adminApproved": False,
+                        "autoSubmittedAt": datetime.now(timezone.utc),
+                        "autoSubmitReason": auto_submit_reason or "Integrity violation",
+                        "updatedAt": datetime.now(timezone.utc)
+                    })
+            except Exception as e:
+                print(f"⚠️ Could not mark progress as requiring admin resume: {e}")
         
         return {
             "message": "Exam submitted successfully! ✅",
@@ -1572,12 +1659,16 @@ async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
         # The progress is already saved in the exam_progress collection
         
         # Mark the progress as resumed by admin for auditability
+        # Set adminApproved=True and requiresAdminResume=False so the student
+        # can now resume the exam without any further admin intervention.
         try:
             progress_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
             for doc in progress_query:
                 doc.reference.update({
                     "resumedAt": datetime.now(timezone.utc),
-                    "resumedBy": user.get("id") or "admin"
+                    "resumedBy": user.get("id") or "admin",
+                    "adminApproved": True,
+                    "requiresAdminResume": False
                 })
         except Exception as e:
             print(f"⚠️ Could not mark progress as resumed: {e}")
