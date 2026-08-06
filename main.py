@@ -1245,10 +1245,13 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
         time_left = body.get("timeLeft", 0)
         question_times = body.get("questionTimes", [])
         subject_times = body.get("subjectTimes", {})
-        violation_count = body.get("violationCount", 0)
+        # Accept both field name conventions for robustness
+        # Frontend sends: totalViolations, autoSubmitted
+        # Legacy/other clients may send: violationCount, autoSubmitTriggered
+        violation_count = body.get("violationCount", body.get("totalViolations", 0))
         total_away_time = body.get("totalAwayTime", 0)
         cheating_violations = body.get("cheatingViolations", [])
-        auto_submit_triggered = body.get("autoSubmitTriggered", False)
+        auto_submit_triggered = body.get("autoSubmitTriggered", body.get("autoSubmitted", False))
         auto_submit_reason = body.get("autoSubmitReason", "")
         
         if not exam_id:
@@ -1489,7 +1492,7 @@ async def get_all_results(user=Depends(authorize(["admin"]))):
             
             # If not explicitly marked, check violation patterns
             if not is_auto_submitted:
-                violation_count = data.get("totalViolations", 0)
+                violation_count = data.get("violationCount", data.get("totalViolations", 0))
                 total_away_time = data.get("totalAwayTime", 0)
                 
                 # Auto-submitted if max violations reached OR max away time exceeded
@@ -1526,7 +1529,7 @@ async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
         
         # If not explicitly marked, check violation patterns
         if not is_auto_submitted:
-            violation_count = result_data.get("totalViolations", 0)
+            violation_count = result_data.get("violationCount", result_data.get("totalViolations", 0))
             total_away_time = result_data.get("totalAwayTime", 0)
             
             # Auto-submitted if max violations reached OR max away time exceeded
