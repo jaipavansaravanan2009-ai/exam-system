@@ -175,6 +175,7 @@ async def create_exam(request: Request, user=Depends(authorize(["admin"]))):
     body = await request.json()
     body["createdAt"] = datetime.now(timezone.utc)
     body["enableHints"] = body.get("enableHints", False)
+    body["examType"] = body.get("examType", body.get("exam_type", "Practice"))
     update_time, doc_ref = db.collection("exams").add(body)
     return {"message": "Exam created! ✅", "id": doc_ref.id}
 
@@ -259,7 +260,15 @@ async def delete_question(exam_id: str, index: int, user=Depends(authorize(["adm
 @app.get("/api/exams")
 async def get_all_exams(user=Depends(authorize(["admin", "setter"]))):
     docs = db.collection("exams").stream()
-    return [{**doc.to_dict(), "id": doc.id} for doc in docs]
+    exams = []
+    for doc in docs:
+        data = doc.to_dict()
+        data["id"] = doc.id
+        # Normalize exam type field
+        if "exam_type" in data and "examType" not in data:
+            data["examType"] = data["exam_type"]
+        exams.append(data)
+    return exams
 
 @app.post("/api/exams/{exam_id}/bulk-upload-zip")
 async def bulk_upload_zip(exam_id: str, files: List[UploadFile] = File(...), user=Depends(authorize(["admin", "setter"]))):
@@ -1114,7 +1123,8 @@ async def get_public_exams():
         exams_list.append({
             "id": doc.id,
             "title": data.get("title", "Untitled Exam"),
-            "questionCount": q_count
+            "questionCount": q_count,
+            "examType": data.get("examType", data.get("exam_type", "Practice"))
         })
         
     return exams_list
@@ -1127,6 +1137,9 @@ async def get_exam(exam_id: str):
         
     data = doc.to_dict()
     data["id"] = doc.id
+    # Normalize exam type field
+    if "exam_type" in data and "examType" not in data:
+        data["examType"] = data["exam_type"]
     return data
 
 @app.get("/api/public/results/my-results")
@@ -1377,9 +1390,9 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
         time_left = body.get("timeLeft", 0)
         question_times = body.get("questionTimes", [])
         subject_times = body.get("subjectTimes", {})
+        answer_images = body.get("answerImages", {})
+        
         # Accept both field name conventions for robustness
-        # Frontend sends: totalViolations, autoSubmitted
-        # Legacy/other clients may send: violationCount, autoSubmitTriggered
         violation_count = body.get("violationCount", body.get("totalViolations", 0))
         total_away_time = body.get("totalAwayTime", 0)
         cheating_violations = body.get("cheatingViolations", [])
@@ -1397,7 +1410,7 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
         exam_data = exam_doc.to_dict()
         questions = exam_data.get("questions", [])
         
-        # Calculate score
+        # Calculate score (only for MCQ/auto-graded questions)
         total_score = 0
         correct_count = 0
         incorrect_count = 0
@@ -1409,6 +1422,8 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
             student_ans = student_answers.get(q_id)
             correct_ans = q.get("correctAnswer", "")
             subject = q.get("subject", "Unknown")
+            question_type = q.get("questionType", "mcq")
+            marks = q.get("marks", 1)
             
             if subject not in subject_wise:
                 subject_wise[subject] = {
@@ -1419,25 +1434,36 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
                     "subjectTotalMarks": 0
                 }
             
-            # Each question is worth 4 marks
-            subject_wise[subject]["subjectTotalMarks"] += 4
+            # Add marks to total
+            subject_wise[subject]["subjectTotalMarks"] += marks
             
-            if student_ans is None or student_ans == "":
-                not_attempted_count += 1
-                subject_wise[subject]["notAttempted"] += 1
-            elif student_ans == correct_ans:
-                total_score += 4
-                correct_count += 1
-                subject_wise[subject]["score"] += 4
-                subject_wise[subject]["correct"] += 1
+            # For subjective questions, don't auto-grade (marks will be assigned by admin)
+            if question_type in ["subjective", "case-based"] or marks > 1:
+                if student_ans is not None and student_ans != "":
+                    # Question attempted but not auto-graded
+                    not_attempted_count += 1
+                    subject_wise[subject]["notAttempted"] += 1
+                else:
+                    not_attempted_count += 1
+                    subject_wise[subject]["notAttempted"] += 1
             else:
-                total_score -= 1
-                incorrect_count += 1
-                subject_wise[subject]["score"] -= 1
-                subject_wise[subject]["incorrect"] += 1
+                # MCQ - auto grade
+                if student_ans is None or student_ans == "":
+                    not_attempted_count += 1
+                    subject_wise[subject]["notAttempted"] += 1
+                elif student_ans == correct_ans:
+                    total_score += marks
+                    correct_count += 1
+                    subject_wise[subject]["score"] += marks
+                    subject_wise[subject]["correct"] += 1
+                else:
+                    total_score -= 1  # Negative marking only for MCQs
+                    incorrect_count += 1
+                    subject_wise[subject]["score"] -= 1
+                    subject_wise[subject]["incorrect"] += 1
         
         # Calculate total marks possible
-        total_marks_possible = len(questions) * 4
+        total_marks_possible = sum(q.get("marks", 1) for q in questions)
         
         # Prepare result data
         result_data = {
@@ -1453,6 +1479,7 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
             "notAttemptedCount": not_attempted_count,
             "subjectWiseBreakdown": subject_wise,
             "studentAnswers": student_answers,
+            "answerImages": answer_images,
             "statusMap": status_map,
             "timeLeft": time_left,
             "questionTimes": question_times,
@@ -1592,7 +1619,9 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
         
         question_analysis = []
         student_answers = result_data.get("studentAnswers", {})
+        answer_images = result_data.get("answerImages", {})
         question_times = result_data.get("questionTimes", [])
+        subjective_marks = result_data.get("subjectiveMarks", {})
         
         for i, q in enumerate(questions):
             q_id = str(i)
@@ -1604,6 +1633,9 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
             time_spent = None
             if i < len(question_times):
                 time_spent = question_times[i]
+            
+            # Get awarded marks for subjective questions
+            awarded_marks = subjective_marks.get(str(i))
             
             question_analysis.append({
                 "question": q.get("question", ""),
@@ -1618,7 +1650,11 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
                 "topics": q.get("topics", []),
                 "timeSpent": time_spent,
                 "solution": q.get("solution", ""),
-                "solutionImage": q.get("solutionImage")
+                "solutionImage": q.get("solutionImage"),
+                "questionType": q.get("questionType", "mcq"),
+                "marks": q.get("marks", 1),
+                "answerImage": answer_images.get(str(i)),
+                "awardedMarks": awarded_marks
             })
         
         return {
@@ -1749,3 +1785,82 @@ async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
 # 📁 STATIC FILES SERVING
 # ==========================================
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+
+# ==========================================
+# 📝 CBSE EXAM SUPPORT - MANUAL EVALUATION
+# ==========================================
+
+@app.post("/api/admin/results/{result_id}/update-marks")
+async def update_subjective_marks(result_id: str, request: Request, user=Depends(authorize(["admin"]))):
+    """Update marks for subjective questions in a result"""
+    try:
+        body = await request.json()
+        subjective_marks = body.get("subjectiveMarks", {})
+        
+        result_ref = db.collection("results").document(result_id)
+        result_doc = result_ref.get()
+        
+        if not result_doc.exists:
+            raise HTTPException(status_code=404, detail="Result not found")
+        
+        # Update the result with subjective marks
+        result_ref.update({
+            "subjectiveMarks": subjective_marks,
+            "manuallyEvaluated": True,
+            "evaluatedBy": user.get("id"),
+            "evaluatedAt": datetime.now(timezone.utc)
+        })
+        
+        return {"message": "Marks updated successfully! ✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update marks: {str(e)}")
+
+@app.post("/api/public/exams/{exam_id}/upload-answer")
+async def upload_answer_image(exam_id: str, request: Request, user = Depends(authorize(["student"]))):
+    """Upload answer image for subjective questions"""
+    try:
+        body = await request.json()
+        question_index = body.get("questionIndex")
+        image_data = body.get("imageData")  # Base64 encoded image
+        
+        if question_index is None or not image_data:
+            raise HTTPException(status_code=400, detail="questionIndex and imageData are required")
+        
+        # Store in exam_progress
+        student_id = user.get("id")
+        
+        progress_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
+        progress_doc = None
+        for doc in progress_query:
+            progress_doc = doc
+            break
+        
+        if progress_doc:
+            # Update existing progress with answer image
+            progress_data = progress_doc.to_dict()
+            answer_images = progress_data.get("answerImages", {})
+            answer_images[str(question_index)] = image_data
+            
+            progress_doc.reference.update({
+                "answerImages": answer_images,
+                "updatedAt": datetime.now(timezone.utc)
+            })
+        else:
+            # Create new progress entry with answer image
+            db.collection("exam_progress").add({
+                "studentId": student_id,
+                "examId": exam_id,
+                "answerImages": {str(question_index): image_data},
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc)
+            })
+        
+        return {"message": "Answer image uploaded successfully! ✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to upload answer image: {str(e)}")

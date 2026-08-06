@@ -269,6 +269,7 @@
                     <option value="Practice">Practice (Topic-wise)</option>
                     <option value="Mains">JEE Mains</option>
                     <option value="Advance">JEE Advance</option>
+                    <option value="CBSE">CBSE Pattern</option>
                 </select>
             </div>
 
@@ -502,6 +503,12 @@
         <select id="examQuestionSection" style="margin-top: 10px;" onchange="handleExamSectionChange()">
             <option value="Single correct answer">Single correct answer</option>
             <option value="Integer based question">Integer based question</option>
+            <option value="Multiple correct answer">Multiple correct answer</option>
+            <option value="CBSE Section A">CBSE Section A (MCQ - 1 mark)</option>
+            <option value="CBSE Section B">CBSE Section B (Subjective - 2 marks)</option>
+            <option value="CBSE Section C">CBSE Section C (Subjective - 3 marks)</option>
+            <option value="CBSE Section D">CBSE Section D (Case Based - 1 mark)</option>
+            <option value="CBSE Section E">CBSE Section E (Subjective - 5 marks)</option>
         </select>
 
         <div id="examOptionsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
@@ -548,14 +555,46 @@
             <input type="number" id="examIntInput" step="any" placeholder="Enter numerical answer...">
         </div>
 
-        <select id="subjectSelect" style="margin-top: 15px;">
-            <option value="Physics">Physics</option>
-            <option value="Chemistry">Chemistry</option>
-            <option value="Maths">Maths</option>
-        </select>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;">
+            <select id="subjectSelect">
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Maths">Maths</option>
+                <option value="Biology">Biology</option>
+            </select>
+            <input type="number" id="questionMarks" placeholder="Marks (e.g., 1, 2, 3, 5)" value="1" min="1" step="1">
+        </div>
+        <div style="margin-top: 10px;">
+            <label style="font-size: 12px; font-weight: bold;">Question Type:</label>
+            <select id="questionType" onchange="handleQuestionTypeChange()" style="width: 100%;">
+                <option value="mcq">MCQ (Multiple Choice)</option>
+                <option value="subjective">Subjective (Text Answer)</option>
+                <option value="case-based">Case Based (Passage + MCQs)</option>
+            </select>
+        </div>
+        <div id="casePassageContainer" style="display: none; margin-top: 10px;">
+            <label style="font-size: 12px; font-weight: bold;">Case Passage (for Case Based questions):</label>
+            <input type="text" id="casePassage" placeholder="Enter the case passage/paragraph here..." style="width: 100%;">
+        </div>
 
         <button class="btn" id="cancelExamEditBtn" onclick="resetExamForm()" style="display:none; width: 100%; margin-top: 10px; background: #95a5a6; color: white;">Cancel Edit</button>
         <button class="btn btn-success" id="addQuestionBtn" onclick="submitNewQuestion()" style="width: 100%; margin-top: 10px;">Add Question ✅</button>
+        
+        <h3 style="margin-top: 30px;">Questions in this Exam</h3>
+        <div id="existingQuestionsList"></div>
+        
+        <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px dashed #1abc9c;">
+            <h4 style="color: #16a085; margin-bottom: 10px; font-size: 14px;">📦 CBSE Exam CSV Format</h4>
+            <p style="font-size: 11px; color: #555; margin-bottom: 10px;">
+                CSV columns for CBSE pattern: Subject, Section, QuestionType, Marks, QuestionText, QuestionImage, OptionA-D, CorrectAnswer, CasePassage
+            </p>
+            <code style="font-size: 10px; background: #fff; padding: 8px; border-radius: 4px; display: block; overflow-x: auto;">
+                Subject,Section,QuestionType,Marks,QuestionText,OptionA,OptionB,OptionC,OptionD,CorrectAnswer,CasePassage<br>
+                Physics,CBSE Section A,mcq,1,"What is...","A)..","B)..","C)..","D)..",A,<br>
+                Chemistry,CBSE Section B,subjective,2,"Explain...",,,,,,,<br>
+                Maths,CBSE Section D,case-based,1,"Read the following...",,,,,,,"Passage text here..."
+            </code>
+        </div>
         
         <h3 style="margin-top: 30px;">Questions in this Exam</h3>
         <div id="existingQuestionsList"></div>
@@ -1452,9 +1491,24 @@
         if(sec === "Integer based question") {
             optCon.style.display = "none";
             intCon.style.display = "block";
+        } else if(sec.includes("CBSE Section B") || sec.includes("CBSE Section C") || sec.includes("CBSE Section E")) {
+            // Subjective questions - no options
+            optCon.style.display = "none";
+            intCon.style.display = "none";
         } else {
             optCon.style.display = "grid";
             intCon.style.display = "none";
+        }
+    }
+    
+    function handleQuestionTypeChange() {
+        const qType = document.getElementById("questionType").value;
+        const caseContainer = document.getElementById("casePassageContainer");
+        
+        if(qType === "case-based") {
+            caseContainer.style.display = "block";
+        } else {
+            caseContainer.style.display = "none";
         }
     }
 
@@ -1469,8 +1523,12 @@
         document.getElementById("opt3").value = ""; document.getElementById("opt4").value = "";
         document.getElementById("examIntInput").value = "";
         document.getElementById("examQuestionSection").value = "Single correct answer";
+        document.getElementById("questionMarks").value = "1";
+        document.getElementById("questionType").value = "mcq";
+        document.getElementById("casePassage").value = "";
         
         handleExamSectionChange();
+        handleQuestionTypeChange();
         clearPasteZone('qImg'); clearPasteZone('opt1Img'); clearPasteZone('opt2Img'); 
         clearPasteZone('opt3Img'); clearPasteZone('opt4Img');
     }
@@ -1516,6 +1574,9 @@
         try {
             const qText = document.getElementById("newQ").value.trim();
             const secType = document.getElementById("examQuestionSection").value;
+            const marks = parseInt(document.getElementById("questionMarks").value) || 1;
+            const questionType = document.getElementById("questionType").value;
+            const casePassage = document.getElementById("casePassage").value.trim();
             
             const finalQImage = pastedImages.qImg ? await compressImage(pastedImages.qImg) : loadedExamImages.qImg;
             const finalO1Img = pastedImages.opt1Img ? await compressImage(pastedImages.opt1Img) : loadedExamImages.opt1Img;
@@ -1534,6 +1595,10 @@
             if (secType === "Integer based question") {
                 finalAns = document.getElementById("examIntInput").value;
                 if(finalAns === "") return alert("Please enter a numerical answer.");
+            } else if(secType.includes("CBSE Section B") || secType.includes("CBSE Section C") || secType.includes("CBSE Section E")) {
+                // Subjective questions - no options
+                optTexts = [];
+                finalAns = "";
             } else {
                 optTexts = [
                     document.getElementById("opt1").value.trim() || "Option A", document.getElementById("opt2").value.trim() || "Option B",
@@ -1543,10 +1608,17 @@
             }
 
             const payload = { 
-                question: qText, questionImage: finalQImage, options: optTexts, 
+                question: qText, 
+                questionImage: finalQImage, 
+                options: optTexts, 
                 optionImages: [finalO1Img, finalO2Img, finalO3Img, finalO4Img], 
-                correctAnswer: finalAns, subject: document.getElementById("subjectSelect").value,
-                section: secType
+                correctAnswer: finalAns, 
+                subject: document.getElementById("subjectSelect").value,
+                section: secType,
+                questionType: questionType,
+                marks: marks,
+                casePassage: casePassage || null,
+                requiresImageUpload: questionType === "subjective" || marks >= 2
             };
 
             let endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`;
@@ -1896,6 +1968,39 @@
                         qImgHtml = `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 8px;">`;
                     }
 
+                    // Answer image (for subjective questions)
+                    let answerImageHtml = '';
+                    if (qa.answerImage) {
+                        answerImageHtml = `
+                            <div style="background: #f0f8ff; padding: 12px; border-radius: 6px; margin: 10px 0; border: 2px solid var(--secondary);">
+                                <div style="font-size: 12px; font-weight: bold; color: var(--secondary); margin-bottom: 8px;">📸 Student's Answer Image</div>
+                                <img src="${qa.answerImage}" style="max-width: 100%; max-height: 300px; border-radius: 6px; cursor: zoom-in;" onclick="openZoom(this.src)">
+                            </div>
+                        `;
+                    }
+
+                    // Manual evaluation UI for subjective questions
+                    let manualEvaluationHtml = '';
+                    if (qa.questionType === 'subjective' || qa.questionType === 'case-based' || qa.marks > 1) {
+                        const maxMarks = qa.marks || 5;
+                        const awardedMarks = qa.awardedMarks !== undefined ? qa.awardedMarks : null;
+                        
+                        manualEvaluationHtml = `
+                            <div style="background: #fff3e0; padding: 12px; border-radius: 6px; margin: 10px 0; border: 2px solid #f39c12;">
+                                <div style="font-size: 13px; font-weight: bold; color: #d35400; margin-bottom: 8px;">✏️ Manual Evaluation (Max: ${maxMarks} marks)</div>
+                                <div id="marks-display-${index}" style="display: ${awardedMarks !== null ? 'block' : 'none'}; font-size: 16px; font-weight: bold; color: var(--success);">
+                                    ${awardedMarks !== null ? `${awardedMarks}/${maxMarks} marks` : ''}
+                                </div>
+                                <div id="marks-input-${index}" style="display: ${awardedMarks !== null ? 'none' : 'block'};">
+                                    <input type="number" id="marks-q-${index}" data-max-marks="${maxMarks}" value="0" min="0" max="${maxMarks}" step="0.5" 
+                                        style="padding: 8px; width: 100px; border: 2px solid #f39c12; border-radius: 4px; font-size: 14px; font-weight: bold;">
+                                    <button class="btn btn-small" style="background: var(--success); color: white; margin-left: 8px;" 
+                                        onclick="updateSubjectiveMarks('${resultId}', ${index})">Save Marks</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+
                     questionAnalysisHTML += `
                         <div style="background: white; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                             <div style="padding: 12px 15px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; border-left: 4px solid ${qa.isCorrect ? 'var(--success)' : (isSkipped ? '#95a5a6' : 'var(--danger)')};">
@@ -1904,6 +2009,7 @@
                                     <span style="font-size: 12px; padding: 2px 8px; border-radius: 12px; background: ${subColor}; color: white;">${qa.subject}</span>
                                     ${qa.topics && qa.topics.length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${qa.topics.slice(0, 3).join(', ')}</span>` : ''}
                                     ${timeDisplay ? `<span style="font-size: 12px; color: #888;">${timeDisplay}</span>` : ''}
+                                    ${qa.marks ? `<span style="font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #9b59b6; color: white;">${qa.marks} marks</span>` : ''}
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${marks}</span>
@@ -1913,6 +2019,8 @@
                             <div style="padding: 15px;">
                                 <div style="font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 12px; line-height: 1.5;">${qa.question}${qImgHtml}</div>
                                 ${optionsDisplay}
+                                ${answerImageHtml}
+                                ${manualEvaluationHtml}
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                                     <div style="padding: 10px; border-radius: 6px; font-size: 14px; background: #e8f4fd; border: 1px solid #b3d9ff;">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Student Answer</div>
@@ -2021,6 +2129,49 @@
                 } catch (e) {
                     console.error("Error resuming exam:", e);
                     alert("Error resuming exam. Please try again.");
+                }
+            };
+            
+            // Manual evaluation function for subjective questions
+            window.updateSubjectiveMarks = async function(resultId, questionIndex) {
+                const marksInput = document.getElementById(`marks-q-${questionIndex}`);
+                const marks = parseInt(marksInput.value);
+                const maxMarks = parseInt(marksInput.getAttribute('data-max-marks'));
+                
+                if (isNaN(marks) || marks < 0 || marks > maxMarks) {
+                    alert(`Please enter valid marks (0-${maxMarks})`);
+                    return;
+                }
+                
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/update-marks`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            subjectiveMarks: {
+                                [questionIndex]: marks
+                            }
+                        })
+                    });
+                    
+                    const data = await res.json();
+                    
+                    if (res.ok) {
+                        // Update the display
+                        const marksDisplay = document.getElementById(`marks-display-${questionIndex}`);
+                        marksDisplay.innerHTML = `<span style="color: var(--success); font-weight: bold;">${marks}/${maxMarks}</span>`;
+                        marksInput.style.display = 'none';
+                        marksDisplay.style.display = 'block';
+                        alert("Marks updated successfully! ✅");
+                    } else {
+                        alert("Failed to update marks: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("Error updating marks:", e);
+                    alert("Error updating marks. Please try again.");
                 }
             };
 
