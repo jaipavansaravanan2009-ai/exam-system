@@ -588,6 +588,10 @@ async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), user=Depends(a
                     
                     section_val = get_val(row, ["Section", "section"]) or "Single correct answer"
                     numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
+                    question_type = get_val(row, ["QuestionType", "question_type", "Type"]) or "mcq"
+                    assertion_text = get_val(row, ["Assertion", "assertion", "AssertionText"])
+                    reason_text = get_val(row, ["Reason", "reason", "ReasonText"])
+                    case_passage = get_val(row, ["CasePassage", "case_passage", "Passage", "CaseStudy"])
 
                     correct_ans_list = [opt_a_text] if opt_a_text else []
                     if "integer" in section_val.lower() or "numerical" in section_val.lower():
@@ -597,11 +601,16 @@ async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), user=Depends(a
                         "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
                         "subject": get_val(row, ["Subject", "subject"]) or "Physics",
                         "section": section_val,
+                        "questionType": question_type,
                         "question": get_val(row, ["QuestionText", "Question", "question"]),
                         "questionImage": img_q,
                         "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
                         "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
                         "correctAnswers": correct_ans_list,
+                        "correctAnswer": opt_a_text,
+                        "assertion": assertion_text if assertion_text else None,
+                        "reason": reason_text if reason_text else None,
+                        "casePassage": case_passage if case_passage else None,
                         "hint": get_val(row, ["Hint", "hint"]),
                         "solution": get_val(row, ["Solution", "solution"]),
                         "solutionImage": img_sol,
