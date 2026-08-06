@@ -1707,9 +1707,10 @@
                         // Add auto-submit badge if applicable
                         const autoBadge = isAutoSubmitted ? `<span style="background: var(--danger); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 5px; font-weight: bold;">🚫 AUTO</span>` : '';
                         
-                        // Add resume button if auto-submitted
+                        // Add resume and finish buttons if auto-submitted
                         const actionButtons = isAutoSubmitted 
                             ? `<button class="btn btn-success btn-small" onclick="resumeExam('${r.id}')" style="margin-right: 3px;">🔄 Resume</button>
+                               <button class="btn btn-outline btn-small" onclick="finishResult('${r.id}')" style="margin-right: 3px; border-color: #e74c3c; color: #e74c3c;">🏁 Finish</button>
                                <button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 Analysis</button>`
                             : `<button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 View Analysis</button>`;
                         
@@ -1758,6 +1759,40 @@
         } catch (e) {
             console.error("Error resuming exam:", e);
             alert("Error resuming exam. Please try again.");
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    async function finishResult(resultId) {
+        if (!confirm("Are you sure you want to finish this exam?\n\nThis will finalize the result and clear any saved progress. The student will NOT be able to resume this exam.")) {
+            return;
+        }
+        
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = "Finishing... ⏳";
+        btn.disabled = true;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/finish`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert("✅ Exam finalized successfully!\n\nThe result has been marked as completed and saved progress has been cleared.");
+                loadResults(); // Refresh the results list
+            } else {
+                alert("Failed to finish exam: " + (data.detail || "Unknown error"));
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            console.error("Error finishing exam:", e);
+            alert("Error finishing exam. Please try again.");
             btn.innerText = originalText;
             btn.disabled = false;
         }

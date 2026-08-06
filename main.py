@@ -1194,7 +1194,23 @@ async def save_exam_progress(result_payload: dict, user = Depends(authorize(["st
         raise HTTPException(status_code=400, detail="examId is required")
     
     try:
-        progress_data = result_payload.get("progressData", {})
+        # Extract progress fields directly from payload (not from a nested progressData wrapper)
+        progress_data = {
+            "studentAnswers": result_payload.get("studentAnswers", {}),
+            "statusMap": result_payload.get("statusMap", {}),
+            "timeLeft": result_payload.get("timeLeft", 0),
+            "currentIdx": result_payload.get("currentIdx", -1),
+            "currentSub": result_payload.get("currentSub", "Physics"),
+            "questionTimes": result_payload.get("questionTimes", []),
+            "subjectTimes": result_payload.get("subjectTimes", {}),
+            "violationCount": result_payload.get("violationCount", 0),
+            "totalAwayTime": result_payload.get("totalAwayTime", 0),
+            "cheatingViolations": result_payload.get("cheatingViolations", []),
+            "autoSubmitTriggered": result_payload.get("autoSubmitTriggered", False),
+            "requiresAdminResume": result_payload.get("requiresAdminResume", False),
+            "autoSubmittedAt": result_payload.get("autoSubmittedAt"),
+            "autoSubmitReason": result_payload.get("autoSubmitReason", "")
+        }
         
         # Check if progress already exists for this student+exam
         existing_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
@@ -1206,7 +1222,7 @@ async def save_exam_progress(result_payload: dict, user = Depends(authorize(["st
         if existing_doc:
             # Update existing progress
             existing_doc.reference.update({
-                "progressData": progress_data,
+                **progress_data,
                 "updatedAt": datetime.now(timezone.utc)
             })
         else:
@@ -1214,7 +1230,7 @@ async def save_exam_progress(result_payload: dict, user = Depends(authorize(["st
             db.collection("exam_progress").add({
                 "studentId": student_id,
                 "examId": exam_id,
-                "progressData": progress_data,
+                **progress_data,
                 "createdAt": datetime.now(timezone.utc),
                 "updatedAt": datetime.now(timezone.utc)
             })
@@ -1232,7 +1248,6 @@ async def get_exam_progress(exam_id: str, user = Depends(authorize(["student"]))
         existing_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
         for doc in existing_query:
             data = doc.to_dict()
-            progress_data = data.get("progressData", {})
             return {
                 "hasProgress": True,
                 "updatedAt": data.get("updatedAt"),
@@ -1242,7 +1257,17 @@ async def get_exam_progress(exam_id: str, user = Depends(authorize(["student"]))
                 "autoSubmitReason": data.get("autoSubmitReason", ""),
                 "resumedAt": data.get("resumedAt"),
                 "resumedBy": data.get("resumedBy"),
-                **progress_data
+                "studentAnswers": data.get("studentAnswers", {}),
+                "statusMap": data.get("statusMap", {}),
+                "timeLeft": data.get("timeLeft", 0),
+                "currentIdx": data.get("currentIdx", -1),
+                "currentSub": data.get("currentSub", "Physics"),
+                "questionTimes": data.get("questionTimes", []),
+                "subjectTimes": data.get("subjectTimes", {}),
+                "violationCount": data.get("violationCount", 0),
+                "totalAwayTime": data.get("totalAwayTime", 0),
+                "cheatingViolations": data.get("cheatingViolations", []),
+                "autoSubmitTriggered": data.get("autoSubmitTriggered", False)
             }
         
         return {"hasProgress": False}
@@ -1305,6 +1330,40 @@ async def delete_exam_progress(exam_id: str, user = Depends(authorize(["student"
         return {"message": "Progress deleted ✅"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete progress: {str(e)}")
+
+@app.post("/api/admin/results/{result_id}/finish")
+async def finish_result(result_id: str, user = Depends(authorize(["admin"]))):
+    """Finalize an auto-submitted result by clearing saved progress and marking completed"""
+    try:
+        # Get the result document
+        result_ref = db.collection("results").document(result_id)
+        result_doc = result_ref.get()
+        
+        if not result_doc.exists:
+            raise HTTPException(status_code=404, detail="Result not found")
+        
+        result_data = result_doc.to_dict()
+        student_id = result_data.get("studentId")
+        exam_id = result_data.get("examId")
+        
+        # Delete any saved exam progress for this student+exam
+        if student_id and exam_id:
+            progress_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
+            for doc in progress_query:
+                doc.reference.delete()
+        
+        # Mark the result as completed (finalized)
+        result_ref.update({
+            "completed": True,
+            "completedAt": datetime.now(timezone.utc),
+            "completedBy": user.get("id")
+        })
+        
+        return {"message": "Result finalized successfully ✅"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to finish result: {str(e)}")
 
 @app.post("/api/public/exams/submit")
 async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
