@@ -759,40 +759,6 @@
         window.location.href = `take_exam.html?id=${examId}&resume=true`;
     }
 
-    // Check if an auto-submitted exam can be resumed (admin approval status)
-    async function checkResumeStatus(examId) {
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}/resume-status`, {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            
-            if (!res.ok) {
-                alert("Could not check resume status. Please try again.");
-                return;
-            }
-            
-            const data = await res.json();
-            
-            if (data.canResume) {
-                if (data.adminApproved) {
-                    if(confirm("✅ An admin has approved the resume for this exam.\n\nDo you want to continue from where you left off?")) {
-                        window.location.href = `take_exam.html?id=${examId}&resume=true`;
-                    }
-                } else {
-                    if(confirm("You have saved progress for this exam.\n\nDo you want to continue from where you left off?")) {
-                        window.location.href = `take_exam.html?id=${examId}&resume=true`;
-                    }
-                }
-            } else {
-                alert("⛔ " + (data.reason || "This exam cannot be resumed yet. An admin must approve the resume first."));
-            }
-        } catch (e) {
-            console.error("Error checking resume status:", e);
-            alert("Error checking resume status. Please try again.");
-        }
-    }
-
-
     // ============================================
     // TAB 2: MY PAST RESULTS LOGIC
     // ============================================
@@ -830,15 +796,8 @@
                 const isAutoSubmitted = result.autoSubmitted || false;
                 const autoBadge = isAutoSubmitted ? `<span style="background: var(--danger); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 5px; font-weight: bold;">🚫 AUTO</span>` : '';
                 
-                // For auto-submitted results, we need to check if admin has approved the resume
-                let actionButton;
-                if (isAutoSubmitted) {
-                    // Determine if this result can be resumed by checking saved progress status
-                    // We'll fetch resume status for this exam
-                    actionButton = `<button class="btn btn-primary" onclick="checkResumeStatus('${result.examId}')">🔄 Check Resume</button>`;
-                } else {
-                    actionButton = `<button class="btn btn-primary" onclick="viewResultAnalysis('${result.id}')">View Detailed Analysis 📊</button>`;
-                }
+                // All results show only analysis button - no resume option in student portal
+                const actionButton = `<button class="btn btn-primary" onclick="viewResultAnalysis('${result.id}')">View Detailed Analysis 📊</button>`;
 
                 resultsList.innerHTML += `
                     <div class="result-item">

@@ -1172,6 +1172,7 @@ async def get_my_results(user = Depends(authorize(["student"]))):
                 "id": doc.id,
                 "submittedAt": time_str,
                 "autoSubmitted": is_auto_submitted,
+                "completed": data.get("completed", False),
                 **data
             })
             
@@ -1673,7 +1674,8 @@ async def get_all_results(user=Depends(authorize(["admin"]))):
                 "examTitle": data.get("examTitle", "Unknown"),
                 "totalScore": data.get("totalScore", 0),
                 "submittedAt": data.get("submittedAt"),
-                "autoSubmitted": is_auto_submitted
+                "autoSubmitted": is_auto_submitted,
+                "completed": data.get("completed", False)
             })
         return results
     except Exception as e:
