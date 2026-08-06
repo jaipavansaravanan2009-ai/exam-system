@@ -604,6 +604,24 @@
                 attemptedCountMap[examId] = (attemptedCountMap[examId] || 0) + 1;
             });
 
+            // Check for saved exam progress (for admin-resumed exams)
+            const progressMap = {};
+            for (const exam of exams) {
+                try {
+                    const progRes = await fetch(`${BACKEND_URL}/api/public/exams/${exam.id}/progress`, { 
+                        headers: { "Authorization": `Bearer ${token}` } 
+                    });
+                    if (progRes.ok) {
+                        const progData = await progRes.json();
+                        if (progData.hasProgress) {
+                            progressMap[exam.id] = true;
+                        }
+                    }
+                } catch (e) {
+                    // Silently ignore progress check failures
+                }
+            }
+
             exams.forEach(exam => {
                 const qCount = exam.questionCount || 0;
                 const isReady = qCount > 0;
@@ -618,8 +636,11 @@
                     hasAutoSubmittedResult = examResults.some(r => r.autoSubmitted === true);
                 }
 
-                // Skip rendering if already attempted and not auto-submitted
-                if (isAttempted && !hasAutoSubmittedResult) {
+                // Check if there's saved progress (admin may have resumed the exam)
+                const hasSavedProgress = progressMap[exam.id] === true;
+
+                // Skip rendering if already attempted and not auto-submitted and no saved progress
+                if (isAttempted && !hasAutoSubmittedResult && !hasSavedProgress) {
                     return; 
                 }
 
@@ -637,6 +658,26 @@
                             </div>
                             <button class="btn btn-success start-btn" onclick="resumeExam('${exam.id}')">🔄 Resume Exam</button>
                             <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">Your previous progress has been saved. You can continue from where you left off.</p>
+                        </div>
+                    `;
+                    hasAvailableExams = true;
+                    return;
+                }
+
+                // If there's saved progress (admin resumed the exam), show Continue button
+                if (hasSavedProgress) {
+                    grid.innerHTML += `
+                        <div class="exam-card" style="border-top-color: var(--secondary);">
+                            <div class="exam-title">
+                                ${exam.title}
+                                <span style="background: var(--secondary); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px; font-weight: bold;">🔄 RESUMED</span>
+                            </div>
+                            <div class="exam-meta">
+                                <span><b>Questions:</b> ${qCount}</span>
+                                <span><b>Total Marks:</b> ${qCount * 4}</span>
+                            </div>
+                            <button class="btn btn-success start-btn" onclick="resumeExam('${exam.id}')">🔄 Continue Exam</button>
+                            <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">An admin has resumed your exam. Continue from where you left off.</p>
                         </div>
                     `;
                     hasAvailableExams = true;
@@ -684,7 +725,7 @@
     }
 
     async function resumeExam(examId) {
-        if(!confirm("You have a previously auto-submitted exam.\n\nDo you want to resume from where you left off? Your previous answers and progress will be restored.")) {
+        if(!confirm("You have saved progress for this exam.\n\nDo you want to continue from where you left off? Your previous answers and progress will be restored.")) {
             return;
         }
         

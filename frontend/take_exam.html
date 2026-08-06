@@ -1352,8 +1352,12 @@
                  const responseData = await res.json();
                  
                  // Delete saved progress after successful submission
-                 const submitExamId = new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId');
-                 await deleteExamProgress(submitExamId);
+                 // ONLY for normal submissions. For auto-submitted exams (integrity violations),
+                 // keep the progress so an admin can resume the exam for the candidate later.
+                 if (!autoSubmitTriggered) {
+                     const submitExamId = new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId');
+                     await deleteExamProgress(submitExamId);
+                 }
                  
                  // Show success pop-up with score
                  alert(`✅ Exam Submitted Successfully!\n\nYour Score: ${responseData.totalScore}\nCorrect: ${responseData.correctCount}\nIncorrect: ${responseData.incorrectCount}\nNot Attempted: ${responseData.notAttemptedCount}\n\nRedirecting to dashboard...`);

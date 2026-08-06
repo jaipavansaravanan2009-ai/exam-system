@@ -1333,13 +1333,16 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
         # Save result
         db.collection("results").add(result_data)
         
-        # Delete saved progress
-        try:
-            existing_query = db.collection("exam_progress").where("studentId", "==", user.get("id")).where("examId", "==", exam_id).stream()
-            for doc in existing_query:
-                doc.reference.delete()
-        except:
-            pass
+        # Delete saved progress ONLY for normal (non-auto) submissions.
+        # For auto-submitted exams (integrity violations), keep the progress
+        # so an admin can resume the exam for the candidate later.
+        if not auto_submit_triggered:
+            try:
+                existing_query = db.collection("exam_progress").where("studentId", "==", user.get("id")).where("examId", "==", exam_id).stream()
+                for doc in existing_query:
+                    doc.reference.delete()
+            except:
+                pass
         
         return {
             "message": "Exam submitted successfully! ✅",
@@ -1542,6 +1545,17 @@ async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
         
         # Note: We keep the exam_progress intact so student can resume
         # The progress is already saved in the exam_progress collection
+        
+        # Mark the progress as resumed by admin for auditability
+        try:
+            progress_query = db.collection("exam_progress").where("studentId", "==", student_id).where("examId", "==", exam_id).stream()
+            for doc in progress_query:
+                doc.reference.update({
+                    "resumedAt": datetime.now(timezone.utc),
+                    "resumedBy": user.get("id") or "admin"
+                })
+        except Exception as e:
+            print(f"⚠️ Could not mark progress as resumed: {e}")
         
         return {
             "message": "Exam resumed successfully! The student can now continue the exam from where they left off. ✅",
