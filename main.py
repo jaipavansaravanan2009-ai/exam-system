@@ -1374,6 +1374,28 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
         if not exam_id:
             raise HTTPException(status_code=400, detail="Exam ID not found in result")
         
+        # Smart detection: Check if exam was auto-submitted
+        # 1. Check explicit flag
+        # 2. Check violation count (>= 3 means auto-submitted)
+        # 3. Check away time (>= 300s / 5 min means auto-submitted)
+        is_auto_submitted = result_data.get("autoSubmitted", False)
+        
+        if not is_auto_submitted:
+            violation_count = result_data.get("violationCount", result_data.get("totalViolations", 0))
+            total_away_time = result_data.get("totalAwayTime", 0)
+            
+            # Auto-submitted if max violations reached OR max away time exceeded
+            if violation_count >= 3 or total_away_time >= 300:
+                is_auto_submitted = True
+        
+        # Fallback: if violationCount is 0 but cheatingViolations array has entries, use its length
+        violation_count = result_data.get("violationCount", result_data.get("totalViolations", 0))
+        cheating_violations = result_data.get("cheatingViolations", [])
+        if violation_count == 0 and isinstance(cheating_violations, list) and len(cheating_violations) > 0:
+            violation_count = len(cheating_violations)
+            if violation_count >= 3:
+                is_auto_submitted = True
+        
         # Get all results for this exam to calculate rankings
         all_results = db.collection("results").where("examId", "==", exam_id).stream()
         
@@ -1463,10 +1485,10 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
             "subjectTimes": result_data.get("subjectTimes", {}),
             "questionAnalysis": question_analysis,
             "totalStudents": len(scores),
-            "cheatingViolations": result_data.get("cheatingViolations", []),
-            "totalViolations": result_data.get("violationCount", 0),
+            "cheatingViolations": cheating_violations,
+            "totalViolations": violation_count,
             "totalAwayTime": result_data.get("totalAwayTime", 0),
-            "autoSubmitted": result_data.get("autoSubmitted", False),
+            "autoSubmitted": is_auto_submitted,
             "autoSubmitReason": result_data.get("autoSubmitReason", "")
         }
     except HTTPException:
