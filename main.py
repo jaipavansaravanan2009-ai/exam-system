@@ -1484,7 +1484,7 @@ async def get_all_results(user=Depends(authorize(["admin"]))):
             # Smart detection: Check if exam was auto-submitted
             # 1. Check explicit flag (new feature)
             # 2. Check violation count (>= 3 means auto-submitted)
-            # 3. Check away time (>= 30s means auto-submitted)
+            # 3. Check away time (>= 300s / 5 min means auto-submitted)
             is_auto_submitted = data.get("autoSubmitted", False)
             
             # If not explicitly marked, check violation patterns
@@ -1493,7 +1493,7 @@ async def get_all_results(user=Depends(authorize(["admin"]))):
                 total_away_time = data.get("totalAwayTime", 0)
                 
                 # Auto-submitted if max violations reached OR max away time exceeded
-                if violation_count >= 3 or total_away_time >= 30:
+                if violation_count >= 3 or total_away_time >= 300:
                     is_auto_submitted = True
             
             results.append({
@@ -1530,7 +1530,7 @@ async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
             total_away_time = result_data.get("totalAwayTime", 0)
             
             # Auto-submitted if max violations reached OR max away time exceeded
-            if violation_count >= 3 or total_away_time >= 30:
+            if violation_count >= 3 or total_away_time >= 300:
                 is_auto_submitted = True
         
         # Check if it was auto-submitted
