@@ -880,7 +880,12 @@
             if (!res.ok) throw new Error("Exam not found or unauthorized");
             examData = await res.json();
             
-            if (examData.questions) {
+            // ===== CHECK FOR SAVED PROGRESS FIRST (BEFORE SHUFFLING) =====
+            const savedProgress = await restoreExamProgress(examId);
+            
+            // Only shuffle options if this is NOT a resume (fresh exam)
+            // For resumed exams, keep the original order to match saved progress
+            if (!savedProgress && examData.questions) {
                 examData.questions.forEach(q => {
                     if (q.options && q.options.length > 1) {
                         let pairs = q.options.map((text, idx) => ({
@@ -907,9 +912,6 @@
             currentExamId = examId; // Store globally for progress save/delete
 
             document.getElementById("examUI").style.display = "flex";
-            
-            // ===== CHECK FOR SAVED PROGRESS (EMERGENCY RECOVERY) =====
-            const savedProgress = await restoreExamProgress(examId);
             
             if (savedProgress) {
                 // Restore all state from saved progress
