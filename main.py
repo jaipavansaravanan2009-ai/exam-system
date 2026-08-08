@@ -1220,6 +1220,7 @@ async def save_exam_progress(result_payload: dict, user = Depends(authorize(["st
         # Extract progress fields directly from payload (not from a nested progressData wrapper)
         progress_data = {
             "studentAnswers": result_payload.get("studentAnswers", {}),
+            "answerImages": result_payload.get("answerImages", {}),
             "statusMap": result_payload.get("statusMap", {}),
             "timeLeft": result_payload.get("timeLeft", 0),
             "currentIdx": result_payload.get("currentIdx", -1),
@@ -1388,6 +1389,130 @@ async def finish_result(result_id: str, user = Depends(authorize(["admin"]))):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to finish result: {str(e)}")
 
+def compute_exam_score(questions, student_answers, answer_images=None, exam_type=""):
+    """
+    Compute exam score from submitted answers.
+
+    Rules:
+    - MCQ / Assertion-Reasoning questions (Section A of CBSE) are auto-graded.
+      Wrong answers: JEE has a -1 penalty, CBSE has NO negative marking (0 marks).
+    - Subjective questions (CBSE Sections B/C/E) are NOT auto-graded; admin awards
+      marks later (decimals allowed). Counted as attempted if a typed answer OR an
+      answer image was attached.
+    - Case-based questions (CBSE Section D) with sub-questions are auto-graded per
+      subdivision (each sub carries 1 or 2 marks, summing to the question's total).
+    - Legacy multi-mark / case-based questions (non-CBSE) keep the old manual
+      evaluation behaviour.
+    """
+    answer_images = answer_images or {}
+    exam_type = str(exam_type or "").lower()
+    is_cbse = "cbse" in exam_type
+
+    total_score = 0.0
+    correct_count = 0
+    incorrect_count = 0
+    not_attempted_count = 0
+    pending_evaluation_count = 0
+    subject_wise = {}
+
+    for i, q in enumerate(questions):
+        q_id = str(i)
+        student_ans = student_answers.get(q_id)
+        correct_ans = q.get("correctAnswer", "")
+        subject = q.get("subject", "Unknown")
+        question_type = q.get("questionType", "mcq")
+        marks = q.get("marks", 1) or 1
+        image_ans = answer_images.get(q_id)
+
+        if subject not in subject_wise:
+            subject_wise[subject] = {
+                "score": 0,
+                "correct": 0,
+                "incorrect": 0,
+                "notAttempted": 0,
+                "pending": 0,
+                "subjectTotalMarks": 0
+            }
+        subject_wise[subject]["subjectTotalMarks"] += marks
+
+        # --- Case-based question with sub-questions (CBSE Section D) ---
+        sub_questions = q.get("subQuestions") or []
+        if sub_questions:
+            sub_answers = student_ans if isinstance(student_ans, dict) else {}
+            attempted_any = False
+            answered_correct = 0
+            answered_wrong = 0
+            sub_earned = 0.0
+            for s_idx, sq in enumerate(sub_questions):
+                sub_ans = sub_answers.get(str(s_idx))
+                sub_correct = sq.get("correctAnswer", "")
+                sub_marks = float(sq.get("marks", 1) or 1)
+                if sub_ans is not None and sub_ans != "":
+                    attempted_any = True
+                    if sub_ans == sub_correct:
+                        sub_earned += sub_marks
+                        answered_correct += 1
+                    else:
+                        answered_wrong += 1
+            if attempted_any:
+                total_score += sub_earned
+                subject_wise[subject]["score"] += sub_earned
+                if answered_wrong == 0 and answered_correct == len(sub_questions):
+                    correct_count += 1
+                    subject_wise[subject]["correct"] += 1
+                else:
+                    incorrect_count += 1
+                    subject_wise[subject]["incorrect"] += 1
+            else:
+                not_attempted_count += 1
+                subject_wise[subject]["notAttempted"] += 1
+            continue
+
+        # --- Subjective questions (not auto-graded, admin awards marks) ---
+        auto_gated = question_type in ("subjective", "case-based")
+        if not is_cbse:
+            # Preserve legacy behaviour: multi-mark questions were manually evaluated
+            auto_gated = auto_gated or marks > 1
+
+        if auto_gated:
+            has_text = student_ans is not None and student_ans != ""
+            has_image = image_ans is not None and image_ans != ""
+            if has_text or has_image:
+                pending_evaluation_count += 1
+                subject_wise[subject]["pending"] += 1
+            else:
+                not_attempted_count += 1
+                subject_wise[subject]["notAttempted"] += 1
+            continue
+
+        # --- MCQ / Assertion-Reasoning (auto-graded) ---
+        if student_ans is None or student_ans == "":
+            not_attempted_count += 1
+            subject_wise[subject]["notAttempted"] += 1
+        elif student_ans == correct_ans:
+            total_score += float(marks)
+            correct_count += 1
+            subject_wise[subject]["score"] += float(marks)
+            subject_wise[subject]["correct"] += 1
+        else:
+            # Wrong answer: -1 penalty for JEE, no penalty for CBSE
+            if not is_cbse:
+                total_score -= 1
+                subject_wise[subject]["score"] -= 1
+            incorrect_count += 1
+            subject_wise[subject]["incorrect"] += 1
+
+    return {
+        "totalScore": total_score,
+        "totalMarksPossible": float(sum(q.get("marks", 1) or 1 for q in questions)),
+        "correctCount": correct_count,
+        "incorrectCount": incorrect_count,
+        "notAttemptedCount": not_attempted_count,
+        "pendingEvaluationCount": pending_evaluation_count,
+        "subjectWiseBreakdown": subject_wise,
+    }
+
+
 @app.post("/api/public/exams/submit")
 async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
     """Submit exam answers and calculate score"""
@@ -1419,60 +1544,17 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
         exam_data = exam_doc.to_dict()
         questions = exam_data.get("questions", [])
         
-        # Calculate score (only for MCQ/auto-graded questions)
-        total_score = 0
-        correct_count = 0
-        incorrect_count = 0
-        not_attempted_count = 0
-        subject_wise = {}
-        
-        for i, q in enumerate(questions):
-            q_id = str(i)
-            student_ans = student_answers.get(q_id)
-            correct_ans = q.get("correctAnswer", "")
-            subject = q.get("subject", "Unknown")
-            question_type = q.get("questionType", "mcq")
-            marks = q.get("marks", 1)
-            
-            if subject not in subject_wise:
-                subject_wise[subject] = {
-                    "score": 0,
-                    "correct": 0,
-                    "incorrect": 0,
-                    "notAttempted": 0,
-                    "subjectTotalMarks": 0
-                }
-            
-            # Add marks to total
-            subject_wise[subject]["subjectTotalMarks"] += marks
-            
-            # For subjective questions, don't auto-grade (marks will be assigned by admin)
-            if question_type in ["subjective", "case-based"] or marks > 1:
-                if student_ans is not None and student_ans != "":
-                    # Question attempted but not auto-graded
-                    not_attempted_count += 1
-                    subject_wise[subject]["notAttempted"] += 1
-                else:
-                    not_attempted_count += 1
-                    subject_wise[subject]["notAttempted"] += 1
-            else:
-                # MCQ - auto grade
-                if student_ans is None or student_ans == "":
-                    not_attempted_count += 1
-                    subject_wise[subject]["notAttempted"] += 1
-                elif student_ans == correct_ans:
-                    total_score += marks
-                    correct_count += 1
-                    subject_wise[subject]["score"] += marks
-                    subject_wise[subject]["correct"] += 1
-                else:
-                    total_score -= 1  # Negative marking only for MCQs
-                    incorrect_count += 1
-                    subject_wise[subject]["score"] -= 1
-                    subject_wise[subject]["incorrect"] += 1
-        
-        # Calculate total marks possible
-        total_marks_possible = sum(q.get("marks", 1) for q in questions)
+        # Calculate score using centralized grading logic (CBSE-aware)
+        exam_type = exam_data.get("examType", exam_data.get("exam_type", ""))
+        grading = compute_exam_score(questions, student_answers, answer_images, exam_type)
+
+        total_score = grading["totalScore"]
+        correct_count = grading["correctCount"]
+        incorrect_count = grading["incorrectCount"]
+        not_attempted_count = grading["notAttemptedCount"]
+        pending_evaluation_count = grading["pendingEvaluationCount"]
+        subject_wise = grading["subjectWiseBreakdown"]
+        total_marks_possible = grading["totalMarksPossible"]
         
         # Prepare result data
         result_data = {
@@ -1486,7 +1568,9 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
             "correctCount": correct_count,
             "incorrectCount": incorrect_count,
             "notAttemptedCount": not_attempted_count,
+            "pendingEvaluationCount": pending_evaluation_count,
             "subjectWiseBreakdown": subject_wise,
+            "examType": exam_data.get("examType", exam_data.get("exam_type", "")),
             "studentAnswers": student_answers,
             "answerImages": answer_images,
             "statusMap": status_map,
@@ -1535,7 +1619,8 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
             "totalScore": total_score,
             "correctCount": correct_count,
             "incorrectCount": incorrect_count,
-            "notAttemptedCount": not_attempted_count
+            "notAttemptedCount": not_attempted_count,
+            "pendingEvaluationCount": pending_evaluation_count
         }
     except HTTPException:
         raise
@@ -1579,37 +1664,82 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
             if violation_count >= 3:
                 is_auto_submitted = True
         
+        # Build question analysis
+        exam_doc = db.collection("exams").document(exam_id).get()
+        exam_q_data = exam_doc.to_dict() if exam_doc.exists else {}
+        questions = exam_q_data.get("questions", [])
+        exam_type = str(result_data.get("examType", exam_q_data.get("examType", exam_q_data.get("exam_type", ""))) or "")
+        is_cbse = "cbse" in exam_type.lower()
+
+        student_answers = result_data.get("studentAnswers", {})
+        answer_images = result_data.get("answerImages", {})
+        awarded_marks_map = result_data.get("subjectiveMarks", {}) or {}
+
+        def effective_score_for(data):
+            """Auto-graded score + admin-awarded subjective marks."""
+            marks_map = data.get("subjectiveMarks") or {}
+            if marks_map:
+                try:
+                    auto_part = compute_exam_score(questions, data.get("studentAnswers", {}), data.get("answerImages", {}), exam_type)["totalScore"]
+                    awarded_part = sum(float(v) for v in marks_map.values())
+                    return auto_part + awarded_part
+                except Exception:
+                    return float(data.get("totalScore", 0) or 0)
+            return float(data.get("totalScore", 0) or 0)
+
+        def subject_wise_with_awarded(sa_data, im_data, base_swb):
+            """Subject-wise score map including admin-awarded subjective marks."""
+            working = dict(base_swb or {})
+            if awarded_marks_map:
+                graded = compute_exam_score(questions, sa_data, im_data, exam_type)["subjectWiseBreakdown"]
+                working = dict(graded)
+                for k, v in awarded_marks_map.items():
+                    try:
+                        idx = int(k)
+                        if 0 <= idx < len(questions):
+                            subj = questions[idx].get("subject", "Unknown")
+                            if subj not in working:
+                                working[subj] = {"score": 0, "correct": 0, "incorrect": 0, "notAttempted": 0, "pending": 0, "subjectTotalMarks": 0}
+                            working[subj]["score"] = (working[subj].get("score", 0) or 0) + float(v)
+                    except (ValueError, TypeError):
+                        continue
+            return working
+
         # Get all results for this exam to calculate rankings
         all_results = db.collection("results").where("examId", "==", exam_id).stream()
-        
+
         scores = []
         subject_scores = {}
-        
+
         for doc in all_results:
             data = doc.to_dict()
-            score = data.get("totalScore", 0)
+            score = effective_score_for(data)
             scores.append(score)
-            
-            # Collect subject-wise scores
-            swb = data.get("subjectWiseBreakdown", {})
+
+            # Collect subject-wise scores (reference store is already in sync,
+            # but still merge awarded marks for older results)
+            swb = subject_wise_with_awarded(data.get("studentAnswers", {}), data.get("answerImages", {}), data.get("subjectWiseBreakdown", {}))
             for subject, stats in swb.items():
                 if subject not in subject_scores:
                     subject_scores[subject] = []
-                subject_scores[subject].append(stats.get("score", 0))
-        
+                subject_scores[subject].append(stats.get("score", 0) or 0)
+
+        # Current result effective score
+        my_score = effective_score_for(result_data)
+        my_swb = subject_wise_with_awarded(student_answers, answer_images, result_data.get("subjectWiseBreakdown", {}))
+
         # Calculate overall rank
-        my_score = result_data.get("totalScore", 0)
         scores.sort(reverse=True)
         overall_rank = 1
         for s in scores:
             if s > my_score:
                 overall_rank += 1
-        
+
         # Calculate subject ranks
         subject_ranks = {}
         for subject, sub_scores in subject_scores.items():
             sub_scores.sort(reverse=True)
-            my_sub_score = result_data.get("subjectWiseBreakdown", {}).get(subject, {}).get("score", 0)
+            my_sub_score = my_swb.get(subject, {}).get("score", 0) or 0
             rank = 1
             for s in sub_scores:
                 if s > my_sub_score:
@@ -1621,51 +1751,119 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
                 "top": max(sub_scores) if sub_scores else 0,
                 "myScore": my_sub_score
             }
-        
-        # Build question analysis
-        exam_doc = db.collection("exams").document(exam_id).get()
-        questions = exam_doc.to_dict().get("questions", []) if exam_doc.exists else []
-        
+
         question_analysis = []
-        student_answers = result_data.get("studentAnswers", {})
-        answer_images = result_data.get("answerImages", {})
         question_times = result_data.get("questionTimes", [])
-        subjective_marks = result_data.get("subjectiveMarks", {})
-        
+
         for i, q in enumerate(questions):
             q_id = str(i)
             student_ans = student_answers.get(q_id)
             correct_ans = q.get("correctAnswer", "")
-            is_attempted = student_ans is not None and student_ans != ""
-            is_correct = is_attempted and student_ans == correct_ans
-            
+            question_type = q.get("questionType", "mcq")
+            marks = q.get("marks", 1) or 1
+            image_ans = answer_images.get(q_id)
+            sub_questions_lst = q.get("subQuestions") or []
+
             time_spent = None
             if i < len(question_times):
                 time_spent = question_times[i]
-            
-            # Get awarded marks for subjective questions
-            awarded_marks = subjective_marks.get(str(i))
-            
-            question_analysis.append({
+
+            awarded_marks = awarded_marks_map.get(str(i))
+            if awarded_marks is not None:
+                try:
+                    awarded_marks = float(awarded_marks)
+                except (TypeError, ValueError):
+                    awarded_marks = None
+
+            base = {
                 "question": q.get("question", ""),
                 "questionImage": q.get("questionImage"),
+                "casePassage": q.get("casePassage"),
                 "options": q.get("options", []),
                 "optionImages": q.get("optionImages", []),
                 "correctAnswer": correct_ans,
-                "studentAnswer": student_ans if is_attempted else None,
-                "isAttempted": is_attempted,
-                "isCorrect": is_correct,
                 "subject": q.get("subject", "Unknown"),
                 "topics": q.get("topics", []),
                 "timeSpent": time_spent,
+                "section": q.get("section", ""),
                 "solution": q.get("solution", ""),
                 "solutionImage": q.get("solutionImage"),
-                "questionType": q.get("questionType", "mcq"),
-                "marks": q.get("marks", 1),
-                "answerImage": answer_images.get(str(i)),
-                "awardedMarks": awarded_marks
+                "questionType": question_type,
+                "marks": marks,
+                "answerImage": image_ans,
+                "awardedMarks": awarded_marks,
+                "scoredMarks": 0
+            }
+
+            # ---- Case-based with sub-questions (CBSE Section D) - auto graded ----
+            if sub_questions_lst:
+                sub_answers = student_ans if isinstance(student_ans, dict) else {}
+                sub_analysis = []
+                scored_sub_marks = 0.0
+                attempted_any = False
+                all_correct = True
+                for s_idx, sq in enumerate(sub_questions_lst):
+                    s_ans = sub_answers.get(str(s_idx))
+                    s_correct = sq.get("correctAnswer", "")
+                    s_marks = float(sq.get("marks", 1) or 1)
+                    s_attempted = s_ans is not None and s_ans != ""
+                    s_correct_flag = s_attempted and s_ans == s_correct
+                    if s_attempted:
+                        attempted_any = True
+                    if not s_correct_flag:
+                        all_correct = False
+                    if s_correct_flag:
+                        scored_sub_marks += s_marks
+                    sub_analysis.append({
+                        "subQuestion": sq.get("q", ""),
+                        "options": sq.get("options", []),
+                        "optionImages": sq.get("optionImages", []),
+                        "correctAnswer": s_correct,
+                        "studentAnswer": s_ans if s_attempted else None,
+                        "isAttempted": s_attempted,
+                        "isCorrect": s_correct_flag,
+                        "marks": s_marks,
+                        "scoredMarks": s_marks if s_correct_flag else 0
+                    })
+                base.update({
+                    "subQuestions": sub_analysis,
+                    "studentAnswer": None,
+                    "isAttempted": attempted_any,
+                    "isCorrect": attempted_any and all_correct,
+                    "scoredMarks": scored_sub_marks,
+                })
+                question_analysis.append(base)
+                continue
+
+            # ---- Subjective questions (admin evaluated) ----
+            auto_gated = question_type in ("subjective", "case-based")
+            if not is_cbse:
+                auto_gated = auto_gated or marks > 1
+            if auto_gated:
+                has_text = student_ans is not None and student_ans != ""
+                has_image = image_ans is not None and image_ans != ""
+                is_attempted = has_text or has_image
+                base.update({
+                    "studentAnswer": student_ans if has_text else None,
+                    "isAttempted": is_attempted,
+                    "isCorrect": False,
+                    "scoredMarks": (awarded_marks or 0),
+                })
+                question_analysis.append(base)
+                continue
+
+            # ---- Auto-graded MCQ / Assertion-Reasoning (CBSE Section A) ----
+            is_attempted = student_ans is not None and student_ans != ""
+            is_correct = is_attempted and student_ans == correct_ans
+            base.update({
+                "studentAnswer": student_ans if is_attempted else None,
+                "isAttempted": is_attempted,
+                "isCorrect": is_correct,
+                "scoredMarks": float(marks) if is_correct else 0,
             })
+            question_analysis.append(base)
         
+        auto_counts = compute_exam_score(questions, student_answers, answer_images, exam_type)
         return {
             "overall": {
                 "myScore": my_score,
@@ -1675,8 +1873,13 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
             },
             "subjects": subject_ranks,
             "subjectTimes": result_data.get("subjectTimes", {}),
+            "subjectWiseBreakdown": my_swb,
             "questionAnalysis": question_analysis,
             "totalStudents": len(scores),
+            "totalMarksPossible": auto_counts["totalMarksPossible"],
+            "pendingEvaluationCount": auto_counts["pendingEvaluationCount"],
+            "manuallyEvaluated": bool(result_data.get("manuallyEvaluated", False)),
+            "examType": exam_type,
             "cheatingViolations": cheating_violations,
             "totalViolations": violation_count,
             "totalAwayTime": result_data.get("totalAwayTime", 0),
@@ -1720,7 +1923,10 @@ async def get_all_results(user=Depends(authorize(["admin"]))):
                 "totalScore": data.get("totalScore", 0),
                 "submittedAt": data.get("submittedAt"),
                 "autoSubmitted": is_auto_submitted,
-                "completed": data.get("completed", False)
+                "completed": data.get("completed", False),
+                "examType": data.get("examType", ""),
+                "manuallyEvaluated": bool(data.get("manuallyEvaluated", False)),
+                "pendingEvaluationCount": data.get("pendingEvaluationCount", 0)
             })
         return results
     except Exception as e:
@@ -1801,26 +2007,89 @@ app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 
 @app.post("/api/admin/results/{result_id}/update-marks")
 async def update_subjective_marks(result_id: str, request: Request, user=Depends(authorize(["admin"]))):
-    """Update marks for subjective questions in a result"""
+    """Update marks for subjective questions in a result.
+
+    Accepts decimal marks (e.g. 1.5) for CBSE subjective sections and
+    recomputes + persists the final total score so rankings stay accurate.
+    """
     try:
         body = await request.json()
-        subjective_marks = body.get("subjectiveMarks", {})
-        
+        raw_marks = body.get("subjectiveMarks", {}) or {}
+
         result_ref = db.collection("results").document(result_id)
         result_doc = result_ref.get()
-        
+
         if not result_doc.exists:
             raise HTTPException(status_code=404, detail="Result not found")
-        
-        # Update the result with subjective marks
+
+        result_data = result_doc.to_dict()
+
+        # Fetch the exam questions to validate max marks per question
+        exam_id = result_data.get("examId")
+        questions = []
+        if exam_id:
+            exam_doc = db.collection("exams").document(exam_id).get()
+            if exam_doc.exists:
+                questions = exam_doc.to_dict().get("questions", [])
+
+        # Normalize + validate marks (decimals allowed, e.g. 1.5)
+        subjective_marks = {}
+        for k, v in raw_marks.items():
+            try:
+                idx = int(k)
+                val = float(v)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Marks must be numeric values")
+            if val < 0:
+                raise HTTPException(status_code=400, detail="Marks cannot be negative")
+            max_marks = 0
+            if 0 <= idx < len(questions):
+                max_marks = float(questions[idx].get("marks", 0) or 0)
+            if val > max_marks:
+                raise HTTPException(status_code=400, detail=f"Marks for question {idx + 1} cannot exceed {max_marks}")
+            subjective_marks[str(idx)] = val
+
+        # Recompute the full score (auto-graded + admin-awarded subjective marks)
+        student_answers = result_data.get("studentAnswers", {})
+        answer_images = result_data.get("answerImages", {})
+        exam_type = result_data.get("examType", "")
+        grading = compute_exam_score(questions, student_answers, answer_images, exam_type)
+
+        awarded_total = float(sum(subjective_marks.values()))
+        new_total_score = float(grading["totalScore"]) + awarded_total
+
+        # Merge awarded marks into subject-wise scores
+        subject_wise = grading["subjectWiseBreakdown"]
+        for k, v in subjective_marks.items():
+            try:
+                idx = int(k)
+                if 0 <= idx < len(questions):
+                    subj = questions[idx].get("subject", "Unknown")
+                    if subj not in subject_wise:
+                        subject_wise[subj] = {"score": 0, "correct": 0, "incorrect": 0, "notAttempted": 0, "pending": 0, "subjectTotalMarks": 0}
+                    subject_wise[subj]["score"] = (subject_wise[subj].get("score", 0) or 0) + float(v)
+            except (ValueError, TypeError):
+                continue
+
+        # Update the result with subjective marks + recomputed final score
         result_ref.update({
             "subjectiveMarks": subjective_marks,
             "manuallyEvaluated": True,
             "evaluatedBy": user.get("id"),
-            "evaluatedAt": datetime.now(timezone.utc)
+            "evaluatedAt": datetime.now(timezone.utc),
+            "totalScore": new_total_score,
+            "subjectWiseBreakdown": subject_wise,
+            "correctCount": grading["correctCount"],
+            "incorrectCount": grading["incorrectCount"],
+            "notAttemptedCount": grading["notAttemptedCount"],
+            "pendingEvaluationCount": max(grading["pendingEvaluationCount"] - len(subjective_marks), 0)
         })
-        
-        return {"message": "Marks updated successfully! ✅"}
+
+        return {
+            "message": "Marks updated successfully! ✅",
+            "totalScore": new_total_score,
+            "totalMarksPossible": grading["totalMarksPossible"]
+        }
     except HTTPException:
         raise
     except Exception as e:

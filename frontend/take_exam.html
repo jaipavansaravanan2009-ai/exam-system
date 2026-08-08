@@ -376,6 +376,7 @@
     let currentIdx = -1;
     let currentSub = 'Physics';
     let studentAnswers = {};
+    let answerImages = {}; // questionIndex -> base64 image for subjective answers
     let statusMap = {};
     let selectedOptionIndex = {}; // Track selected option index for visual restoration
     let timeLeft = 180 * 60;
@@ -402,6 +403,7 @@
         const progressPayload = {
             examId: examId,
             studentAnswers: studentAnswers,
+            answerImages: answerImages,
             statusMap: statusMap,
             timeLeft: timeLeft,
             currentIdx: currentIdx,
@@ -931,6 +933,7 @@
             if (savedProgress) {
                 // Restore all state from saved progress
                 studentAnswers = savedProgress.studentAnswers || {};
+                answerImages = savedProgress.answerImages || {};
                 statusMap = savedProgress.statusMap || {};
                 timeLeft = savedProgress.timeLeft || timeLeft;
                 currentIdx = savedProgress.currentIdx ?? -1;
@@ -1092,7 +1095,51 @@
         }
 
         const optDiv = document.getElementById("optionsList");
-        if (q.options && q.options.length > 1) {
+        // ================= CASE-BASED (CBSE Section D) =================
+        if (q.subQuestions && q.subQuestions.length) {
+            let html = "";
+            if (q.casePassage) {
+                html += `<div style="background:#f0f4f8;border:1px solid #cfd8e3;border-left:4px solid var(--secondary);padding:14px;border-radius:6px;margin-bottom:18px;font-size:15px;line-height:1.6;">
+                    <div style="font-weight:bold;color:var(--secondary);margin-bottom:6px;">📖 Case Study / Passage</div>
+                    ${q.casePassage}</div>`;
+            }
+            let subAnswers = {};
+            if (studentAnswers[index] && typeof studentAnswers[index] === 'object' && !Array.isArray(studentAnswers[index])) {
+                subAnswers = studentAnswers[index];
+            }
+            q.subQuestions.forEach((sq, si) => {
+                const sel = subAnswers[String(si)];
+                let subOptHTML = "";
+                (sq.options || []).forEach((opt, oi) => {
+                    const checked = sel !== undefined && sel === opt ? 'checked' : '';
+                    const optAttr = String(opt).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                    subOptHTML += `<div class="opt-row ${checked ? 'selected' : ''}" onclick="handleRowClick(this)">
+                        <label>
+                            <input type="radio" name="sub-${si}" value="${oi}" data-sub="${si}" data-opt="${optAttr}" ${checked} style="margin-right:12px;transform:scale(1.2);">
+                            <span style="font-size:15px;">${opt}</span>
+                        </label></div>`;
+                });
+                html += `<div style="background:#fafbfc;border:1px solid #e0e0e0;border-radius:6px;padding:12px;margin-bottom:14px;">
+                    <div style="font-weight:600;color:var(--primary);margin-bottom:8px;">(${String.fromCharCode(97 + si)}) ${sq.q} <span style="color:#8e44ad;font-size:12px;">[${sq.marks || 1} mark${(sq.marks || 1) > 1 ? 's' : ''}]</span></div>
+                    ${subOptHTML}</div>`;
+            });
+            optDiv.innerHTML = html;
+            optDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        const si = this.getAttribute('data-sub');
+                        const opt = this.getAttribute('data-opt');
+                        if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') studentAnswers[currentIdx] = {};
+                        studentAnswers[currentIdx][si] = opt;
+                        statusMap[currentIdx] = 'answered';
+                        updateRowStyles(this);
+                        renderPalette();
+                    }
+                });
+            });
+        }
+        // ================= MCQ / Assertion-Reasoning (CBSE Section A) =================
+        else if (q.options && q.options.length > 1 && q.questionType !== 'subjective') {
             let optionsHTML = "";
             
             q.options.forEach((opt, idx) => {
@@ -1130,7 +1177,7 @@
                 }
             });
         });
-        } else {
+        } else if (q.questionType === 'integer' || (q.section && String(q.section).toLowerCase().includes('integer'))) {
             optDiv.innerHTML = `<input type="number" step="any" id="numAns" value="${studentAnswers[index] !== undefined ? studentAnswers[index] : ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px; border: 2px solid #ccc; border-radius: 4px;">`;
             
             // Add input listener for numeric answers
@@ -1142,6 +1189,52 @@
                         statusMap[currentIdx] = 'answered';
                         renderPalette();
                     }
+                });
+            }
+        }
+        // ================= Subjective (CBSE Sections B/C/E) : text + image upload =================
+        else if (q.questionType === 'subjective' || (!q.subQuestions && !(q.options && q.options.length > 1) && q.questionType !== 'integer')) {
+            let subjHTML = "";
+            if (q.casePassage) {
+                subjHTML += `<div style="background:#f0f4f8;border:1px solid #cfd8e3;border-left:4px solid var(--secondary);padding:14px;border-radius:6px;margin-bottom:18px;font-size:15px;line-height:1.6;">
+                    <div style="font-weight:bold;color:var(--secondary);margin-bottom:6px;">📖 Passage</div>
+                    ${q.casePassage}</div>`;
+            }
+            const existingText = (studentAnswers[index] !== undefined && typeof studentAnswers[index] === 'string') ? studentAnswers[index] : '';
+            const existingImg = answerImages[index] || '';
+            subjHTML += `
+                <div style="margin-top:4px;background:#fefaf3;border:1px solid #f0d9a8;border-radius:6px;padding:14px;">
+                    <div style="font-weight:600;color:#b9770e;margin-bottom:10px;">✍️ Write / Upload your answer (the admin will evaluate this)</div>
+                    <textarea id="subjectiveAns" rows="5" placeholder="Type your answer here (optional)... or upload a clear image of your handwritten answer below." style="width:100%;padding:10px;font-size:15px;border:2px solid #ccc;border-radius:6px;resize:vertical;box-sizing:border-box;">${existingText}</textarea>
+                    <div style="margin-top:14px;">
+                        <div style="font-weight:600;color:#8e44ad;margin-bottom:8px;">📸 Attach Answer Image</div>
+                        <input type="file" accept="image/*" id="answerFileInput" style="display:none;">
+                        <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="document.getElementById('answerFileInput').click()">📷 Upload / Capture Image</button>
+                        <button type="button" class="btn" style="background:#95a5a6;color:#fff;margin-left:8px;" onclick="removeAnswerImage()">🗑️ Remove Image</button>
+                    </div>
+                    <div id="answerImagePreview" style="margin-top:10px;${existingImg ? '' : 'display:none;'}">
+                        ${existingImg ? `<img src="${existingImg}" style="max-width:100%;max-height:260px;border:2px solid var(--secondary);border-radius:6px;cursor:zoom-in;" onclick="openZoom(this.src)">` : ''}
+                    </div>
+                </div>`;
+            optDiv.innerHTML = subjHTML;
+
+            const subjTa = document.getElementById("subjectiveAns");
+            if (subjTa) {
+                subjTa.addEventListener('input', function() {
+                    if (this.value.trim() !== "") {
+                        studentAnswers[currentIdx] = this.value;
+                        statusMap[currentIdx] = 'answered';
+                    } else if (!answerImages[currentIdx]) {
+                        delete studentAnswers[currentIdx];
+                        statusMap[currentIdx] = 'visited';
+                    }
+                    renderPalette();
+                });
+            }
+            const subjFi = document.getElementById("answerFileInput");
+            if (subjFi) {
+                subjFi.addEventListener('change', function() {
+                    if (this.files && this.files[0]) handleAnswerImageSelect(this.files[0]);
                 });
             }
         }
@@ -1188,19 +1281,36 @@
     function saveAndNext() {
         if (currentIdx === -1) return;
         
-        const radioSel = document.querySelector('input[name="ans"]:checked');
-        const numSel = document.getElementById("numAns");
+        const q = examData.questions[currentIdx];
+        const isCaseBased = q && q.subQuestions && q.subQuestions.length;
+        const isMcq = !isCaseBased && q && q.options && q.options.length > 1;
+        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && String(q.section).toLowerCase().includes('integer')));
         
-        if (radioSel) {
-            const selectedIdx = parseInt(radioSel.value);
-            selectedOptionIndex[currentIdx] = selectedIdx;
-            studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
-            statusMap[currentIdx] = 'answered';
-        } else if (numSel && numSel.value !== "") {
-            studentAnswers[currentIdx] = numSel.value;
-            statusMap[currentIdx] = 'answered';
+        if (isCaseBased) {
+            const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
+            const subKeys = Object.keys(subAns).filter(k => subAns[k] !== undefined && subAns[k] !== '');
+            statusMap[currentIdx] = subKeys.length > 0 ? 'answered' : 'visited';
+        } else if (!isMcq && !isInteger) {
+            // Subjective question (text / image answer)
+            const subjTa = document.getElementById("subjectiveAns");
+            const hasText = subjTa && subjTa.value.trim() !== "";
+            const hasImg = !!answerImages[currentIdx];
+            if (hasText) studentAnswers[currentIdx] = subjTa.value;
+            statusMap[currentIdx] = (hasText || hasImg) ? 'answered' : 'visited';
         } else {
-            statusMap[currentIdx] = 'visited';
+            const radioSel = document.querySelector('input[name="ans"]:checked');
+            const numSel = document.getElementById("numAns");
+            if (radioSel) {
+                const selectedIdx = parseInt(radioSel.value);
+                selectedOptionIndex[currentIdx] = selectedIdx;
+                studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
+                statusMap[currentIdx] = 'answered';
+            } else if (numSel && numSel.value !== "") {
+                studentAnswers[currentIdx] = numSel.value;
+                statusMap[currentIdx] = 'answered';
+            } else {
+                statusMap[currentIdx] = 'visited';
+            }
         }
         nextLogic();
     }
@@ -1208,19 +1318,36 @@
     function markForReview() {
         if (currentIdx === -1) return;
         
-        const radioSel = document.querySelector('input[name="ans"]:checked');
-        const numSel = document.getElementById("numAns");
+        const q = examData.questions[currentIdx];
+        const isCaseBased = q && q.subQuestions && q.subQuestions.length;
+        const isMcq = !isCaseBased && q && q.options && q.options.length > 1;
+        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && String(q.section).toLowerCase().includes('integer')));
         
-        if (radioSel) {
-            const selectedIdx = parseInt(radioSel.value);
-            selectedOptionIndex[currentIdx] = selectedIdx;
-            studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
-            statusMap[currentIdx] = 'review-answered';
-        } else if (numSel && numSel.value !== "") {
-            studentAnswers[currentIdx] = numSel.value;
-            statusMap[currentIdx] = 'review-answered';
+        if (isCaseBased) {
+            const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
+            const subKeys = Object.keys(subAns).filter(k => subAns[k] !== undefined && subAns[k] !== '');
+            statusMap[currentIdx] = subKeys.length > 0 ? 'review-answered' : 'review';
+        } else if (!isMcq && !isInteger) {
+            // Subjective question (text / image answer)
+            const subjTa = document.getElementById("subjectiveAns");
+            const hasText = subjTa && subjTa.value.trim() !== "";
+            const hasImg = !!answerImages[currentIdx];
+            if (hasText) studentAnswers[currentIdx] = subjTa.value;
+            statusMap[currentIdx] = (hasText || hasImg) ? 'review-answered' : 'review';
         } else {
-            statusMap[currentIdx] = 'review';
+            const radioSel = document.querySelector('input[name="ans"]:checked');
+            const numSel = document.getElementById("numAns");
+            if (radioSel) {
+                const selectedIdx = parseInt(radioSel.value);
+                selectedOptionIndex[currentIdx] = selectedIdx;
+                studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
+                statusMap[currentIdx] = 'review-answered';
+            } else if (numSel && numSel.value !== "") {
+                studentAnswers[currentIdx] = numSel.value;
+                statusMap[currentIdx] = 'review-answered';
+            } else {
+                statusMap[currentIdx] = 'review';
+            }
         }
         nextLogic();
     }
@@ -1245,15 +1372,90 @@
         if (currentIdx === -1) return;
         
         delete studentAnswers[currentIdx];
+        delete answerImages[currentIdx];
         statusMap[currentIdx] = 'visited'; 
         
-        const radios = document.querySelectorAll('input[name="ans"]');
+        const radios = document.querySelectorAll('input[type="radio"]');
         radios.forEach(r => r.checked = false);
         document.querySelectorAll('.opt-row').forEach(row => row.classList.remove('selected')); 
         
         const numInput = document.getElementById("numAns");
         if(numInput) numInput.value = "";
         
+        const subjTa = document.getElementById("subjectiveAns");
+        if(subjTa) subjTa.value = "";
+        const subjFi = document.getElementById("answerFileInput");
+        if(subjFi) subjFi.value = "";
+        const prev = document.getElementById("answerImagePreview");
+        if(prev) prev.style.display = 'none';
+        
+        renderPalette();
+    }
+
+    // ===== ANSWER IMAGE UPLOAD FOR SUBJECTIVE QUESTIONS =====
+    async function compressAnswerImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    let scale = 1;
+                    const MAX_DIM = 1200;
+                    if (img.width > MAX_DIM || img.height > MAX_DIM) {
+                        scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height);
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    try {
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    } catch (err) {
+                        resolve(e.target.result);
+                    }
+                };
+                img.onerror = function() { resolve(e.target.result); };
+                img.src = e.target.result;
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handleAnswerImageSelect(file) {
+        if (!file) return;
+        try {
+            const dataUrl = await compressAnswerImage(file);
+            answerImages[currentIdx] = dataUrl;
+            statusMap[currentIdx] = 'answered';
+            const prev = document.getElementById("answerImagePreview");
+            if (prev) {
+                const img = prev.querySelector('img');
+                if (img) {
+                    img.src = dataUrl;
+                } else {
+                    prev.innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:260px;border:2px solid var(--secondary);border-radius:6px;cursor:zoom-in;" onclick="openZoom(this.src)">`;
+                }
+                prev.style.display = 'block';
+            }
+            renderPalette();
+        } catch (e) {
+            console.error(e);
+            alert("Failed to read image. Please try another file.");
+        }
+    }
+
+    function removeAnswerImage() {
+        delete answerImages[currentIdx];
+        const fi = document.getElementById("answerFileInput");
+        if (fi) fi.value = "";
+        const prev = document.getElementById("answerImagePreview");
+        if (prev) prev.style.display = 'none';
+        const subjTa = document.getElementById("subjectiveAns");
+        if ((!subjTa || subjTa.value.trim() === "") && (studentAnswers[currentIdx] === undefined || typeof studentAnswers[currentIdx] === 'object')) {
+            delete studentAnswers[currentIdx];
+            statusMap[currentIdx] = 'visited';
+        }
         renderPalette();
     }
 
@@ -1312,13 +1514,38 @@
                      subjectWiseData[subject].markedForReviewCount++;
                 }
                 
-                if (studentAns !== undefined && studentAns !== null && studentAns !== "") { 
-                    if (studentAns == correctAns) { 
+                const subQ = q.subQuestions && q.subQuestions.length;
+                const isSubjective = !subQ && (q.questionType === 'subjective' || !(q.options && q.options.length > 1) || q.marks > 1);
+                const attempted = studentAns !== undefined && studentAns !== null && studentAns !== "" && !(typeof studentAns === 'object' && Object.keys(studentAns).length === 0);
+                const hasImage = !!answerImages[i];
+
+                if (subQ) {
+                    // Case-based: auto-graded subdivisions
+                    const subArr = (studentAns && typeof studentAns === 'object') ? studentAns : {};
+                    if (Object.keys(subArr).filter(k => subArr[k] !== undefined && subArr[k] !== '').length > 0) {
+                        subjectWiseData[subject].attempted = (subjectWiseData[subject].attempted || 0) + 1;
                         subjectWiseData[subject].correct++;
-                        subjectWiseData[subject].score += 4;
+                    } else {
+                        subjectWiseData[subject].notAttempted++;
+                    }
+                    return;
+                }
+                
+                if (isSubjective) {
+                    if (attempted || hasImage) {
+                        subjectWiseData[subject].correct++;
+                    } else {
+                        subjectWiseData[subject].notAttempted++;
+                    }
+                    return;
+                }
+                
+                if (attempted) {
+                    if (studentAns == correctAns) {
+                        subjectWiseData[subject].correct++;
+                        subjectWiseData[subject].score += q.marks || 1;
                     } else {
                         subjectWiseData[subject].incorrect++;
-                        subjectWiseData[subject].score -= 1;
                     }
                 } else {
                     subjectWiseData[subject].notAttempted++;
@@ -1345,6 +1572,7 @@
             examId: new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId'),
             subjectWiseBreakdown: subjectWiseData,
             studentAnswers: studentAnswers,
+            answerImages: answerImages,
             statusMap: statusMap,
             questionTimes: questionTimes,
             subjectTimes: subjectTimes,

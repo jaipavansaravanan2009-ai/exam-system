@@ -577,6 +577,13 @@
             <label style="font-size: 12px; font-weight: bold;">Case Passage / Study Material (for Case Based questions):</label>
             <textarea id="casePassage" rows="4" placeholder="Enter the case study passage/material here..." style="width: 100%; font-family: inherit; resize: vertical;"></textarea>
         </div>
+
+        <div id="caseSubQuestionsContainer" style="display: none; margin-top: 10px; padding: 15px; background: #fdf2f8; border-radius: 6px; border: 1px dashed #d63384;">
+            <label style="font-size: 13px; font-weight: bold; color: #d63384; margin-bottom: 10px; display: block;">📚 Section D Sub-Questions (3-4 MCQs, marks 1 or 2 each, total MUST be 4 — auto-graded, no manual evaluation)</label>
+            <div id="caseSubQuestionsList"></div>
+            <div style="margin-top: 8px; font-size: 11px; color: #777;" id="caseSubTotalMarks">Total marks: 0 / 4</div>
+            <button type="button" class="btn btn-small" onclick="addCaseSubQuestion()" style="background: #d63384; color: #fff; margin-top: 8px; font-size: 12px;">➕ Add Sub-Question</button>
+        </div>
         
         <div id="assertionReasonContainer" style="display: none; margin-top: 10px; padding: 15px; background: #f0f8ff; border-radius: 6px; border: 1px dashed #2e86c1;">
             <label style="font-size: 13px; font-weight: bold; color: var(--secondary); margin-bottom: 10px; display: block;">📝 Assertion-Reasoning Format</label>
@@ -1510,6 +1517,7 @@
         const optCon = document.getElementById("examOptionsContainer");
         const intCon = document.getElementById("examIntegerContainer");
         const caseCon = document.getElementById("casePassageContainer");
+        const subCon = document.getElementById("caseSubQuestionsContainer");
         const arCon = document.getElementById("assertionReasonContainer");
         const questionTypeSelect = document.getElementById("questionType");
         
@@ -1525,9 +1533,19 @@
         // Show/hide case passage container
         if(sec.includes("CBSE Section D") || sec.includes("case-based")) {
             caseCon.style.display = "block";
+            subCon.style.display = sec.includes("CBSE Section D") ? "block" : "none";
         } else {
             caseCon.style.display = "none";
+            subCon.style.display = "none";
         }
+        
+        // Auto-set marks for CBSE sections
+        const qMarksEl = document.getElementById("questionMarks");
+        if (sec.includes("CBSE Section A")) qMarksEl.value = "1";
+        else if (sec.includes("CBSE Section B")) qMarksEl.value = "2";
+        else if (sec.includes("CBSE Section C")) qMarksEl.value = "3";
+        else if (sec.includes("CBSE Section D")) qMarksEl.value = "4";
+        else if (sec.includes("CBSE Section E")) qMarksEl.value = "5";
         
         // Show/hide assertion-reasoning container
         if(questionTypeSelect.value === "assertion-reasoning") {
@@ -1540,6 +1558,10 @@
         if(sec === "Integer based question") {
             optCon.style.display = "none";
             intCon.style.display = "block";
+        } else if(sec.includes("CBSE Section D")) {
+            // Section D uses sub-question editor, not the main options
+            optCon.style.display = "none";
+            intCon.style.display = "none";
         } else if(sec.includes("CBSE Section B") || sec.includes("CBSE Section C") || sec.includes("CBSE Section E")) {
             // Subjective questions - no options
             optCon.style.display = "none";
@@ -1559,12 +1581,110 @@
     function handleQuestionTypeChange() {
         const qType = document.getElementById("questionType").value;
         const caseContainer = document.getElementById("casePassageContainer");
+        const subCon = document.getElementById("caseSubQuestionsContainer");
+        const sec = document.getElementById("examQuestionSection").value;
         
-        if(qType === "case-based") {
+        if(qType === "case-based" || sec.includes("CBSE Section D")) {
             caseContainer.style.display = "block";
+            subCon.style.display = (sec.includes("CBSE Section D")) ? "block" : "none";
         } else {
             caseContainer.style.display = "none";
+            subCon.style.display = "none";
         }
+        updateCaseSubTotalMarks();
+    }
+
+    // ===== SECTION D SUB-QUESTION EDITOR (case-based) =====
+    let caseSubQuestions = [];
+
+    function addCaseSubQuestion(data) {
+        data = data || {};
+        caseSubQuestions.push({
+            q: data.q || "",
+            options: Array.isArray(data.options) && data.options.length >= 2 ? data.options.slice(0, 4) : ["", "", "", ""],
+            correctAnswer: data.correctAnswer || (data.options && data.options[0]) || "A",
+            marks: parseInt(data.marks) || 1
+        });
+        renderCaseSubQuestions();
+    }
+
+    function removeCaseSubQuestion(idx) {
+        caseSubQuestions.splice(idx, 1);
+        renderCaseSubQuestions();
+    }
+
+    function renderCaseSubQuestions() {
+        const list = document.getElementById("caseSubQuestionsList");
+        if (!list) return;
+        list.innerHTML = "";
+        if (!caseSubQuestions.length) {
+            list.innerHTML = '<div style="font-size:12px;color:#999;font-style:italic;">No sub-questions yet. Add 3-4 sub-questions totalling 4 marks.</div>';
+        }
+        const letters = ['A', 'B', 'C', 'D'];
+        caseSubQuestions.forEach((sq, idx) => {
+            let optHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">';
+            for (let oi = 0; oi < 4; oi++) {
+                optHTML += `<div><input type="text" class="cas-sub-opt" data-idx="${idx}" data-oi="${oi}" value="${(sq.options[oi] || '').replace(/"/g, '&quot;')}" placeholder="Option ${letters[oi]}"></div>`;
+            }
+            optHTML += '</div>';
+            let selOpts = '';
+            for (let oi = 0; oi < 4; oi++) {
+                const isSel = sq.correctAnswer === (sq.options[oi] || '') || (sq.correctAnswer === letters[oi] && oi === 0);
+                selOpts += `<option value="${letters[oi]}" ${isSel ? 'selected' : ''}>${letters[oi]}</option>`;
+            }
+            list.innerHTML += `
+                <div style="background:#fff;border:1px solid #e0b3d1;border-radius:6px;padding:12px;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <strong style="color:#d63384;">Sub-Question ${idx + 1}</strong>
+                        <button type="button" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="removeCaseSubQuestion(${idx})">🗑️ Remove</button>
+                    </div>
+                    <input type="text" class="cas-sub-q" data-idx="${idx}" value="${(sq.q || '').replace(/"/g, '&quot;')}" placeholder="Enter sub-question text..." style="width:100%;margin-top:8px;padding:8px;border:2px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                    ${optHTML}
+                    <div style="display:flex;gap:12px;margin-top:10px;align-items:center;flex-wrap:wrap;">
+                        <span style="font-size:12px;color:#555;">Correct Answer:</span>
+                        <select class="cas-sub-correct" data-idx="${idx}" style="padding:6px;border:2px solid #ccc;border-radius:4px;">${selOpts}</select>
+                        <span style="font-size:12px;color:#555;">Marks:</span>
+                        <select class="cas-sub-marks" data-idx="${idx}" style="padding:6px;border:2px solid #ccc;border-radius:4px;">
+                            <option value="1" ${(parseInt(sq.marks) || 1) === 1 ? 'selected' : ''}>1</option>
+                            <option value="2" ${(parseInt(sq.marks) || 1) === 2 ? 'selected' : ''}>2</option>
+                        </select>
+                    </div>
+                </div>`;
+        });
+        list.querySelectorAll('.cas-sub-q').forEach(inp => inp.addEventListener('input', function() {
+            caseSubQuestions[parseInt(this.getAttribute('data-idx'))].q = this.value;
+        }));
+        list.querySelectorAll('.cas-sub-opt').forEach(inp => inp.addEventListener('input', function() {
+            caseSubQuestions[parseInt(this.getAttribute('data-idx'))].options[parseInt(this.getAttribute('data-oi'))] = this.value;
+        }));
+        list.querySelectorAll('.cas-sub-correct').forEach(sel => sel.addEventListener('change', function() {
+            const entry = caseSubQuestions[parseInt(this.getAttribute('data-idx'))];
+            const letter = this.value;
+            const idxMap = {A: 0, B: 1, C: 2, D: 3};
+            entry.correctAnswer = (entry.options[idxMap[letter]] || "").trim() || letter;
+        }));
+        list.querySelectorAll('.cas-sub-marks').forEach(sel => sel.addEventListener('change', function() {
+            caseSubQuestions[parseInt(this.getAttribute('data-idx'))].marks = parseInt(this.value) || 1;
+            updateCaseSubTotalMarks();
+        }));
+        updateCaseSubTotalMarks();
+    }
+
+    function updateCaseSubTotalMarks() {
+        const el = document.getElementById("caseSubTotalMarks");
+        if (!el) return;
+        const total = (caseSubQuestions || []).reduce((a, s) => a + (parseInt(s.marks) || 1), 0);
+        el.innerHTML = `Total marks: ${total} / 4 ${total !== 4 ? '<span style="color:#e74c3c;"> (must equal 4)</span>' : ' <span style="color:#27ae60;">✅</span>'}`;
+    }
+
+    function collectCaseSubQuestions() {
+        renderCaseSubQuestions();
+        return caseSubQuestions.map(s => ({
+            q: String(s.q || "").trim(),
+            options: (s.options || ["", "", "", ""]).map(o => String(o || "").trim()),
+            correctAnswer: String(s.correctAnswer || "").trim() || "A",
+            marks: parseInt(s.marks) || 1
+        })).filter(s => s.q !== "");
     }
 
     function resetExamForm() {
@@ -1581,6 +1701,8 @@
         document.getElementById("questionMarks").value = "1";
         document.getElementById("questionType").value = "mcq";
         document.getElementById("casePassage").value = "";
+        caseSubQuestions = [];
+        if (document.getElementById("caseSubQuestionsList")) renderCaseSubQuestions();
         
         handleExamSectionChange();
         handleQuestionTypeChange();
@@ -1603,6 +1725,14 @@
         const sec = q.section || "Single correct answer";
         document.getElementById("examQuestionSection").value = sec;
         handleExamSectionChange();
+
+        document.getElementById("casePassage").value = q.casePassage || "";
+
+        // Repopulate Section D sub-questions when editing
+        if (q.subQuestions && q.subQuestions.length) {
+            caseSubQuestions = JSON.parse(JSON.stringify(q.subQuestions));
+            if (document.getElementById("caseSubQuestionsList")) renderCaseSubQuestions();
+        }
 
         if (sec.includes("Integer") || sec.includes("numerical")) {
             document.getElementById("examIntInput").value = q.correctAnswer || "";
@@ -1654,10 +1784,30 @@
             }
 
             // Validation for case-based questions
+            let subQuestions = [];
             if(secType.includes("CBSE Section D") || questionType === "case-based") {
                 if(!casePassage) {
                     btn.innerText = "Add Question ✅"; btn.disabled = false;
                     return alert("Case-based questions must have a case passage.");
+                }
+            }
+            if(secType.includes("CBSE Section D")) {
+                subQuestions = collectCaseSubQuestions();
+                const totalSubMarks = subQuestions.reduce((a, s) => a + (s.marks || 1), 0);
+                if (subQuestions.length < 3 || subQuestions.length > 4) {
+                    btn.innerText = "Add Question ✅"; btn.disabled = false;
+                    return alert("Section D (Case Study) requires 3 to 4 sub-questions.");
+                }
+                if (totalSubMarks !== 4) {
+                    btn.innerText = "Add Question ✅"; btn.disabled = false;
+                    return alert("Section D sub-question marks must total exactly 4 marks.");
+                }
+                for (let si = 0; si < subQuestions.length; si++) {
+                    const s = subQuestions[si];
+                    if (!s.q || !s.options || s.options.filter(o => o !== "").length < 2) {
+                        btn.innerText = "Add Question ✅"; btn.disabled = false;
+                        return alert(`Sub-question ${si + 1} must have text and at least 2 options.`);
+                    }
                 }
             }
 
@@ -1672,6 +1822,10 @@
                 }
             } else if(secType.includes("CBSE Section B") || secType.includes("CBSE Section C") || secType.includes("CBSE Section E")) {
                 // Subjective questions - no options
+                optTexts = [];
+                finalAns = "";
+            } else if(secType.includes("CBSE Section D")) {
+                // Section D - options are held per sub-question
                 optTexts = [];
                 finalAns = "";
             } else {
@@ -1693,6 +1847,7 @@
                 questionType: questionType,
                 marks: marks,
                 casePassage: casePassage || null,
+                subQuestions: subQuestions,
                 assertion: questionType === "assertion-reasoning" ? document.getElementById("assertionText").value.trim() : null,
                 reason: questionType === "assertion-reasoning" ? document.getElementById("reasonText").value.trim() : null,
                 requiresImageUpload: questionType === "subjective" || marks >= 2
@@ -2007,9 +2162,27 @@
                 questionAnalysisHTML = '<h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Detailed Analysis</h3>';
                 
                 analysisData.questionAnalysis.forEach((qa, index) => {
+                    const isCBSE = String(analysisData.examType || '').toLowerCase().includes('cbse');
                     const isSkipped = !qa.isAttempted;
-                    const statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
-                    const marks = qa.isCorrect ? '+4' : (isSkipped ? '0' : '-1');
+                    const isManualQ = qa.questionType === 'subjective' || qa.questionType === 'case-based' || (!isCBSE && qa.marks > 1);
+                    
+                    let statusText;
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        statusText = qa.isAttempted ? (qa.isCorrect ? 'Correct' : 'Attempted') : 'Skipped';
+                    } else if (isManualQ) {
+                        statusText = qa.isAttempted ? (qa.awardedMarks !== null && qa.awardedMarks !== undefined ? 'Evaluated' : 'Pending Eval') : 'Skipped';
+                    } else {
+                        statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
+                    }
+                    
+                    let marks;
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        marks = `${qa.scoredMarks || 0}/${qa.marks}`;
+                    } else if (isManualQ) {
+                        marks = (qa.awardedMarks !== null && qa.awardedMarks !== undefined) ? `${qa.awardedMarks}` : (qa.isAttempted ? 'Pending' : '—');
+                    } else {
+                        marks = qa.isCorrect ? `+${qa.marks || 1}` : (isSkipped ? '0' : (isCBSE ? '0' : '-1'));
+                    }
                     
                     let timeDisplay = '';
                     if (qa.timeSpent !== null && qa.timeSpent !== undefined) {
@@ -2054,6 +2227,36 @@
                         qImgHtml = `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 8px;">`;
                     }
 
+                    // Section D (case-based) sub-question analysis - auto graded
+                    let subQuestionsHtml = '';
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        let subBlocks = '';
+                        qa.subQuestions.forEach((sq, si) => {
+                            let subOpts = '';
+                            (sq.options || []).forEach((opt, oi) => {
+                                const letter = String.fromCharCode(65 + oi);
+                                const isCorr = sq.correctAnswer === opt;
+                                const isSel = sq.studentAnswer === opt;
+                                let sbg = '#f9f9f9', sbd = '1px solid #ddd', sind = '';
+                                if (isCorr && isSel) { sbg = '#e8f8e5'; sbd = '2px solid var(--success)'; sind = '✅'; }
+                                else if (isCorr) { sbg = '#e8f8e5'; sbd = '2px solid var(--success)'; sind = '✓'; }
+                                else if (isSel) { sbg = '#ffebee'; sbd = '2px solid var(--danger)'; sind = '❌'; }
+                                subOpts += `<div style="padding:6px;border-radius:4px;background:${sbg};border:${sbd};font-size:13px;margin:4px 0;">${letter}. ${opt} <strong>${sind}</strong></div>`;
+                            });
+                            const sStatus = sq.isCorrect ? '✅ Correct' : (sq.isAttempted ? '❌ Incorrect' : '— Not Attempted');
+                            subBlocks += `
+                                <div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px;margin:8px 0;background:#fafbfc;">
+                                    <div style="font-weight:600;color:var(--primary);">(${String.fromCharCode(97 + si)}) ${sq.subQuestion} <span style="color:#8e44ad;font-size:12px;">[${sq.marks} mark${sq.marks > 1 ? 's' : ''}]</span> <span style="font-size:12px;color:#555;">${sStatus} — ${sq.scoredMarks}/${sq.marks} marks</span></div>
+                                    ${subOpts}
+                                </div>`;
+                        });
+                        subQuestionsHtml = `
+                            ${qa.casePassage ? `<div style="background:#f0f4f8;border-left:4px solid var(--secondary);padding:12px;border-radius:6px;margin:10px 0;font-size:14px;line-height:1.6;"><strong>📖 Passage:</strong><br>${qa.casePassage}</div>` : ''}
+                            <div style="margin:10px 0;font-weight:600;color:var(--primary);">Sub-Questions (auto-graded):</div>
+                            ${subBlocks}
+                            <div style="font-size:13px;color:#555;margin-top:4px;">Total earned: <strong>${qa.scoredMarks || 0} / ${qa.marks}</strong> marks</div>`;
+                    }
+
                     // Answer image (for subjective questions)
                     let answerImageHtml = '';
                     if (qa.answerImage) {
@@ -2065,20 +2268,20 @@
                         `;
                     }
 
-                    // Manual evaluation UI for subjective questions
+                    // Manual evaluation UI for subjective questions (NOT for auto-graded Section D sub-questions)
                     let manualEvaluationHtml = '';
-                    if (qa.questionType === 'subjective' || qa.questionType === 'case-based' || qa.marks > 1) {
+                    if (!qa.subQuestions && (qa.questionType === 'subjective' || qa.questionType === 'case-based' || qa.marks > 1)) {
                         const maxMarks = qa.marks || 5;
                         const awardedMarks = qa.awardedMarks !== undefined ? qa.awardedMarks : null;
                         
                         manualEvaluationHtml = `
                             <div style="background: #fff3e0; padding: 12px; border-radius: 6px; margin: 10px 0; border: 2px solid #f39c12;">
-                                <div style="font-size: 13px; font-weight: bold; color: #d35400; margin-bottom: 8px;">✏️ Manual Evaluation (Max: ${maxMarks} marks)</div>
+                                <div style="font-size: 13px; font-weight: bold; color: #d35400; margin-bottom: 8px;">✏️ Manual Evaluation (Max: ${maxMarks} marks - decimals allowed e.g. 1.5)</div>
                                 <div id="marks-display-${index}" style="display: ${awardedMarks !== null ? 'block' : 'none'}; font-size: 16px; font-weight: bold; color: var(--success);">
                                     ${awardedMarks !== null ? `${awardedMarks}/${maxMarks} marks` : ''}
                                 </div>
                                 <div id="marks-input-${index}" style="display: ${awardedMarks !== null ? 'none' : 'block'};">
-                                    <input type="number" id="marks-q-${index}" data-max-marks="${maxMarks}" value="0" min="0" max="${maxMarks}" step="0.5" 
+                                    <input type="number" id="marks-q-${index}" data-max-marks="${maxMarks}" value="0" min="0" max="${maxMarks}" step="0.25" 
                                         style="padding: 8px; width: 100px; border: 2px solid #f39c12; border-radius: 4px; font-size: 14px; font-weight: bold;">
                                     <button class="btn btn-small" style="background: var(--success); color: white; margin-left: 8px;" 
                                         onclick="updateSubjectiveMarks('${resultId}', ${index})">Save Marks</button>
@@ -2104,10 +2307,11 @@
                             </div>
                             <div style="padding: 15px;">
                                 <div style="font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 12px; line-height: 1.5;">${qa.question}${qImgHtml}</div>
+                                ${subQuestionsHtml}
                                 ${optionsDisplay}
                                 ${answerImageHtml}
                                 ${manualEvaluationHtml}
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                ${!qa.subQuestions ? `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                                     <div style="padding: 10px; border-radius: 6px; font-size: 14px; background: #e8f4fd; border: 1px solid #b3d9ff;">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Student Answer</div>
                                         <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${qa.isAttempted ? qa.studentAnswer : '<span style="color: #999;">Not Attempted</span>'}</div>
@@ -2116,7 +2320,7 @@
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Correct Answer</div>
                                         <div style="font-size: 16px; font-weight: bold; color: var(--success);">${qa.correctAnswer}</div>
                                     </div>
-                                </div>
+                                </div>` : ''}
                                 ${qa.solution || qa.solutionImage ? `
                                 <div style="background: #fff9e6; border: 1px solid #ffe082; border-radius: 6px; padding: 12px; margin-top: 10px;">
                                     <h4 style="color: #f57f17; margin-bottom: 8px; font-size: 14px;">💡 Detailed Solution</h4>
