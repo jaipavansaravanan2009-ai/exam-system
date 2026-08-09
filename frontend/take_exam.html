@@ -1169,9 +1169,10 @@
                             <div style="font-weight:600;color:#b9770e;margin-bottom:10px;">✍️ Write your answer (admin will evaluate this)</div>
                             <textarea class="subjective-sub-answer" data-sub="${si}" rows="4" placeholder="Type your answer here..." style="width:100%;padding:10px;font-size:15px;border:2px solid #ccc;border-radius:6px;resize:vertical;box-sizing:border-box;">${existingText}</textarea>
                             <div style="margin-top:10px;">
-                                <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="document.getElementById('subImgInput-${si}').click()">📷 Upload Image</button>
-                                <input type="file" accept="image/*" id="subImgInput-${si}" style="display:none;" onchange="handleSubImageSelect(this, ${si})">
-                                ${existingImg ? `<img src="${existingImg}" style="max-width:100%;max-height:200px;border:2px solid var(--secondary);border-radius:6px;margin-top:8px;cursor:zoom-in;" onclick="openZoom(this.src)">` : ''}
+                                <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="document.getElementById('subImgInput-${si}').click()">📷 Upload / Capture Image</button>
+                                <button type="button" class="btn" style="background:#95a5a6;color:#fff;margin-left:8px;" onclick="removeSubAnswerImage(${si})">🗑️ Remove Image</button>
+                                <input type="file" accept="image/*" id="subImgInput-${si}" style="display:none;" capture="environment" onchange="handleSubImageSelect(this, ${si})">
+                                ${existingImg ? `<br><img src="${existingImg}" style="max-width:100%;max-height:200px;border:2px solid var(--secondary);border-radius:6px;margin-top:8px;cursor:zoom-in;" onclick="openZoom(this.src)">` : ''}
                             </div>
                         </div>`;
                 } else {
@@ -1326,7 +1327,7 @@
                     <textarea id="subjectiveAns" rows="5" placeholder="Type your answer here (optional)... or upload a clear image of your handwritten answer below." style="width:100%;padding:10px;font-size:15px;border:2px solid #ccc;border-radius:6px;resize:vertical;box-sizing:border-box;">${existingText}</textarea>
                     <div style="margin-top:14px;">
                         <div style="font-weight:600;color:#8e44ad;margin-bottom:8px;">📸 Attach Answer Image</div>
-                        <input type="file" accept="image/*" id="answerFileInput" style="display:none;">
+                        <input type="file" accept="image/*" id="answerFileInput" style="display:none;" capture="environment">
                         <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="suppressLossOfFocus=true; document.getElementById('answerFileInput').click(); setTimeout(function(){ suppressLossOfFocus=false; }, 5000);">📷 Upload / Capture Image</button>
                         <button type="button" class="btn" style="background:#95a5a6;color:#fff;margin-left:8px;" onclick="removeAnswerImage()">🗑️ Remove Image</button>
                     </div>
@@ -1403,7 +1404,7 @@
         }
     }
 
-    function saveAndNext() {
+    async function saveAndNext() {
         if (currentIdx === -1) return;
         
         const q = examData.questions[currentIdx];
@@ -1413,7 +1414,13 @@
         
         if (isCaseBased) {
             const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
-            const subKeys = Object.keys(subAns).filter(k => subAns[k] !== undefined && subAns[k] !== '');
+            const subKeys = Object.keys(subAns).filter(k => {
+                const val = subAns[k];
+                if (typeof val === 'object' && val !== null) {
+                    return (val.text && val.text.trim() !== '') || (val.image && val.image.trim() !== '');
+                }
+                return val !== undefined && val !== '' && val !== null;
+            });
             statusMap[currentIdx] = subKeys.length > 0 ? 'answered' : 'visited';
         } else if (!isMcq && !isInteger) {
             // Subjective question (text / image answer)
@@ -1441,10 +1448,13 @@
                 statusMap[currentIdx] = 'visited';
             }
         }
+        
+        // Immediately save progress before moving to next question
+        await saveProgressToBackend();
         nextLogic();
     }
 
-    function markForReview() {
+    async function markForReview() {
         if (currentIdx === -1) return;
         
         const q = examData.questions[currentIdx];
@@ -1454,7 +1464,13 @@
         
         if (isCaseBased) {
             const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
-            const subKeys = Object.keys(subAns).filter(k => subAns[k] !== undefined && subAns[k] !== '');
+            const subKeys = Object.keys(subAns).filter(k => {
+                const val = subAns[k];
+                if (typeof val === 'object' && val !== null) {
+                    return (val.text && val.text.trim() !== '') || (val.image && val.image.trim() !== '');
+                }
+                return val !== undefined && val !== '' && val !== null;
+            });
             statusMap[currentIdx] = subKeys.length > 0 ? 'review-answered' : 'review';
         } else if (!isMcq && !isInteger) {
             // Subjective question (text / image answer)
@@ -1482,6 +1498,9 @@
                 statusMap[currentIdx] = 'review';
             }
         }
+        
+        // Immediately save progress before moving to next question
+        await saveProgressToBackend();
         nextLogic();
     }
 
@@ -1592,6 +1611,24 @@
         renderPalette();
     }
 
+    function removeSubAnswerImage(subIdx) {
+        if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') return;
+        delete studentAnswers[currentIdx][subIdx];
+        
+        // Check if this was the only answer in the case-based question
+        const subAns = studentAnswers[currentIdx];
+        const remainingKeys = Object.keys(subAns).filter(k => subAns[k] !== undefined && subAns[k] !== '' && 
+            (typeof subAns[k] !== 'object' || (subAns[k].text && subAns[k].text.trim() !== '') || (subAns[k].image && subAns[k].image.trim() !== '')));
+        
+        if (remainingKeys.length === 0) {
+            delete studentAnswers[currentIdx];
+            statusMap[currentIdx] = 'visited';
+        }
+        
+        renderPalette();
+        showQuestion(currentIdx);
+    }
+
     function startTimer() {
         const timerInterval = setInterval(() => {
             timeLeft--;
@@ -1656,7 +1693,14 @@
                 if (subQ) {
                     // Case-based: auto-graded subdivisions
                     const subArr = (studentAns && typeof studentAns === 'object') ? studentAns : {};
-                    if (Object.keys(subArr).filter(k => subArr[k] !== undefined && subArr[k] !== '').length > 0) {
+                    const answeredSubs = Object.keys(subArr).filter(k => {
+                        const val = subArr[k];
+                        if (typeof val === 'object' && val !== null) {
+                            return (val.text && val.text.trim() !== '') || (val.image && val.image.trim() !== '');
+                        }
+                        return val !== undefined && val !== '' && val !== null;
+                    });
+                    if (answeredSubs.length > 0) {
                         subjectWiseData[subject].attempted = (subjectWiseData[subject].attempted || 0) + 1;
                         subjectWiseData[subject].correct++;
                     } else {
