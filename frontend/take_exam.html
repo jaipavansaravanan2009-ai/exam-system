@@ -1016,6 +1016,14 @@
             // ===== ACTIVATE ANTI-CHEAT SYSTEM =====
             examActive = true;
 
+            // Initialize MathJax if not already initialized
+            if (window.MathJax && window.MathJax.startup) {
+                window.MathJax.startup.promise
+                    .then(() => console.log("MathJax initialized successfully"))
+                    .catch((err) => console.log("MathJax initialization error:", err));
+            }
+
+
             // Request fullscreen automatically after exam loads
             requestFullscreen();
 
@@ -1695,7 +1703,14 @@
 
     function renderMath() {
         if (window.MathJax && window.MathJax.typesetPromise) {
-            MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
+            const qText = document.getElementById('qText');
+            const optionsList = document.getElementById('optionsList');
+            const hintContainer = document.getElementById('hintContainer');
+            if (qText) MathJax.typesetClear([qText]);
+            if (optionsList) MathJax.typesetClear([optionsList]);
+            if (hintContainer) MathJax.typesetClear([hintContainer]);
+            const elements = [qText, optionsList, hintContainer].filter(Boolean);
+            MathJax.typesetPromise(elements).catch((err) => console.log('MathJax error:', err));
         }
     }
     

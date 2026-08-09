@@ -896,7 +896,10 @@
 
     function reRenderMathJax() {
         if (window.MathJax && window.MathJax.typesetPromise) {
-            MathJax.typesetPromise().catch((err) => console.log('MathJax error:', err));
+            // Clear and typeset all main content areas
+            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .case-passage, .modal-body, .result-content, #qText, #optionsList, #hintContainer');
+            mainAreas.forEach(el => MathJax.typesetClear([el]));
+            MathJax.typesetPromise(mainAreas).catch((err) => console.log('MathJax error:', err));
         }
     }
 
