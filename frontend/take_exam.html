@@ -1092,6 +1092,20 @@
         document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
         
         let qContent = q.question;
+
+        // Special handling for Assertion-Reasoning questions
+        if (q.questionType === 'assertion-reasoning' && (q.assertion || q.reason)) {
+            let arHTML = '<div style="background:#f0f8ff;border-left:4px solid #2e86c1;padding:16px;margin-bottom:16px;border-radius:6px;">';
+            if (q.assertion) {
+                arHTML += `<div style="margin-bottom:12px;"><strong style="color:#2c3e50;">Assertion (A):</strong> <span style="font-size:15px;">${q.assertion}</span></div>`;
+            }
+            if (q.reason) {
+                arHTML += `<div><strong style="color:#2c3e50;">Reason (R):</strong> <span style="font-size:15px;">${q.reason}</span></div>`;
+            }
+            arHTML += '</div>';
+            qContent = arHTML + qContent;
+        }
+
         if (q.questionImage) {
             qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Question Graphic">`;
         }
