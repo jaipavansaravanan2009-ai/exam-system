@@ -1699,7 +1699,7 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
             "subjectWiseBreakdown": subject_wise,
             "examType": exam_data.get("examType", exam_data.get("exam_type", "")),
             "studentAnswers": student_answers,
-            "answerImages": answer_images,
+            
             "statusMap": status_map,
             "timeLeft": time_left,
             "questionTimes": question_times,
@@ -1715,22 +1715,12 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
         # Save result
         db.collection("results").add(result_data)
         
-        # Delete saved progress ONLY for normal (non-auto) submissions.
-        # For auto-submitted exams (integrity violations), keep the progress
-        # so an admin can resume the exam for the candidate later.
-        if not auto_submit_triggered:
-            try:
-                existing_query = db.collection("exam_progress").where("studentId", "==", user.get("id")).where("examId", "==", exam_id).stream()
-                for doc in existing_query:
-                    doc.reference.delete()
-            except:
-                pass
-        else:
-            # Auto-submitted due to integrity violations - mark progress as
-            # requiring admin approval before the student can resume.
-            try:
-                existing_query = db.collection("exam_progress").where("studentId", "==", user.get("id")).where("examId", "==", exam_id).stream()
-                for doc in existing_query:
+        # Keep exam_progress for all submissions so admin can review answer images
+        # For auto-submitted exams, also mark as requiring admin approval before resume
+        try:
+            existing_query = db.collection("exam_progress").where("studentId", "==", user.get("id")).where("examId", "==", exam_id).stream()
+            for doc in existing_query:
+                if auto_submit_triggered:
                     doc.reference.update({
                         "requiresAdminResume": True,
                         "adminApproved": False,
@@ -1738,8 +1728,13 @@ async def submit_exam(request: Request, user = Depends(authorize(["student"]))):
                         "autoSubmitReason": auto_submit_reason or "Integrity violation",
                         "updatedAt": datetime.now(timezone.utc)
                     })
-            except Exception as e:
-                print(f"⚠️ Could not mark progress as requiring admin resume: {e}")
+                else:
+                    doc.reference.update({
+                        "submittedAt": datetime.now(timezone.utc),
+                        "updatedAt": datetime.now(timezone.utc)
+                    })
+        except Exception as e:
+            print(f"⚠️ Could not update exam progress: {e}")
         
         return {
             "message": "Exam submitted successfully! ✅",
@@ -1800,6 +1795,16 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
 
         student_answers = result_data.get("studentAnswers", {})
         answer_images = result_data.get("answerImages", {})
+        # Fallback: fetch answerImages from exam_progress if not in result (to avoid 1MB Firestore limit)
+        if not answer_images:
+            try:
+                progress_query = db.collection("exam_progress").where("studentId", "==", result_data.get("studentId")).where("examId", "==", exam_id).stream()
+                for pdoc in progress_query:
+                    pdata = pdoc.to_dict()
+                    answer_images = pdata.get("answerImages", {}) or {}
+                    break
+            except Exception as e:
+                print(f"⚠️ Could not fetch answer images from exam_progress: {e}")
         awarded_marks_map = result_data.get("subjectiveMarks", {}) or {}
 
         def effective_score_for(data):
@@ -2249,6 +2254,16 @@ async def update_subjective_marks(result_id: str, request: Request, user=Depends
         # Recompute the full score (auto-graded + admin-awarded subjective marks)
         student_answers = result_data.get("studentAnswers", {})
         answer_images = result_data.get("answerImages", {})
+        # Fallback: fetch answerImages from exam_progress if not in result
+        if not answer_images:
+            try:
+                progress_query = db.collection("exam_progress").where("studentId", "==", result_data.get("studentId")).where("examId", "==", result_data.get("examId")).stream()
+                for pdoc in progress_query:
+                    pdata = pdoc.to_dict()
+                    answer_images = pdata.get("answerImages", {}) or {}
+                    break
+            except Exception as e:
+                print(f"⚠️ Could not fetch answer images from exam_progress: {e}")
         exam_type = result_data.get("examType", "")
         grading = compute_exam_score(questions, student_answers, answer_images, exam_type)
 
@@ -2320,7 +2335,7 @@ async def upload_answer_image(exam_id: str, request: Request, user = Depends(aut
             answer_images[str(question_index)] = image_data
             
             progress_doc.reference.update({
-                "answerImages": answer_images,
+                
                 "updatedAt": datetime.now(timezone.utc)
             })
         else:
