@@ -488,6 +488,7 @@
     let cheatingViolations = [];   // Detailed log of all violations
     let autoSubmitTriggered = false; // Prevent multiple auto-submissions
     let isTabHidden = false;       // Track if tab was hidden via visibilitychange (used to deduplicate blur)
+    let suppressLossOfFocus = false; // Armed while the in-exam image-upload file-picker is open (legit action, not a cheat)
 
     // Show a blocking overlay when a major violation occurs (tab switch, window blur)
     function showCheatOverlay(reason) {
@@ -645,6 +646,10 @@
     // Detect when tab visibility changes (user switches tabs/minimizes) — MAJOR violation
     document.addEventListener('visibilitychange', function() {
         if (!examActive || autoSubmitTriggered) return;
+        // Ignore the momentary loss of focus/visibility caused by opening the in-exam
+        // image-upload file-picker. This is a legitimate student action, not cheating,
+        // so don't count a "tab-switch" violation or pop the cheat overlay here.
+        if (suppressLossOfFocus) return;
         
         if (document.hidden) {
             isTabHidden = true;
@@ -669,6 +674,7 @@
     // Only shows overlay — NO violation counted here (handled by visibilitychange to avoid double-count)
     window.addEventListener('blur', function() {
         if (!examActive || autoSubmitTriggered) return;
+        if (suppressLossOfFocus) { suppressLossOfFocus = false; return; }
         // Only show overlay if tab is NOT already hidden (prevents double overlay from tab switch)
         if (!isTabHidden && !document.getElementById('cheatOverlay').classList.contains('show')) {
             showCheatOverlay('You clicked outside the exam window!');
@@ -1239,7 +1245,7 @@
                     <div style="margin-top:14px;">
                         <div style="font-weight:600;color:#8e44ad;margin-bottom:8px;">📸 Attach Answer Image</div>
                         <input type="file" accept="image/*" id="answerFileInput" style="display:none;">
-                        <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="document.getElementById('answerFileInput').click()">📷 Upload / Capture Image</button>
+                        <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="suppressLossOfFocus=true; document.getElementById('answerFileInput').click(); setTimeout(function(){ suppressLossOfFocus=false; }, 2500);">📷 Upload / Capture Image</button>
                         <button type="button" class="btn" style="background:#95a5a6;color:#fff;margin-left:8px;" onclick="removeAnswerImage()">🗑️ Remove Image</button>
                     </div>
                     <div id="answerImagePreview" style="margin-top:10px;${existingImg ? '' : 'display:none;'}">
@@ -1264,6 +1270,7 @@
             const subjFi = document.getElementById("answerFileInput");
             if (subjFi) {
                 subjFi.addEventListener('change', function() {
+                    suppressLossOfFocus = false;
                     if (this.files && this.files[0]) handleAnswerImageSelect(this.files[0]);
                 });
             }
