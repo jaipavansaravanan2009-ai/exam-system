@@ -1505,29 +1505,56 @@ def compute_exam_score(questions, student_answers, answer_images=None, exam_type
             answered_correct = 0
             answered_wrong = 0
             sub_earned = 0.0
+            has_subjective = False
+            
             for s_idx, sq in enumerate(sub_questions):
                 sub_ans = sub_answers.get(str(s_idx))
+                sub_type = sq.get("type", "mcq")
                 sub_correct = sq.get("correctAnswer", "")
                 sub_marks = float(sq.get("marks", 1) or 1)
-                if sub_ans is not None and sub_ans != "":
-                    attempted_any = True
-                    if sub_ans == sub_correct:
-                        sub_earned += sub_marks
-                        answered_correct += 1
-                    else:
-                        answered_wrong += 1
-            if attempted_any:
-                total_score += sub_earned
-                subject_wise[subject]["score"] += sub_earned
-                if answered_wrong == 0 and answered_correct == len(sub_questions):
-                    correct_count += 1
-                    subject_wise[subject]["correct"] += 1
+                
+                if sub_type == "subjective":
+                    # Subjective sub-question - mark for manual evaluation
+                    has_subjective = True
+                    s_attempted = (
+                        sub_ans is not None 
+                        and sub_ans != "" 
+                        and (not isinstance(sub_ans, dict) or (sub_ans.get('text') or sub_ans.get('image')))
+                    )
+                    if s_attempted:
+                        attempted_any = True
                 else:
-                    incorrect_count += 1
-                    subject_wise[subject]["incorrect"] += 1
+                    # MCQ sub-question - auto-grade
+                    if sub_ans is not None and sub_ans != "":
+                        attempted_any = True
+                        if sub_ans == sub_correct:
+                            sub_earned += sub_marks
+                            answered_correct += 1
+                        else:
+                            answered_wrong += 1
+            
+            if has_subjective:
+                # Mixed or all subjective - mark as pending evaluation
+                if attempted_any:
+                    # Count attempted for status, but score will be manually evaluated
+                    subject_wise[subject]["pending"] += 1
+                else:
+                    not_attempted_count += 1
+                    subject_wise[subject]["notAttempted"] += 1
             else:
-                not_attempted_count += 1
-                subject_wise[subject]["notAttempted"] += 1
+                # All MCQ - auto-grade normally
+                if attempted_any:
+                    total_score += sub_earned
+                    subject_wise[subject]["score"] += sub_earned
+                    if answered_wrong == 0 and answered_correct == len(sub_questions):
+                        correct_count += 1
+                        subject_wise[subject]["correct"] += 1
+                    else:
+                        incorrect_count += 1
+                        subject_wise[subject]["incorrect"] += 1
+                else:
+                    not_attempted_count += 1
+                    subject_wise[subject]["notAttempted"] += 1
             continue
 
         # --- Determine auto-graded vs manually evaluated questions ---
@@ -1542,8 +1569,19 @@ def compute_exam_score(questions, student_answers, answer_images=None, exam_type
         if question_type == "subjective":
             auto_gated = True
         elif question_type == "case-based" or "case based" in section_lower or "passage" in section_lower:
-            # Case/passage without subQuestions and without options -> manual evaluation
-            auto_gated = not has_options
+            # Case-based with subQuestions - check if any are subjective
+            sub_questions_check = q.get("subQuestions") or []
+            has_subjective_subq = any(sq.get("type") == "subjective" for sq in sub_questions_check)
+            
+            if sub_questions_check and has_subjective_subq:
+                # Mixed case-based with subjective parts - mark for manual evaluation
+                auto_gated = True  # Will be handled separately above
+            elif sub_questions_check:
+                # All MCQ sub-questions - auto-grade
+                auto_gated = False
+            else:
+                # Case/passage without subQuestions - manual evaluation
+                auto_gated = not has_options
         else:
             # Legacy/unknown: manual only if structurally subjective (no options, not numeric)
             auto_gated = (not has_options and not is_numeric_q)
@@ -1884,43 +1922,83 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
                 "scoredMarks": 0
             }
 
-            # ---- Case-based with sub-questions (CBSE Section D) - auto graded ----
+            # ---- Case-based with sub-questions (CBSE Section D) ----
             if sub_questions_lst:
                 sub_answers = student_ans if isinstance(student_ans, dict) else {}
                 sub_analysis = []
                 scored_sub_marks = 0.0
                 attempted_any = False
                 all_correct = True
+                has_subjective = False
+                
                 for s_idx, sq in enumerate(sub_questions_lst):
                     s_ans = sub_answers.get(str(s_idx))
+                    s_type = sq.get("type", "mcq")
                     s_correct = sq.get("correctAnswer", "")
                     s_marks = float(sq.get("marks", 1) or 1)
-                    s_attempted = s_ans is not None and s_ans != ""
-                    s_correct_flag = s_attempted and s_ans == s_correct
-                    if s_attempted:
-                        attempted_any = True
-                    if not s_correct_flag:
-                        all_correct = False
-                    if s_correct_flag:
-                        scored_sub_marks += s_marks
-                    sub_analysis.append({
-                        "subQuestion": sq.get("q", ""),
-                        "options": sq.get("options", []),
-                        "optionImages": sq.get("optionImages", []),
-                        "correctAnswer": s_correct,
-                        "studentAnswer": s_ans if s_attempted else None,
-                        "isAttempted": s_attempted,
-                        "isCorrect": s_correct_flag,
-                        "marks": s_marks,
-                        "scoredMarks": s_marks if s_correct_flag else 0
+                    
+                    if s_type == "subjective":
+                        # Subjective sub-question
+                        has_subjective = True
+                        s_attempted = (
+                            s_ans is not None 
+                            and s_ans != "" 
+                            and (not isinstance(s_ans, dict) or (s_ans.get('text') or s_ans.get('image')))
+                        )
+                        sub_analysis.append({
+                            "subQuestion": sq.get("q", ""),
+                            "type": "subjective",
+                            "marks": s_marks,
+                            "scoredMarks": None,  # To be manually evaluated
+                            "studentAnswer": s_ans if s_attempted else None,
+                            "isAttempted": s_attempted,
+                            "isCorrect": None,
+                            "status": "pending_evaluation" if s_attempted else "not_attempted"
+                        })
+                        if s_attempted:
+                            attempted_any = True
+                    else:
+                        # MCQ sub-question - auto-grade
+                        s_attempted = s_ans is not None and s_ans != ""
+                        s_correct_flag = s_attempted and s_ans == s_correct
+                        if s_attempted:
+                            attempted_any = True
+                        if not s_correct_flag:
+                            all_correct = False
+                        if s_correct_flag:
+                            scored_sub_marks += s_marks
+                        sub_analysis.append({
+                            "subQuestion": sq.get("q", ""),
+                            "type": "mcq",
+                            "options": sq.get("options", []),
+                            "optionImages": sq.get("optionImages", []),
+                            "correctAnswer": s_correct,
+                            "studentAnswer": s_ans if s_attempted else None,
+                            "isAttempted": s_attempted,
+                            "isCorrect": s_correct_flag,
+                            "marks": s_marks,
+                            "scoredMarks": s_marks if s_correct_flag else 0
+                        })
+                
+                if has_subjective:
+                    # Mixed or all subjective - pending manual evaluation
+                    base.update({
+                        "subQuestions": sub_analysis,
+                        "studentAnswer": None,
+                        "isAttempted": attempted_any,
+                        "isCorrect": None,
+                        "scoredMarks": None,
+                        "status": "pending_evaluation" if attempted_any else "not_attempted"
                     })
-                base.update({
-                    "subQuestions": sub_analysis,
-                    "studentAnswer": None,
-                    "isAttempted": attempted_any,
-                    "isCorrect": attempted_any and all_correct,
-                    "scoredMarks": scored_sub_marks,
-                })
+                else:
+                    # All MCQ - auto-graded
+                    base.update({
+                        "subQuestions": sub_analysis,
+                        "studentAnswer": None,
+                        "isAttempted": attempted_any,
+                        "isCorrect": attempted_any and all_correct,
+                        "scoredMarks": scored_sub_marks,
+                    })
                 question_analysis.append(base)
                 continue
 
