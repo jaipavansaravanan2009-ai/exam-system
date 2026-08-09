@@ -1138,8 +1138,38 @@
                 });
             });
         }
+        // ================= MULTIPLE CORRECT ANSWER (JEE Advance) =================
+        else if ((q.questionType === 'multiple' || (q.section && String(q.section).toLowerCase().includes('multiple'))) && q.options && q.options.length > 1) {
+            const storedMc = studentAnswers[index] && Array.isArray(studentAnswers[index]) ? studentAnswers[index] : [];
+            let mcHTML = `<div style="background:#eafaf1;border:1px solid #b8e6c8;border-left:4px solid #27ae60;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;color:#1e8449;font-weight:600;">☑️ Select ALL correct options (Multiple Correct Answer)</div>`;
+            q.options.forEach((opt, idx) => {
+                let imgHTML = "";
+                if (q.optionImages && q.optionImages[idx]) {
+                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
+                }
+                const checked = storedMc.includes(opt) ? 'checked' : '';
+                mcHTML += `
+                    <div class="opt-row ${checked ? 'selected' : ''}">
+                        <label>
+                            <input type="checkbox" name="mcans" value="${idx}" ${checked} style="margin-right: 15px; transform: scale(1.2);">
+                            <span style="font-size: 16px;">${opt}</span>
+                            ${imgHTML}
+                        </label>
+                    </div>`;
+            });
+            optDiv.innerHTML = mcHTML;
+            optDiv.querySelectorAll('input[type="checkbox"][name="mcans"]').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    const selected = Array.from(optDiv.querySelectorAll('input[type="checkbox"][name="mcans"]:checked')).map(c => q.options[parseInt(c.value)]);
+                    studentAnswers[currentIdx] = selected;
+                    statusMap[currentIdx] = selected.length ? 'answered' : 'visited';
+                    this.closest('.opt-row').classList.toggle('selected', this.checked);
+                    renderPalette();
+                });
+            });
+        }
         // ================= MCQ / Assertion-Reasoning (CBSE Section A) =================
-        else if (q.options && q.options.length > 1 && q.questionType !== 'subjective') {
+        else if (q.options && q.options.length > 1 && q.questionType !== 'subjective' && q.questionType !== 'multiple') {
             let optionsHTML = "";
             
             q.options.forEach((opt, idx) => {
@@ -1177,7 +1207,7 @@
                 }
             });
         });
-        } else if (q.questionType === 'integer' || (q.section && String(q.section).toLowerCase().includes('integer'))) {
+        } else if (q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical')))) {
             optDiv.innerHTML = `<input type="number" step="any" id="numAns" value="${studentAnswers[index] !== undefined ? studentAnswers[index] : ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px; border: 2px solid #ccc; border-radius: 4px;">`;
             
             // Add input listener for numeric answers
@@ -1284,7 +1314,7 @@
         const q = examData.questions[currentIdx];
         const isCaseBased = q && q.subQuestions && q.subQuestions.length;
         const isMcq = !isCaseBased && q && q.options && q.options.length > 1;
-        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && String(q.section).toLowerCase().includes('integer')));
+        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical'))));
         
         if (isCaseBased) {
             const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
@@ -1298,9 +1328,13 @@
             if (hasText) studentAnswers[currentIdx] = subjTa.value;
             statusMap[currentIdx] = (hasText || hasImg) ? 'answered' : 'visited';
         } else {
+            const mcSel = document.querySelectorAll('input[type="checkbox"][name="mcans"]:checked');
             const radioSel = document.querySelector('input[name="ans"]:checked');
             const numSel = document.getElementById("numAns");
-            if (radioSel) {
+            if (mcSel.length > 0) {
+                studentAnswers[currentIdx] = Array.from(mcSel).map(cb => examData.questions[currentIdx].options[parseInt(cb.value)]);
+                statusMap[currentIdx] = 'answered';
+            } else if (radioSel) {
                 const selectedIdx = parseInt(radioSel.value);
                 selectedOptionIndex[currentIdx] = selectedIdx;
                 studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
@@ -1321,7 +1355,7 @@
         const q = examData.questions[currentIdx];
         const isCaseBased = q && q.subQuestions && q.subQuestions.length;
         const isMcq = !isCaseBased && q && q.options && q.options.length > 1;
-        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && String(q.section).toLowerCase().includes('integer')));
+        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical'))));
         
         if (isCaseBased) {
             const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
@@ -1335,9 +1369,13 @@
             if (hasText) studentAnswers[currentIdx] = subjTa.value;
             statusMap[currentIdx] = (hasText || hasImg) ? 'review-answered' : 'review';
         } else {
+            const mcSel = document.querySelectorAll('input[type="checkbox"][name="mcans"]:checked');
             const radioSel = document.querySelector('input[name="ans"]:checked');
             const numSel = document.getElementById("numAns");
-            if (radioSel) {
+            if (mcSel.length > 0) {
+                studentAnswers[currentIdx] = Array.from(mcSel).map(cb => examData.questions[currentIdx].options[parseInt(cb.value)]);
+                statusMap[currentIdx] = 'review-answered';
+            } else if (radioSel) {
                 const selectedIdx = parseInt(radioSel.value);
                 selectedOptionIndex[currentIdx] = selectedIdx;
                 studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
@@ -1515,7 +1553,8 @@
                 }
                 
                 const subQ = q.subQuestions && q.subQuestions.length;
-                const isSubjective = !subQ && (q.questionType === 'subjective' || !(q.options && q.options.length > 1) || q.marks > 1);
+                const isIntegerQ = q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical')));
+                const isSubjective = !subQ && (q.questionType === 'subjective' || (!(q.options && q.options.length > 1) && !isIntegerQ));
                 const attempted = studentAns !== undefined && studentAns !== null && studentAns !== "" && !(typeof studentAns === 'object' && Object.keys(studentAns).length === 0);
                 const hasImage = !!answerImages[i];
 
@@ -1541,7 +1580,9 @@
                 }
                 
                 if (attempted) {
-                    if (studentAns == correctAns) {
+                    const isMcSet = Array.isArray(studentAns) && Array.isArray(q.correctAnswers)
+                        && studentAns.slice().sort().join('|') === q.correctAnswers.slice().sort().join('|');
+                    if (studentAns == correctAns || isMcSet) {
                         subjectWiseData[subject].correct++;
                         subjectWiseData[subject].score += q.marks || 1;
                     } else {

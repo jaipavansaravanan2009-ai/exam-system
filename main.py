@@ -381,20 +381,55 @@ async def bulk_upload_zip(exam_id: str, files: List[UploadFile] = File(...), use
                     
                     section_type = get_val(row, ["Section", "section"]) or "Single correct answer"
                     numerical_ans = get_val(row, ["NumericalAnswer", "Numerical Answer", "Numerical_Answer"])
+                    q_type_csv = get_val(row, ["QuestionType", "question_type", "Type"]) or "mcq"
+                    is_numeric = ("integer" in section_type.lower() or "numerical" in section_type.lower()
+                                  or q_type_csv.lower() in ("integer", "numerical"))
+                    is_multiple_csv = (q_type_csv.lower() in ("multiple", "multiple-correct", "multiple correct")
+                                       or "multiple correct" in section_type.lower())
 
+                    opt_list = [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else []
+
+                    # CorrectAnswer column: letter(s) like "A" or "A,C", or full option text
+                    ca_raw = get_val(row, ["CorrectAnswer", "Correct Answer", "correct_answer"])
+                    letters = {"A": 0, "B": 1, "C": 2, "D": 3}
                     correct_ans = opt_a_text
-                    if "integer" in section_type.lower() or "numerical" in section_type.lower():
+                    correct_answers_list = None
+                    if is_numeric:
                         correct_ans = numerical_ans
-                        opt_a_text, opt_b_text, opt_c_text, opt_d_text = "", "", "", ""
+                    elif ca_raw:
+                        parts = [p.strip() for p in ca_raw.split(",") if p.strip()]
+                        if parts and all(p.upper() in letters for p in parts):
+                            idxs = [letters[p.upper()] for p in parts if letters[p.upper()] < len(opt_list)]
+                            if len(idxs) > 1 or is_multiple_csv:
+                                correct_answers_list = [opt_list[i] for i in idxs]
+                                correct_ans = correct_answers_list[0] if correct_answers_list else ""
+                            else:
+                                correct_ans = opt_list[idxs[0]] if idxs else opt_a_text
+                        else:
+                            correct_ans = ca_raw
+
+                    marks_csv = get_val(row, ["Marks", "marks"])
+                    try:
+                        marks_val = float(marks_csv) if marks_csv else 1
+                        marks_val = int(marks_val) if marks_val == int(marks_val) else marks_val
+                    except (ValueError, TypeError):
+                        marks_val = 1
 
                     new_q = {
                         "subject": get_val(row, ["Subject", "subject"]) or "Physics",
                         "section": section_type,
                         "question": get_val(row, ["QuestionText", "Question", "question"]),
                         "questionImage": img_q,
-                        "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
-                        "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
-                        "correctAnswer": correct_ans
+                        "options": opt_list if not is_numeric else [],
+                        "optionImages": [img_a, img_b, img_c, img_d] if not is_numeric else [],
+                        "correctAnswer": correct_ans,
+                        "correctAnswers": correct_answers_list,
+                        "questionType": q_type_csv,
+                        "marks": marks_val,
+                        "assertion": get_val(row, ["Assertion", "assertion", "AssertionText"]) or None,
+                        "reason": get_val(row, ["Reason", "reason", "ReasonText"]) or None,
+                        "casePassage": get_val(row, ["CasePassage", "case_passage", "Passage", "CaseStudy"]) or None,
+                        "requiresImageUpload": q_type_csv.lower() == "subjective"
                     }
                     questions.append(new_q)
                     file_added += 1
@@ -1083,6 +1118,17 @@ async def import_question_list_to_exam(exam_id: str, list_id: str, request: Requ
             if q_doc.exists:
                 found_count += 1
                 q = q_doc.to_dict()
+                sec_lower = str(q.get("section", "")).lower()
+                if "integer" in sec_lower or "numerical" in sec_lower:
+                    derived_type = "integer"
+                elif "multiple correct" in sec_lower:
+                    derived_type = "multiple"
+                elif "match" in sec_lower:
+                    derived_type = "match"
+                elif "passage" in sec_lower or "case" in sec_lower:
+                    derived_type = "case-based"
+                else:
+                    derived_type = "mcq"
                 exam_q = {
                     "subject": q.get("subject", "Physics"),
                     "section": q.get("section", "Single correct answer"),
@@ -1092,6 +1138,8 @@ async def import_question_list_to_exam(exam_id: str, list_id: str, request: Requ
                     "optionImages": q.get("optionImages", []),
                     "correctAnswer": (q.get("correctAnswers") or [""])[0] if q.get("correctAnswers") else "",
                     "correctAnswers": q.get("correctAnswers", []),
+                    "questionType": q.get("questionType", derived_type),
+                    "marks": q.get("marks", 1),
                     "hint": q.get("hint", ""),
                     "solution": q.get("solution", ""),
                     "solutionImage": q.get("solutionImage", None),
@@ -1389,6 +1437,20 @@ async def finish_result(result_id: str, user = Depends(authorize(["admin"]))):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to finish result: {str(e)}")
 
+def _same_value(a, b):
+    """Compare two answer values, tolerating trivial numeric formatting differences."""
+    if a is None or b is None:
+        return False
+    sa = str(a).strip()
+    sb = str(b).strip()
+    if sa == sb:
+        return True
+    try:
+        return float(sa) == float(sb)
+    except (ValueError, TypeError):
+        return False
+
+
 def compute_exam_score(questions, student_answers, answer_images=None, exam_type=""):
     """
     Compute exam score from submitted answers.
@@ -1468,11 +1530,23 @@ def compute_exam_score(questions, student_answers, answer_images=None, exam_type
                 subject_wise[subject]["notAttempted"] += 1
             continue
 
-        # --- Subjective questions (not auto-graded, admin awards marks) ---
-        auto_gated = question_type in ("subjective", "case-based")
-        if not is_cbse:
-            # Preserve legacy behaviour: multi-mark questions were manually evaluated
-            auto_gated = auto_gated or marks > 1
+        # --- Determine auto-graded vs manually evaluated questions ---
+        # Auto-graded: MCQ, single-correct, assertion-reasoning, integer/numerical,
+        #              multiple-correct, match-matrix.
+        # Manually evaluated (pending): genuine subjective questions (no options & not numeric).
+        section_lower = str(q.get("section", "")).lower()
+        has_options = bool(q.get("options"))
+        is_numeric_q = "integer" in section_lower or "numerical" in section_lower or question_type in ("integer", "numerical")
+        is_multi_q = question_type == "multiple" or "multiple correct" in section_lower
+
+        if question_type == "subjective":
+            auto_gated = True
+        elif question_type == "case-based" or "case based" in section_lower or "passage" in section_lower:
+            # Case/passage without subQuestions and without options -> manual evaluation
+            auto_gated = not has_options
+        else:
+            # Legacy/unknown: manual only if structurally subjective (no options, not numeric)
+            auto_gated = (not has_options and not is_numeric_q)
 
         if auto_gated:
             has_text = student_ans is not None and student_ans != ""
@@ -1485,22 +1559,37 @@ def compute_exam_score(questions, student_answers, answer_images=None, exam_type
                 subject_wise[subject]["notAttempted"] += 1
             continue
 
-        # --- MCQ / Assertion-Reasoning (auto-graded) ---
-        if student_ans is None or student_ans == "":
+        # --- MCQ / Assertion-Reasoning / Match Matrix / Integer / Multiple Correct (auto-graded) ---
+        if student_ans is None or student_ans == "" or (isinstance(student_ans, list) and len(student_ans) == 0):
             not_attempted_count += 1
             subject_wise[subject]["notAttempted"] += 1
-        elif student_ans == correct_ans:
-            total_score += float(marks)
-            correct_count += 1
-            subject_wise[subject]["score"] += float(marks)
-            subject_wise[subject]["correct"] += 1
         else:
-            # Wrong answer: -1 penalty for JEE, no penalty for CBSE
-            if not is_cbse:
-                total_score -= 1
-                subject_wise[subject]["score"] -= 1
-            incorrect_count += 1
-            subject_wise[subject]["incorrect"] += 1
+            correct_answers_list = q.get("correctAnswers") or []
+
+            if is_multi_q:
+                # Set-equality grading for Multiple Correct Answer questions
+                if isinstance(student_ans, list) and correct_answers_list:
+                    is_correct = sorted([str(x).strip() for x in student_ans]) == sorted([str(x).strip() for x in correct_answers_list])
+                else:
+                    is_correct = _same_value(student_ans, correct_ans)
+            else:
+                if isinstance(student_ans, list):
+                    is_correct = False
+                else:
+                    is_correct = _same_value(student_ans, correct_ans)
+
+            if is_correct:
+                total_score += float(marks)
+                correct_count += 1
+                subject_wise[subject]["score"] += float(marks)
+                subject_wise[subject]["correct"] += 1
+            else:
+                # Wrong answer: -1 penalty for JEE, no penalty for CBSE
+                if not is_cbse:
+                    total_score -= 1
+                    subject_wise[subject]["score"] -= 1
+                incorrect_count += 1
+                subject_wise[subject]["incorrect"] += 1
 
     return {
         "totalScore": total_score,
@@ -1835,10 +1924,26 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
                 question_analysis.append(base)
                 continue
 
-            # ---- Subjective questions (admin evaluated) ----
-            auto_gated = question_type in ("subjective", "case-based")
-            if not is_cbse:
-                auto_gated = auto_gated or marks > 1
+                        # ---- Manual evaluation (subjective) vs auto-graded classification ----
+            # Mirrors compute_exam_score(): MCQ / assertion / integer / numerical /
+            # multiple-correct / match-matrix are auto-graded regardless of marks.
+            # Only genuine subjective questions (no options and not numeric and not
+            # multi-correct/match) are routed for manual evaluation. The legacy
+            # `marks > 1 => manual` trap (which would mark 4-mark JEE objective
+            # questions as pending) is intentionally removed.
+            section_lower = str(q.get("section", "")).lower()
+            has_options = bool(q.get("options"))
+            is_numeric_q = ("integer" in section_lower or "numerical" in section_lower
+                            or question_type in ("integer", "numerical"))
+            is_multi_q = (question_type == "multiple" or "multiple correct" in section_lower)
+
+            if question_type == "subjective":
+                auto_gated = True
+            elif question_type == "case-based" or "case based" in section_lower or "passage" in section_lower:
+                auto_gated = not has_options
+            else:
+                auto_gated = (not has_options and not is_numeric_q)
+
             if auto_gated:
                 has_text = student_ans is not None and student_ans != ""
                 has_image = image_ans is not None and image_ans != ""
@@ -1852,9 +1957,23 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
                 question_analysis.append(base)
                 continue
 
-            # ---- Auto-graded MCQ / Assertion-Reasoning (CBSE Section A) ----
-            is_attempted = student_ans is not None and student_ans != ""
-            is_correct = is_attempted and student_ans == correct_ans
+            # ---- Auto-graded objective questions (MCQ / Assertion / Integer / Multiple / Match) ----
+            if is_multi_q:
+                # Multiple Correct Answer: exact set match (order-independent)
+                correct_list = q.get("correctAnswers") or []
+                if not correct_list and correct_ans:
+                    correct_list = [correct_ans]
+                is_attempted = ((isinstance(student_ans, list) and len(student_ans) > 0)
+                                or (student_ans not in (None, "")))
+                is_correct = (
+                    isinstance(student_ans, list) and correct_list and
+                    sorted([str(x).strip() for x in student_ans]) ==
+                    sorted([str(x).strip() for x in correct_list])
+                )
+            else:
+                is_attempted = student_ans is not None and student_ans != ""
+                is_correct = is_attempted and _same_value(student_ans, correct_ans)
+
             base.update({
                 "studentAnswer": student_ans if is_attempted else None,
                 "isAttempted": is_attempted,
