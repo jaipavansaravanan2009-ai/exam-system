@@ -674,7 +674,7 @@
     // Only shows overlay — NO violation counted here (handled by visibilitychange to avoid double-count)
     window.addEventListener('blur', function() {
         if (!examActive || autoSubmitTriggered) return;
-        if (suppressLossOfFocus) { suppressLossOfFocus = false; return; }
+        if (suppressLossOfFocus) return;
         // Only show overlay if tab is NOT already hidden (prevents double overlay from tab switch)
         if (!isTabHidden && !document.getElementById('cheatOverlay').classList.contains('show')) {
             showCheatOverlay('You clicked outside the exam window!');
@@ -683,11 +683,13 @@
     });
 
     // Detect window focus return
+    // Reset suppressLossOfFocus when window regains focus (file picker closed)
     window.addEventListener('focus', function() {
         // If overlay is showing, keep it until they press return button
         // The away time tracking continues
+        if (suppressLossOfFocus) suppressLossOfFocus = false;
     });
-
+    
     // Fullscreen change detection — NO violation counted, just show prompt
     document.addEventListener('fullscreenchange', function() {
         if (!examActive || autoSubmitTriggered) return;
@@ -1245,7 +1247,7 @@
                     <div style="margin-top:14px;">
                         <div style="font-weight:600;color:#8e44ad;margin-bottom:8px;">📸 Attach Answer Image</div>
                         <input type="file" accept="image/*" id="answerFileInput" style="display:none;">
-                        <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="suppressLossOfFocus=true; document.getElementById('answerFileInput').click(); setTimeout(function(){ suppressLossOfFocus=false; }, 2500);">📷 Upload / Capture Image</button>
+                        <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="suppressLossOfFocus=true; document.getElementById('answerFileInput').click(); setTimeout(function(){ suppressLossOfFocus=false; }, 5000);">📷 Upload / Capture Image</button>
                         <button type="button" class="btn" style="background:#95a5a6;color:#fff;margin-left:8px;" onclick="removeAnswerImage()">🗑️ Remove Image</button>
                     </div>
                     <div id="answerImagePreview" style="margin-top:10px;${existingImg ? '' : 'display:none;'}">
@@ -1269,10 +1271,16 @@
             }
             const subjFi = document.getElementById("answerFileInput");
             if (subjFi) {
-                subjFi.addEventListener('change', function() {
+                // Remove any previously attached listener to prevent duplicates
+                // when showQuestion() is called multiple times for subjective questions
+                if (subjFi._answerImageHandler) {
+                    subjFi.removeEventListener('change', subjFi._answerImageHandler);
+                }
+                subjFi._answerImageHandler = function() {
                     suppressLossOfFocus = false;
                     if (this.files && this.files[0]) handleAnswerImageSelect(this.files[0]);
-                });
+                };
+                subjFi.addEventListener('change', subjFi._answerImageHandler);
             }
         }
         
