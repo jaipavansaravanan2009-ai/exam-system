@@ -1868,15 +1868,20 @@
     }
 
     // ===== SECTION D SUB-QUESTION EDITOR (case-based) =====
+    // Total marks for case-based questions must ALWAYS equal 4 (CBSE Section D standard)
+    const CASE_SUB_TOTAL_MARKS = 4;
+
     let caseSubQuestions = [];
 
     function addCaseSubQuestion(data) {
         data = data || {};
         caseSubQuestions.push({
             q: data.q || "",
+            type: data.type || "mcq",
             options: Array.isArray(data.options) && data.options.length >= 2 ? data.options.slice(0, 4) : ["", "", "", ""],
             correctAnswer: data.correctAnswer || (data.options && data.options[0]) || "A",
-            marks: parseInt(data.marks) || 1
+            marks: parseInt(data.marks) || 1,
+            referenceAnswer: data.referenceAnswer || ""
         });
         renderCaseSubQuestions();
     }
@@ -1886,46 +1891,85 @@
         renderCaseSubQuestions();
     }
 
+    function handleSubTypeChange(idx) {
+        const type = document.querySelector(`.cas-sub-type[data-idx="${idx}"]`).value;
+        const sq = caseSubQuestions[idx];
+        if (type === 'subjective') {
+            sq.type = 'subjective';
+            sq.options = [];
+            sq.correctAnswer = null;
+            sq.referenceAnswer = sq.referenceAnswer || '';
+        } else {
+            sq.type = 'mcq';
+            sq.options = sq.options.length >= 2 ? sq.options.slice(0, 4) : ["", "", "", ""];
+            sq.correctAnswer = sq.correctAnswer || sq.options[0] || "A";
+            sq.referenceAnswer = '';
+        }
+        renderCaseSubQuestions();
+        const restoredSelect = document.querySelector(`.cas-sub-type[data-idx="${idx}"]`);
+        if (restoredSelect) restoredSelect.value = type;
+    }
+
     function renderCaseSubQuestions() {
         const list = document.getElementById("caseSubQuestionsList");
         if (!list) return;
         list.innerHTML = "";
         if (!caseSubQuestions.length) {
-            list.innerHTML = '<div style="font-size:12px;color:#999;font-style:italic;">No sub-questions yet. Add 3-4 sub-questions totalling the question marks.</div>';
+            list.innerHTML = '<div style="font-size:12px;color:#999;font-style:italic;">Add sub-questions. Total marks must equal 4.</div>';
         }
         const letters = ['A', 'B', 'C', 'D'];
         caseSubQuestions.forEach((sq, idx) => {
-            let optHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">';
-            for (let oi = 0; oi < 4; oi++) {
-                optHTML += `<div><input type="text" class="cas-sub-opt" data-idx="${idx}" data-oi="${oi}" value="${(sq.options[oi] || '').replace(/"/g, '&quot;')}" placeholder="Option ${letters[oi]}"></div>`;
+            const isMcq = sq.type !== 'subjective';
+            let typeHTML = `<div style="margin-bottom:8px;">
+                <span style="font-size:12px;color:#555;">Type:</span>
+                <select class="cas-sub-type" data-idx="${idx}" style="padding:4px;border:2px solid #ccc;border-radius:4px;" onchange="handleSubTypeChange(${idx})">
+                    <option value="mcq" ${isMcq ? 'selected' : ''}>MCQ (Auto-graded)</option>
+                    <option value="subjective" ${!isMcq ? 'selected' : ''}>Subjective (Manual)</option>
+                </select>
+            </div>`;
+            let optionsHTML = "";
+            if (isMcq) {
+                optionsHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">';
+                for (let oi = 0; oi < 4; oi++) {
+                    optionsHTML += `<div><input type="text" class="cas-sub-opt" data-idx="${idx}" data-oi="${oi}" value="${(sq.options[oi] || '').replace(/"/g, '&quot;')}" placeholder="Option ${letters[oi]}"></div>`;
+                }
+                optionsHTML += '</div>';
+                let selOpts = '';
+                for (let oi = 0; oi < 4; oi++) {
+                    const isSel = sq.correctAnswer === (sq.options[oi] || '') || (sq.correctAnswer === letters[oi] && oi === 0);
+                    selOpts += `<option value="${letters[oi]}" ${isSel ? 'selected' : ''}>${letters[oi]}</option>`;
+                }
+                optionsHTML += `<div style="margin-top:8px;">
+                    <span style="font-size:12px;color:#555;">Correct Answer:</span>
+                    <select class="cas-sub-correct" data-idx="${idx}" style="padding:6px;border:2px solid #ccc;border-radius:4px;">${selOpts}</select>
+                </div>`;
+            } else {
+                optionsHTML = `<div style="margin-top:8px;">
+                    <textarea class="cas-sub-ref-answer" data-idx="${idx}" placeholder="Reference answer / marking scheme (optional)" style="width:100%;padding:8px;border:2px solid #ccc;border-radius:4px;min-height:60px;box-sizing:border-box;">${(sq.referenceAnswer || '').replace(/"/g, '&quot;')}</textarea>
+                </div>`;
             }
-            optHTML += '</div>';
-            let selOpts = '';
-            for (let oi = 0; oi < 4; oi++) {
-                const isSel = sq.correctAnswer === (sq.options[oi] || '') || (sq.correctAnswer === letters[oi] && oi === 0);
-                selOpts += `<option value="${letters[oi]}" ${isSel ? 'selected' : ''}>${letters[oi]}</option>`;
-            }
+            const currentMarks = parseInt(sq.marks) || 1;
+            optionsHTML += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:12px;color:#555;">Marks:</span>
+                <input type="number" class="cas-sub-marks" data-idx="${idx}" value="${currentMarks}" min="1" max="4" style="padding:6px;border:2px solid #ccc;border-radius:4px;width:60px;">
+                <span style="font-size:11px;color:#777;">(Total must = 4)</span>
+            </div>`;
             list.innerHTML += `
                 <div style="background:#fff;border:1px solid #e0b3d1;border-radius:6px;padding:12px;margin-bottom:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <strong style="color:#d63384;">Sub-Question ${idx + 1}</strong>
                         <button type="button" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="removeCaseSubQuestion(${idx})">🗑️ Remove</button>
                     </div>
+                    ${typeHTML}
                     <input type="text" class="cas-sub-q" data-idx="${idx}" value="${(sq.q || '').replace(/"/g, '&quot;')}" placeholder="Enter sub-question text..." style="width:100%;margin-top:8px;padding:8px;border:2px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                    ${optHTML}
-                    <div style="display:flex;gap:12px;margin-top:10px;align-items:center;flex-wrap:wrap;">
-                        <span style="font-size:12px;color:#555;">Correct Answer:</span>
-                        <select class="cas-sub-correct" data-idx="${idx}" style="padding:6px;border:2px solid #ccc;border-radius:4px;">${selOpts}</select>
-                        <span style="font-size:12px;color:#555;">Marks:</span>
-                        <select class="cas-sub-marks" data-idx="${idx}" style="padding:6px;border:2px solid #ccc;border-radius:4px;">
-                            <option value="1" ${(parseInt(sq.marks) || 1) === 1 ? 'selected' : ''}>1</option>
-                            <option value="2" ${(parseInt(sq.marks) || 1) === 2 ? 'selected' : ''}>2</option>
-                        </select>
-                    </div>
+                    ${optionsHTML}
                 </div>`;
         });
         list.querySelectorAll('.cas-sub-q').forEach(inp => inp.addEventListener('input', function() {
             caseSubQuestions[parseInt(this.getAttribute('data-idx'))].q = this.value;
+        }));
+        list.querySelectorAll('.cas-sub-type').forEach(sel => sel.addEventListener('change', function() {
+            handleSubTypeChange(parseInt(this.getAttribute('data-idx')));
         }));
         list.querySelectorAll('.cas-sub-opt').forEach(inp => inp.addEventListener('input', function() {
             caseSubQuestions[parseInt(this.getAttribute('data-idx'))].options[parseInt(this.getAttribute('data-oi'))] = this.value;
@@ -1936,30 +1980,62 @@
             const idxMap = {A: 0, B: 1, C: 2, D: 3};
             entry.correctAnswer = (entry.options[idxMap[letter]] || "").trim() || letter;
         }));
-        list.querySelectorAll('.cas-sub-marks').forEach(sel => sel.addEventListener('change', function() {
+        list.querySelectorAll('.cas-sub-marks').forEach(inp => inp.addEventListener('input', function() {
             caseSubQuestions[parseInt(this.getAttribute('data-idx'))].marks = parseInt(this.value) || 1;
             updateCaseSubTotalMarks();
         }));
         updateCaseSubTotalMarks();
     }
-
     function updateCaseSubTotalMarks() {
         const el = document.getElementById("caseSubTotalMarks");
         if (!el) return;
-        const qMarksEl = document.getElementById("questionMarks");
-        const target = (qMarksEl && qMarksEl.value) ? (parseInt(qMarksEl.value) || 4) : 4;
         const total = (caseSubQuestions || []).reduce((a, s) => a + (parseInt(s.marks) || 1), 0);
-        el.innerHTML = `Total marks: ${total} / ${target} ${total !== target ? `<span style="color:#e74c3c;"> (must equal ${target})</span>` : ' <span style="color:#27ae60;">✅</span>'}`;
+        el.innerHTML = `Total marks: ${total} / ${CASE_SUB_TOTAL_MARKS} ${total !== CASE_SUB_TOTAL_MARKS ? `<span style="color:#e74c3c;"> (must equal ${CASE_SUB_TOTAL_MARKS})</span>` : ' <span style="color:#27ae60;">✅</span>'}`;
     }
 
     function collectCaseSubQuestions() {
         renderCaseSubQuestions();
-        return caseSubQuestions.map(s => ({
-            q: String(s.q || "").trim(),
-            options: (s.options || ["", "", "", ""]).map(o => String(o || "").trim()),
-            correctAnswer: String(s.correctAnswer || "").trim() || "A",
-            marks: parseInt(s.marks) || 1
-        })).filter(s => s.q !== "");
+        const result = [];
+        const questions = document.querySelectorAll('.cas-sub-q');
+        const types = document.querySelectorAll('.cas-sub-type');
+        const marks = document.querySelectorAll('.cas-sub-marks');
+
+        questions.forEach((qEl, idx) => {
+            const type = types[idx] ? types[idx].value : 'mcq';
+            const sq = {
+                q: String(qEl.value || "").trim(),
+                type: type,
+                marks: marks[idx] ? parseInt(marks[idx].value) || 1 : 1
+            };
+
+            if (type === 'mcq') {
+                const opts = [];
+                document.querySelectorAll(`.cas-sub-opt[data-idx="${idx}"]`).forEach(optEl => {
+                    opts.push(optEl.value.trim());
+                });
+                sq.options = opts;
+
+                const correctSel = document.querySelector(`.cas-sub-correct[data-idx="${idx}"]`);
+                if (correctSel) {
+                    const letter = correctSel.value;
+                    const idxMap = {A: 0, B: 1, C: 2, D: 3};
+                    sq.correctAnswer = (opts[idxMap[letter]] || "").trim() || letter;
+                }
+                sq.referenceAnswer = '';
+            } else {
+                sq.options = [];
+                sq.correctAnswer = null;
+
+                const refAnswer = document.querySelector(`.cas-sub-ref-answer[data-idx="${idx}"]`);
+                if (refAnswer) {
+                    sq.referenceAnswer = refAnswer.value.trim();
+                }
+            }
+
+            result.push(sq);
+        });
+
+        return result.filter(s => s.q !== "");
     }
 
     function resetExamForm() {
@@ -2088,15 +2164,19 @@
                     btn.innerText = "Add Question ✅"; btn.disabled = false;
                     return alert("Case / Passage based questions require at least 1 sub-question.");
                 }
-                if (totalSubMarks !== marks) {
+                if (totalSubMarks !== CASE_SUB_TOTAL_MARKS) {
                     btn.innerText = "Add Question ✅"; btn.disabled = false;
-                    return alert(`Sub-question marks must total exactly ${marks} marks (currently ${totalSubMarks}).`);
+                    return alert(`Sub-question marks must total exactly ${CASE_SUB_TOTAL_MARKS} marks (currently ${totalSubMarks}). CBSE Section D requires exactly ${CASE_SUB_TOTAL_MARKS} marks total.`);
                 }
                 for (let si = 0; si < subQuestions.length; si++) {
                     const s = subQuestions[si];
-                    if (!s.q || !s.options || s.options.filter(o => o !== "").length < 2) {
+                    if (!s.q) {
                         btn.innerText = "Add Question ✅"; btn.disabled = false;
-                        return alert(`Sub-question ${si + 1} must have text and at least 2 options.`);
+                        return alert(`Sub-question ${si + 1} must have text.`);
+                    }
+                    if (s.type === "mcq" && (!s.options || s.options.filter(o => o !== "").length < 2)) {
+                        btn.innerText = "Add Question ✅"; btn.disabled = false;
+                        return alert(`Sub-question ${si + 1} (MCQ) must have at least 2 options.`);
                     }
                 }
             }

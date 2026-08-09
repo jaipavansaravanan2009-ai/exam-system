@@ -869,6 +869,23 @@
         }
     }
 
+    function handleSubImageSelect(input, subIdx) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') studentAnswers[currentIdx] = {};
+                if (!studentAnswers[currentIdx][subIdx] || typeof studentAnswers[currentIdx][subIdx] !== 'object') {
+                    studentAnswers[currentIdx][subIdx] = {text: '', image: ''};
+                }
+                studentAnswers[currentIdx][subIdx].image = e.target.result;
+                statusMap[currentIdx] = 'answered';
+                renderPalette();
+                showQuestion(currentIdx);
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
     window.onload = async () => {
         const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
         
@@ -1139,21 +1156,46 @@
             }
             q.subQuestions.forEach((sq, si) => {
                 const sel = subAnswers[String(si)];
-                let subOptHTML = "";
-                (sq.options || []).forEach((opt, oi) => {
-                    const checked = sel !== undefined && sel === opt ? 'checked' : '';
-                    const optAttr = String(opt).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                    subOptHTML += `<div class="opt-row ${checked ? 'selected' : ''}" onclick="handleRowClick(this)">
-                        <label>
-                            <input type="radio" name="sub-${si}" value="${oi}" data-sub="${si}" data-opt="${optAttr}" ${checked} style="margin-right:12px;transform:scale(1.2);">
-                            <span style="font-size:15px;">${opt}</span>
-                        </label></div>`;
-                });
+                let subContentHTML = "";
+
+                if (sq.type === 'subjective') {
+                    // Subjective sub-question
+                    const subAnswerData = (sel && typeof sel === 'object') ? sel : {text: '', image: ''};
+                    const existingText = subAnswerData.text || '';
+                    const existingImg = subAnswerData.image || '';
+
+                    subContentHTML += `
+                        <div style="background:#fefaf3;border:1px solid #f0d9a8;border-radius:6px;padding:12px;margin-top:10px;">
+                            <div style="font-weight:600;color:#b9770e;margin-bottom:10px;">✍️ Write your answer (admin will evaluate this)</div>
+                            <textarea class="subjective-sub-answer" data-sub="${si}" rows="4" placeholder="Type your answer here..." style="width:100%;padding:10px;font-size:15px;border:2px solid #ccc;border-radius:6px;resize:vertical;box-sizing:border-box;">${existingText}</textarea>
+                            <div style="margin-top:10px;">
+                                <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="document.getElementById('subImgInput-${si}').click()">📷 Upload Image</button>
+                                <input type="file" accept="image/*" id="subImgInput-${si}" style="display:none;" onchange="handleSubImageSelect(this, ${si})">
+                                ${existingImg ? `<img src="${existingImg}" style="max-width:100%;max-height:200px;border:2px solid var(--secondary);border-radius:6px;margin-top:8px;cursor:zoom-in;" onclick="openZoom(this.src)">` : ''}
+                            </div>
+                        </div>`;
+                } else {
+                    // MCQ sub-question (existing)
+                    let subOptHTML = "";
+                    (sq.options || []).forEach((opt, oi) => {
+                        const checked = sel !== undefined && sel === opt ? 'checked' : '';
+                        const optAttr = String(opt).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        subOptHTML += `<div class="opt-row ${checked ? 'selected' : ''}" onclick="handleRowClick(this)">
+                            <label>
+                                <input type="radio" name="sub-${si}" value="${oi}" data-sub="${si}" data-opt="${optAttr}" ${checked} style="margin-right:12px;transform:scale(1.2);">
+                                <span style="font-size:15px;">${opt}</span>
+                            </label></div>`;
+                    });
+                    subContentHTML = subOptHTML;
+                }
+
                 html += `<div style="background:#fafbfc;border:1px solid #e0e0e0;border-radius:6px;padding:12px;margin-bottom:14px;">
                     <div style="font-weight:600;color:var(--primary);margin-bottom:8px;">(${String.fromCharCode(97 + si)}) ${sq.q} <span style="color:#8e44ad;font-size:12px;">[${sq.marks || 1} mark${(sq.marks || 1) > 1 ? 's' : ''}]</span></div>
-                    ${subOptHTML}</div>`;
+                    ${subContentHTML}</div>`;
             });
             optDiv.innerHTML = html;
+
+            // MCQ event listeners
             optDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', function() {
                     if (this.checked) {
@@ -1165,6 +1207,22 @@
                         updateRowStyles(this);
                         renderPalette();
                     }
+                });
+            });
+
+            // Subjective event listeners
+            optDiv.querySelectorAll('.subjective-sub-answer').forEach(ta => {
+                ta.addEventListener('input', function() {
+                    const si = this.getAttribute('data-sub');
+                    if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') studentAnswers[currentIdx] = {};
+                    if (!studentAnswers[currentIdx][si] || typeof studentAnswers[currentIdx][si] !== 'object') {
+                        studentAnswers[currentIdx][si] = {text: '', image: ''};
+                    }
+                    studentAnswers[currentIdx][si].text = this.value;
+                    const hasText = this.value.trim() !== '';
+                    const hasImage = studentAnswers[currentIdx][si].image !== '';
+                    statusMap[currentIdx] = (hasText || hasImage) ? 'answered' : 'visited';
+                    renderPalette();
                 });
             });
         }
