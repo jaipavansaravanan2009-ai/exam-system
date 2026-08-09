@@ -2617,7 +2617,7 @@
                             if (isCorrectOpt && isSelectedOpt) { bg = '#e8f8e5'; border = '2px solid var(--success)'; indicator = '✅'; }
                             else if (isCorrectOpt) { bg = '#e8f8e5'; border = '2px solid var(--success)'; indicator = '✓'; }
                             else if (isSelectedOpt) { bg = '#ffebee'; border = '2px solid var(--danger)'; indicator = '❌'; }
-                            let optImg = (qa.optionImages && qa.optionImages[idx]) ? `<br><img src="${qa.optionImages[idx]}" style="max-width: 120px; max-height: 80px; margin-top: 5px; border-radius: 4px;">` : '';
+                            let optImg = (qa.optionImages && qa.optionImages[idx]) ? `<br><img src="${qa.optionImages[idx]}" style="max-width: 120px; max-height: 80px; margin-top: 5px; border-radius: 4px; cursor: zoom-in;" onclick="openZoom(this.src)" alt="Option ${idx + 1} Image">` : '';
                             optionsDisplay += `<div style="padding: 8px; border-radius: 4px; background: ${bg}; border: ${border}; font-size: 13px;">${letter}. ${opt} <strong>${indicator}</strong>${optImg}</div>`;
                         });
                         optionsDisplay += '</div>';
@@ -2626,13 +2626,13 @@
                     // Solution image HTML
                     let solutionImgHtml = '';
                     if (qa.solutionImage) {
-                        solutionImgHtml = `<br><img src="${qa.solutionImage}" style="max-width: 100%; max-height: 250px; border-radius: 6px; border: 1px solid #ccc; margin-top: 8px;">`;
+                        solutionImgHtml = `<br><img src="${qa.solutionImage}" style="max-width: 100%; max-height: 250px; border-radius: 6px; border: 1px solid #ccc; margin-top: 8px; cursor: zoom-in;" onclick="openZoom(this.src)" alt="Solution Image">`;
                     }
                     
                     // Question image
                     let qImgHtml = '';
                     if (qa.questionImage) {
-                        qImgHtml = `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 8px;">`;
+                        qImgHtml = `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 8px; cursor: zoom-in;" onclick="openZoom(this.src)" alt="Question Image">`;
                     }
 
                     // Section D (case-based) sub-question analysis - auto graded
@@ -3801,7 +3801,59 @@
         if(role.toLowerCase() === "setter") document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
         setTimeout(loadQBFolders, 100);
     }
+
+    // ================= ZOOM FUNCTIONS FOR ADMIN PORTAL =================
+    let adminZoomLevel = 100;
+
+    function openZoom(src) {
+        const img = document.getElementById("adminZoomImg");
+        img.src = src;
+        adminResetZoom();
+        document.getElementById("adminZoomModal").style.display = "flex";
+    }
+
+    function adminCloseZoom() {
+        document.getElementById("adminZoomModal").style.display = "none";
+    }
+
+    function adminChangeZoom(amount) {
+        adminZoomLevel += amount;
+        if (adminZoomLevel < 50) adminZoomLevel = 50;
+        if (adminZoomLevel > 500) adminZoomLevel = 500;
+        const img = document.getElementById("adminZoomImg");
+        if (adminZoomLevel === 100) {
+            img.style.maxWidth = "90%";
+            img.style.maxHeight = "85vh";
+            img.style.width = "auto";
+        } else {
+            img.style.maxWidth = "none";
+            img.style.maxHeight = "none";
+            img.style.width = adminZoomLevel + "%";
+        }
+    }
+
+    function adminResetZoom() {
+        adminZoomLevel = 100;
+        const img = document.getElementById("adminZoomImg");
+        img.style.maxWidth = "90%";
+        img.style.maxHeight = "85vh";
+        img.style.width = "auto";
+    }
 </script>
+
+<!-- Zoom Modal for Admin Portal -->
+<div id="adminZoomModal" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.92); flex-direction: column; backdrop-filter: blur(4px);">
+    <div style="background: #111; padding: 15px; display: flex; justify-content: center; gap: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.5);">
+        <button class="btn btn-primary" onclick="adminChangeZoom(50)">🔍 Zoom In (+)</button>
+        <button class="btn btn-primary" onclick="adminChangeZoom(-50)">🔍 Zoom Out (-)</button>
+        <button class="btn btn-outline" onclick="adminResetZoom()" style="border-color: white; color: white;">Reset</button>
+        <button class="btn btn-primary" onclick="adminCloseZoom()" style="background: #e74c3c;">✖ Close</button>
+    </div>
+    <div style="flex: 1; overflow: auto; display: flex; justify-content: center; align-items: center; padding: 20px;" onclick="if(event.target===this) adminCloseZoom()">
+        <img id="adminZoomImg" src="" style="transition: width 0.2s ease; box-shadow: 0 0 20px rgba(0,0,0,0.8); border-radius: 4px; background: white; max-width: 90%; max-height: 85vh;">
+    </div>
+</div>
+
 
 </body>
 </html>
