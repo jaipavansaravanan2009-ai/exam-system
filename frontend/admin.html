@@ -729,9 +729,27 @@
         
         <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed #1abc9c;">
             <h4 style="color: #16a085; margin-bottom: 10px;">📦 Bulk ZIP Upload to Bank</h4>
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <label style="font-size: 12px; font-weight: bold; white-space: nowrap;">Import Format:</label>
+                <select id="qbZipMode" onchange="onQBZipModeChange()" style="margin-bottom: 0;">
+                    <option value="general">Standard / CBSE format</option>
+                    <option value="jee">JEE format (exact 18-col)</option>
+                </select>
+            </div>
             <div style="display: flex; gap: 10px;">
                 <input type="file" id="qbZipFile" accept=".zip" multiple style="margin-bottom: 0;">
                 <button class="btn btn-primary" style="background:#16a085; border:none;" onclick="uploadQBZIP()" id="qbZipUploadBtn">Upload ZIP(s)</button>
+            </div>
+            <div id="qbJeeFormatInfo" style="display:none; margin-top: 10px; padding: 10px; background:#fff; border:1px solid #1abc9c; border-radius:6px; font-size:11px; color:#444; line-height:1.7;">
+                <strong style="color:#16a085;">🎯 JEE CSV Format (strict 18-column / 17-comma rule — no CBSE columns)</strong><br>
+                Header must be EXACTLY this (do not change, no extra spaces):<br>
+                <code style="font-size:10px; display:block; overflow-x:auto; white-space:nowrap; background:#f4f4f4; padding:6px; border-radius:4px; margin:4px 0;">ExamType,Subject,Section,Topics,QuestionText,QuestionImage,NumericalAnswer,OptionA,OptionA_Image,OptionB,OptionB_Image,OptionC,OptionC_Image,OptionD,OptionD_Image,Hint,Solution,SolutionImage</code>
+                • <b>17-comma rule:</b> every row must contain EXACTLY 17 commas (18 columns). Missing/extra commas are rejected, never imported.<br>
+                • <b>Option A rule:</b> the CORRECT option goes in <code>OptionA</code>; the remaining options go in B/C/D.<br>
+                • <b>Quoting:</b> wrap Topics/QuestionText/Options/Hint/Solution in double quotes; escape internal quotes as "" (blanket quote protection).<br>
+                • <b>Integer questions:</b> put the answer in NumericalAnswer and leave ALL option columns blank (commas must still be present).<br>
+                • <b>Images:</b> QuestionImage / Option*_Image / SolutionImage hold a filename inside the ZIP (or a full http URL); blank image cells stay empty.<br>
+                • Subject is <code>"Chemistry"</code>. ExamType is one of: "Practice type", "JEE mains type", "JEE advance type". Section is: "Single correct answer", "Multiple correct answer", "Integer based question".
             </div>
         </div>
             
@@ -1374,6 +1392,12 @@
         }
     }
 
+    function onQBZipModeChange() {
+        const modeEl = document.getElementById('qbZipMode');
+        const infoEl = document.getElementById('qbJeeFormatInfo');
+        if (infoEl) infoEl.style.display = (modeEl && modeEl.value === 'jee') ? 'block' : 'none';
+    }
+
     async function uploadQBZIP() { 
         const fileInput = document.getElementById('qbZipFile');
         const files = fileInput.files;
@@ -1388,6 +1412,8 @@
         for (let i = 0; i < files.length; i++) {
             formData.append("files", files[i]);
         }
+        const zipModeEl = document.getElementById('qbZipMode');
+        formData.append("mode", (zipModeEl && zipModeEl.value === 'jee') ? "jee" : "default");
         
         try {
             const res = await fetch(`${BACKEND_URL}/api/question_bank/bulk-upload-zip`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 import firebase_admin
 from firebase_admin import credentials, firestore
 from dotenv import load_dotenv
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 from typing import List
 import csv
 import io
@@ -528,8 +528,142 @@ async def delete_qb_question(q_id: str, user=Depends(authorize(["admin"]))):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to delete question")
 
+# ==========================================
+# 🎯 STRICT JEE-FORMAT CSV PARSER
+# (Exact 18-column header / 17-comma rule / Option A = correct)
+# ==========================================
+JEE_CSV_HEADERS = [
+    "ExamType", "Subject", "Section", "Topics", "QuestionText", "QuestionImage",
+    "NumericalAnswer", "OptionA", "OptionA_Image", "OptionB", "OptionB_Image",
+    "OptionC", "OptionC_Image", "OptionD", "OptionD_Image", "Hint", "Solution",
+    "SolutionImage",
+]
+
+
+def parse_jee_format_csv(csv_text, images_data=None):
+    """Parse a strict JEE-format question CSV for the question bank.
+
+    The JEE format is intentionally isolated from the flexible/CBSE parser:
+      * Exact 18-column header (matched case-insensitively, whitespace-trimmed).
+      * The 17-comma rule: every data row must contain EXACTLY 18 fields.
+        Rows with extra unescaped commas (>18) or missing trailing commas (<18)
+        are rejected and reported, never silently imported.
+      * The Option A rule: the CORRECT option's text goes in OptionA; the
+        remaining options (B/C/D) are the distractors.
+      * Integer / Numerical rows use NumericalAnswer; all option columns are
+        ignored and stored blank.
+      * Text fields use RFC 4180 quoting: internal commas stay inside one field
+        and embedded double quotes are escaped as "" (handled by csv.reader).
+      * Image columns may hold an http(s) URL or a filename matching an entry
+        in images_data (lowercase basename -> data URI).
+
+    Returns (questions, errors). When errors is non-empty the caller should
+    reject the whole file so corrupted rows never reach the database.
+    """
+    images_data = images_data or {}
+    errors = []
+    questions = []
+    rows = list(csv.reader(io.StringIO(csv_text)))
+
+    if not rows:
+        return questions, ["CSV is empty"]
+
+    header = [str(c).strip() for c in (rows[0] or [])]
+    header_norm = [h.lower() for h in header]
+    expected_norm = [h.lower() for h in JEE_CSV_HEADERS]
+    if len(header) != 18 or header_norm != expected_norm:
+        errors.append(
+            "Header mismatch. Expected exactly: " + ",".join(JEE_CSV_HEADERS)
+        )
+        return questions, errors
+
+    col = {name: i for i, name in enumerate(header)}
+
+    def get_field(row, name):
+        i = col[name]
+        return (row[i] or "").strip() if i < len(row) else ""
+
+    def get_image(row, name):
+        val = get_field(row, name)
+        if not val:
+            return None
+        if val.startswith("http"):
+            return val
+        return images_data.get(val.lower().strip(), None)
+
+    for row_num, row in enumerate(rows[1:], start=2):
+        if not any((c or "").strip() for c in row):
+            continue  # skip entirely blank rows
+
+        if len(row) != 18:
+            errors.append(
+                f"Row {row_num}: found {len(row)} columns, expected 18 "
+                f"(EXACTLY 17 commas required). Row skipped."
+            )
+            continue
+
+        section_val = get_field(row, "Section") or "Single correct answer"
+        numerical_ans = get_field(row, "NumericalAnswer")
+        section_lower = section_val.lower()
+        is_numeric = bool(numerical_ans) or "integer" in section_lower or "numerical" in section_lower
+
+        opt_a_text = get_field(row, "OptionA")
+        opt_b_text = get_field(row, "OptionB")
+        opt_c_text = get_field(row, "OptionC")
+        opt_d_text = get_field(row, "OptionD")
+
+        if is_numeric:
+            correct_ans = numerical_ans
+            options = []
+            option_images = []
+            question_type = "integer"
+        else:
+            if not opt_a_text and not get_image(row, "OptionA_Image"):
+                errors.append(
+                    f"Row {row_num}: OptionA is empty - the Option A rule requires "
+                    f"the correct option (text or image) in the OptionA column. Row skipped."
+                )
+                continue
+            correct_ans = opt_a_text
+            options = [opt_a_text, opt_b_text, opt_c_text, opt_d_text]
+            option_images = [
+                get_image(row, "OptionA_Image"),
+                get_image(row, "OptionB_Image"),
+                get_image(row, "OptionC_Image"),
+                get_image(row, "OptionD_Image"),
+            ]
+            if "multiple" in section_lower:
+                question_type = "multiple"
+            elif "match" in section_lower:
+                question_type = "matrix"
+            elif "passage" in section_lower:
+                question_type = "case-based"
+            else:
+                question_type = "mcq"
+
+        questions.append({
+            "exam_type": get_field(row, "ExamType") or "Practice",
+            "subject": get_field(row, "Subject") or "Chemistry",
+            "section": section_val,
+            "questionType": question_type,
+            "question": get_field(row, "QuestionText"),
+            "questionImage": get_image(row, "QuestionImage"),
+            "options": options,
+            "optionImages": option_images,
+            "correctAnswer": correct_ans,
+            "correctAnswers": [correct_ans] if correct_ans else [],
+            "hint": get_field(row, "Hint"),
+            "solution": get_field(row, "Solution"),
+            "solutionImage": get_image(row, "SolutionImage"),
+            "topics": [t.strip() for t in get_field(row, "Topics").split(",") if t.strip()],
+            "importMode": "jee-csv",
+        })
+
+    return questions, errors
+
+
 @app.post("/api/question_bank/bulk-upload-zip")
-async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), user=Depends(authorize(["admin", "setter"]))):
+async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), mode: str = Form(""), user=Depends(authorize(["admin", "setter"]))):
     total_added = 0
     file_results = []
     qb_ref = db.collection("question_bank")
@@ -602,6 +736,30 @@ async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), user=Depends(a
                     if not img_name: return None
                     if img_name.startswith("http"): return img_name
                     return images_data.get(img_name.lower().strip(), None)
+
+                if mode == "jee":
+                    jee_qs, jee_errors = parse_jee_format_csv(csv_data, images_data)
+                    if jee_errors:
+                        shown_errors = "; ".join(jee_errors[:5])
+                        if len(jee_errors) > 5:
+                            shown_errors += f" (+{len(jee_errors) - 5} more)"
+                        file_results.append({"file": file.filename, "status": "failed", "reason": f"JEE format error(s): {shown_errors}"})
+                        continue
+                    batch = db.batch()
+                    added_count = 0
+                    now = datetime.now(timezone.utc)
+                    for q in jee_qs:
+                        q["createdAt"] = now
+                        q["createdBy"] = user.get("id")
+                        batch.set(qb_ref.document(), q)
+                        added_count += 1
+                        if added_count % 450 == 0:
+                            batch.commit()
+                            batch = db.batch()
+                    batch.commit()
+                    file_results.append({"file": file.filename, "status": "success", "added": added_count})
+                    total_added += added_count
+                    continue
 
                 added_count = 0
                 batch = db.batch()
