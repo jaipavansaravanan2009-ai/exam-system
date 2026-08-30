@@ -285,6 +285,14 @@
             background: #eceff1;
             color: #546e7a;
         }
+        .status-badge.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .status-badge.evaluated {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
 
         /* Responsive Design for Mobile */
         @media (max-width: 768px) {
@@ -311,6 +319,18 @@
             gap: 5px;
         }
         
+        /* Hint box in analysis */
+        .hint-box {
+            margin: 10px 0;
+            padding: 14px 18px;
+            background: #e7f3fe;
+            border-left: 5px solid #2196F3;
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .hint-box::before { content: "💡 Hint: "; font-weight: bold; color: #1976D2; }
+
         /* Enhanced Solution Styles */
         .solution-container {
             background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
@@ -1039,10 +1059,31 @@
                 `;
 
                 liveData.questionAnalysis.forEach((qa, index) => {
+                    const isCBSE = String(liveData.examType || resultData.examType || '').toLowerCase().includes('cbse');
                     const isSkipped = !qa.isAttempted;
-                    const statusClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
-                    const statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
-                    const statusBadgeClass = statusClass;
+                    const isManualQ = qa.questionType === 'subjective' || qa.questionType === 'case-based' || (!isCBSE && qa.marks > 1);
+
+                    let statusText, statusBadgeClass, statusClass;
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        statusText = qa.isAttempted ? (qa.isCorrect ? 'Correct' : 'Attempted') : 'Skipped';
+                        statusBadgeClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
+                    } else if (isManualQ) {
+                        statusText = qa.isAttempted ? (qa.awardedMarks !== null && qa.awardedMarks !== undefined ? 'Evaluated' : 'Pending Eval') : 'Skipped';
+                        statusBadgeClass = qa.isAttempted ? (qa.awardedMarks !== null && qa.awardedMarks !== undefined ? 'evaluated' : 'pending') : 'skipped';
+                    } else {
+                        statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
+                        statusBadgeClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
+                    }
+                    statusClass = statusBadgeClass;
+
+                    let marks;
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        marks = `${qa.scoredMarks || 0}/${qa.marks}`;
+                    } else if (isManualQ) {
+                        marks = (qa.awardedMarks !== null && qa.awardedMarks !== undefined) ? `${qa.awardedMarks}` : (qa.isAttempted ? 'Pending' : '—');
+                    } else {
+                        marks = qa.isCorrect ? `+${qa.marks || 1}` : (isSkipped ? '0' : (isCBSE ? '0' : '-1'));
+                    }
                     
                     // Format time spent on this question
                     let timeDisplay = '';
@@ -1088,15 +1129,15 @@
                     container.innerHTML += `
                         <div class="question-analysis-card">
                             <div class="question-analysis-header ${statusClass}" onclick="toggleQuestionAnalysis(this)">
-                                <div style="display: flex; align-items: center; gap: 15px;">
+                                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                                     <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
-                                    <span style="font-size: 13px; color: #666;">${qa.subject}</span>
+                                    <span style="font-size: 13px; padding: 2px 8px; border-radius: 12px; background: ${subColor}; color: white;">${qa.subject}</span>
+                                    ${qa.topics && qa.topics.length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${qa.topics.slice(0, 3).join(', ')}</span>` : ''}
                                     ${timeDisplay ? `<span style="font-size: 12px; color: #888;">⏱️ ${timeDisplay}</span>` : ''}
+                                    ${qa.marks ? `<span style="font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #9b59b6; color: white;">${qa.marks} marks</span>` : ''}
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 10px;">
-                                    <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">
-                                        ${qa.isCorrect ? '+4' : (isSkipped ? '0' : '-1')}
-                                    </span>
+                                    <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : (isManualQ ? '#e67e22' : 'var(--danger)')};">${marks}</span>
                                     <span class="status-badge ${statusBadgeClass}">${statusText}</span>
                                     <span style="font-size: 18px; color: #999;">▼</span>
                                 </div>
@@ -1108,6 +1149,7 @@
                                     ${qa.questionImage ? `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 10px; cursor: zoom-in;" onclick="openZoom('${qa.questionImage}')">` : ''}
                                 </div>
                                 ${optionsDisplay}
+                                ${(qa.hint || (Array.isArray(qa.hints) && qa.hints.length)) ? `<div class="hint-box">${qa.hint || qa.hints.join(' ')}</div>` : ''}
                                 <div class="answer-comparison">
                                     <div class="answer-box your-answer">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Your Answer</div>
@@ -1193,7 +1235,7 @@
     function reRenderMathJax() {
         if (window.MathJax && window.MathJax.typesetPromise) {
             // Clear and typeset all main content areas
-            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .case-passage, .modal-body, .result-content, #qText, #optionsList, #hintContainer');
+            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #analysisContainer .question-analysis-card');
             mainAreas.forEach(el => MathJax.typesetClear([el]));
             MathJax.typesetPromise(mainAreas).catch((err) => console.log('MathJax error:', err));
         }

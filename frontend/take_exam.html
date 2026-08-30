@@ -1130,11 +1130,14 @@
 
         // Handle hints - always visible when enabled
         const hintContainer = document.getElementById("hintContainer");
-        const hintsEnabled = examData.enableHints || false;
-        if (hintsEnabled && q.hint) {
+        let hintsEnabled = examData.enableHints;
+        if (typeof hintsEnabled === 'string') hintsEnabled = hintsEnabled.toLowerCase() === 'true';
+        hintsEnabled = !!hintsEnabled;
+        const hintText = q.hint || (Array.isArray(q.hints) && q.hints.length ? q.hints.join(' ') : '');
+        if (hintsEnabled && hintText) {
             hintContainer.style.display = "block";
             hintContainer.innerHTML = `
-                <div class="hint-display">${q.hint}</div>
+                <div class="hint-display">${hintText}</div>
             `;
         } else {
             hintContainer.style.display = "none";

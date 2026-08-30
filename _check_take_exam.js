@@ -1,0 +1,1479 @@
+(function(){
+
+        window.MathJax = {
+            loader: {load: ['[tex]/mhchem']},
+            tex: { 
+                packages: {'[+]': ['mhchem']},
+                inlineMath: [['$', '$'], ['\\(', '\\)']], 
+                displayMath: [['$$', '$$'], ['\\[', '\\]']] 
+            },
+            startup: { typeset: false } 
+        };
+    
+// =================
+
+    const BACKEND_URL = "https://jee-mock-portal.onrender.com";
+    
+    let examData = null;
+    let currentIdx = -1;
+    let currentSub = 'Physics';
+    let studentAnswers = {};
+    let answerImages = {}; // questionIndex -> base64 image for subjective answers
+    let statusMap = {};
+    let selectedOptionIndex = {}; // Track selected option index for visual restoration
+    let timeLeft = 180 * 60;
+    let questionStartTime = Date.now();
+    let questionTimes = [];
+    let subjectTimes = {};
+    let currentExamId = null; // Stores the exam ID for use across functions
+
+    // ===== EMERGENCY SHUTDOWN RECOVERY SYSTEM =====
+    let autoSaveInterval = null;
+    let lastSaveTime = 0;
+    const AUTO_SAVE_INTERVAL_MS = 30000; // Save every 30 seconds
+
+    // Save current exam progress to backend
+    async function saveProgressToBackend() {
+        if (!examActive || autoSubmitTriggered || !examData) return;
+        
+        // Record time on current question before saving
+        recordTimeOnCurrentQuestion();
+        
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        const examId = new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId');
+        
+        const progressPayload = {
+            examId: examId,
+            studentAnswers: studentAnswers,
+            answerImages: answerImages,
+            statusMap: statusMap,
+            timeLeft: timeLeft,
+            currentIdx: currentIdx,
+            currentSub: currentSub,
+            questionTimes: questionTimes,
+            subjectTimes: subjectTimes,
+            violationCount: violationCount,
+            totalAwayTime: totalAwayTime,
+            cheatingViolations: cheatingViolations,
+            autoSubmitTriggered: autoSubmitTriggered
+        };
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/save-progress`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify(progressPayload)
+            });
+            
+            if (res.ok) {
+                lastSaveTime = Date.now();
+                console.log('💾 Exam progress auto-saved at', new Date().toLocaleTimeString());
+            }
+        } catch (err) {
+            // Silently fail - don't disrupt the exam experience
+            console.warn('⚠️ Failed to auto-save progress:', err.message);
+        }
+    }
+
+    // Restore exam progress from backend
+    async function restoreExamProgress(examId) {
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}/progress`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            if (!res.ok) return null;
+            
+            const data = await res.json();
+            if (!data.hasProgress) return null;
+            
+            return data;
+        } catch (err) {
+            console.warn('⚠️ Failed to restore exam progress:', err.message);
+            return null;
+        }
+    }
+
+    // Delete exam progress from backend
+    async function deleteExamProgress(examId) {
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        
+        try {
+            await fetch(`${BACKEND_URL}/api/public/exams/${examId}/progress`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            console.log('🗑️ Exam progress deleted after submission');
+        } catch (err) {
+            console.warn('⚠️ Failed to delete exam progress:', err.message);
+        }
+    }
+
+    // ===== ANTI-CHEAT SYSTEM =====
+    const CHEAT_CONFIG = {
+        maxViolations: 3,           // Auto-submit after N violations
+        maxAwaySeconds: 300,        // Auto-submit after total N seconds away (5 minutes)
+        enforceFullscreen: true,    // Require fullscreen mode
+        showOverlay: true           // Show blocking overlay on focus loss
+    };
+
+    let violationCount = 0;
+    let totalAwayTime = 0;         // Total seconds away from exam
+    let awayStartTime = null;      // Timestamp when user left
+    let isFullscreen = false;
+    let examActive = false;        // Becomes true after exam loads
+    let cheatingViolations = [];   // Detailed log of all violations
+    let autoSubmitTriggered = false; // Prevent multiple auto-submissions
+    let isTabHidden = false;       // Track if tab was hidden via visibilitychange (used to deduplicate blur)
+    let suppressLossOfFocus = false; // Armed while the in-exam image-upload file-picker is open (legit action, not a cheat)
+
+    // Show a blocking overlay when a major violation occurs (tab switch, window blur)
+    function showCheatOverlay(reason) {
+        if (autoSubmitTriggered) return;
+        
+        const overlay = document.getElementById('cheatOverlay');
+        document.getElementById('cheatReason').innerText = reason;
+        
+        // Start tracking away time
+        if (awayStartTime === null) {
+            awayStartTime = Date.now();
+        }
+        
+        overlay.classList.add('show');
+    }
+
+    // Dismiss the overlay when student returns
+    function dismissCheatOverlay() {
+        const overlay = document.getElementById('cheatOverlay');
+        overlay.classList.remove('show');
+        
+        // Calculate away time
+        if (awayStartTime !== null) {
+            const awaySeconds = Math.round((Date.now() - awayStartTime) / 1000);
+            totalAwayTime += awaySeconds;
+            awayStartTime = null;
+            
+            document.getElementById('violationAwayTime').innerText = 
+                `Total time away: ${totalAwayTime}s / ${CHEAT_CONFIG.maxAwaySeconds}s`;
+        }
+
+        // Check if auto-submit threshold reached
+        checkAutoSubmitThreshold();
+    }
+
+    // Record a violation (only for MAJOR offenses: tab switch, window close, page navigate)
+    function recordViolation(type, details) {
+        if (autoSubmitTriggered) return;
+        
+        violationCount++;
+        const timestamp = new Date().toISOString();
+        
+        cheatingViolations.push({
+            type: type,
+            details: details,
+            timestamp: timestamp,
+            violationNumber: violationCount
+        });
+
+        // Update violation counter in overlay
+        document.getElementById('violationCountDisplay').innerText = 
+            `${violationCount} / ${CHEAT_CONFIG.maxViolations}`;
+
+        console.warn(`🚨 ANTI-CHEAT: Violation #${violationCount} - ${type}: ${details}`);
+
+        // Show violation count in header timer area
+        updateViolationBadge();
+
+        // If max violations reached, auto-submit
+        if (violationCount >= CHEAT_CONFIG.maxViolations) {
+            triggerAutoSubmit(`Maximum violations (${CHEAT_CONFIG.maxViolations}) reached.`);
+            return;
+        }
+
+        // If max away time reached, auto-submit
+        if (totalAwayTime >= CHEAT_CONFIG.maxAwaySeconds) {
+            triggerAutoSubmit(`Total away time (${CHEAT_CONFIG.maxAwaySeconds}s) exceeded.`);
+            return;
+        }
+    }
+
+    // Show a small toast notification for minor items
+    function showViolationToast(message) {
+        if (autoSubmitTriggered) return;
+        
+        const toast = document.getElementById('violationToast');
+        toast.innerText = `⚠️ ${message}`;
+        toast.classList.add('show');
+        
+        // Auto-hide after 3 seconds
+        clearTimeout(toast._hideTimer);
+        toast._hideTimer = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3000);
+    }
+
+    // Update a small badge next to timer showing violation count
+    function updateViolationBadge() {
+        let badge = document.getElementById('violationBadge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'violationBadge';
+            badge.style.cssText = `
+                background: var(--red); color: white; padding: 3px 10px; 
+                border-radius: 12px; font-size: 13px; margin-left: 10px;
+            `;
+            document.getElementById('timer').parentNode.appendChild(badge);
+        }
+        badge.innerText = `⚠️ ${violationCount}/${CHEAT_CONFIG.maxViolations}`;
+    }
+
+    // Check if auto-submit threshold is reached (called after overlay dismissed)
+    function checkAutoSubmitThreshold() {
+        if (violationCount >= CHEAT_CONFIG.maxViolations) {
+            triggerAutoSubmit(`Maximum violations (${CHEAT_CONFIG.maxViolations}) reached.`);
+        } else if (totalAwayTime >= CHEAT_CONFIG.maxAwaySeconds) {
+            triggerAutoSubmit(`Total away time (${CHEAT_CONFIG.maxAwaySeconds}s) exceeded.`);
+        }
+    }
+
+    // Auto-submit the exam with a reason — shows a clean modal instead of alert()
+    async function triggerAutoSubmit(reason) {
+        if (autoSubmitTriggered) return;
+        autoSubmitTriggered = true;
+        
+        // Add the auto-submit reason to violations
+        cheatingViolations.push({
+            type: 'auto-submit',
+            details: reason,
+            timestamp: new Date().toISOString(),
+            violationNumber: violationCount + 1
+        });
+        
+        // Hide overlay if showing
+        document.getElementById('cheatOverlay').classList.remove('show');
+        
+        // Show the clean max-violations modal
+        document.getElementById('maxViolationReason').innerText = reason;
+        document.getElementById('maxViolationsModal').classList.add('show');
+        
+        // Submit the exam (don't await so modal shows immediately)
+        submitFinal().then(() => {
+            // After submission completes, enable the OK button
+            const btn = document.getElementById('maxViolationOkBtn');
+            btn.disabled = false;
+            btn.innerText = 'OK, Take me to Dashboard';
+        });
+    }
+
+    // Redirect after max violations modal OK button click
+    function redirectAfterMaxViolation() {
+        window.location.href = 'student_portal.html';
+    }
+
+    // Show/hide fullscreen prompt banner
+    function showFullscreenPrompt() {
+        document.getElementById('fullscreenPrompt').classList.add('show');
+    }
+    function dismissFullscreenPrompt() {
+        document.getElementById('fullscreenPrompt').classList.remove('show');
+    }
+
+    // --- Event Handlers ---
+
+    // Detect when tab visibility changes (user switches tabs/minimizes) — MAJOR violation
+    document.addEventListener('visibilitychange', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        // Ignore the momentary loss of focus/visibility caused by opening the in-exam
+        // image-upload file-picker. This is a legitimate student action, not cheating,
+        // so don't count a "tab-switch" violation or pop the cheat overlay here.
+        if (suppressLossOfFocus) return;
+        
+        if (document.hidden) {
+            isTabHidden = true;
+            // User left the tab
+            showCheatOverlay('You switched to another tab or application!');
+            recordViolation('tab-switch', 'User switched away from exam tab');
+            showViolationToast('Tab switch detected! Violation recorded.');
+        } else {
+            isTabHidden = false;
+            // User returned - dismiss overlay handled by button click
+            // But also update away time if they came back and overlay not there
+            if (awayStartTime !== null) {
+                const awaySeconds = Math.round((Date.now() - awayStartTime) / 1000);
+                totalAwayTime += awaySeconds;
+                awayStartTime = null;
+                checkAutoSubmitThreshold();
+            }
+        }
+    });
+
+    // Detect window blur (Alt+Tab, clicking taskbar, etc.)
+    // Only shows overlay — NO violation counted here (handled by visibilitychange to avoid double-count)
+    window.addEventListener('blur', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        if (suppressLossOfFocus) return;
+        // Only show overlay if tab is NOT already hidden (prevents double overlay from tab switch)
+        if (!isTabHidden && !document.getElementById('cheatOverlay').classList.contains('show')) {
+            showCheatOverlay('You clicked outside the exam window!');
+            // NO recordViolation here — only visibilitychange counts violations
+        }
+    });
+
+    // Detect window focus return
+    // Reset suppressLossOfFocus when window regains focus (file picker closed)
+    window.addEventListener('focus', function() {
+        // If overlay is showing, keep it until they press return button
+        // The away time tracking continues
+        if (suppressLossOfFocus) suppressLossOfFocus = false;
+    });
+    
+    // Fullscreen change detection — NO violation counted, just show prompt
+    document.addEventListener('fullscreenchange', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        
+        isFullscreen = !!document.fullscreenElement;
+        
+        if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
+            // Show the small prompt banner (no overlay, no violation)
+            showFullscreenPrompt();
+            showViolationToast('Please press F11 to re-enter fullscreen mode.');
+        } else {
+            dismissFullscreenPrompt();
+        }
+    });
+
+    // Also handle prefixed fullscreen for older browsers
+    document.addEventListener('webkitfullscreenchange', function() {
+        if (!examActive || autoSubmitTriggered) return;
+        isFullscreen = !!document.webkitFullscreenElement;
+        if (!isFullscreen && CHEAT_CONFIG.enforceFullscreen) {
+            showFullscreenPrompt();
+            showViolationToast('Please press F11 to re-enter fullscreen mode.');
+        } else {
+            dismissFullscreenPrompt();
+        }
+    });
+
+    // Silently block right-click context menu (NO violation counted)
+    document.addEventListener('contextmenu', function(e) {
+        if (!examActive) return;
+        e.preventDefault();
+        showViolationToast('Right-click is disabled during the exam!');
+        return false;
+    });
+
+    // Silently block keyboard shortcuts (NO violation counted, just toast)
+    document.addEventListener('keydown', function(e) {
+        if (!examActive || autoSubmitTriggered) return;
+
+        const key = e.key;
+        const ctrl = e.ctrlKey || e.metaKey;
+
+        // Block Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+A, Ctrl+S
+        if (ctrl && ['c', 'v', 'x', 'a', 's'].includes(key.toLowerCase())) {
+            e.preventDefault();
+            e.stopPropagation();
+            const actionMap = {'c': 'Copy', 'v': 'Paste', 'x': 'Cut', 'a': 'Select All', 's': 'Save'};
+            showViolationToast(`⚠️ ${actionMap[key.toLowerCase()] || key} is disabled during the exam!`);
+            return false;
+        }
+
+        // Block F12 (DevTools)
+        if (key === 'F12') {
+            e.preventDefault();
+            showViolationToast('⚠️ Developer Tools are disabled during the exam!');
+            return false;
+        }
+
+        // Block Ctrl+Shift+I (DevTools), Ctrl+Shift+J (Console), Ctrl+U (View Source)
+        if (ctrl && e.shiftKey && ['i', 'j'].includes(key.toLowerCase())) {
+            e.preventDefault();
+            showViolationToast('⚠️ Developer Tools are disabled during the exam!');
+            return false;
+        }
+        if (ctrl && key.toLowerCase() === 'u') {
+            e.preventDefault();
+            showViolationToast('⚠️ View Source is disabled during the exam!');
+            return false;
+        }
+
+        // Block Ctrl+W (close tab), Ctrl+N (new window), Ctrl+T (new tab)
+        if (ctrl && ['w', 'n', 't'].includes(key.toLowerCase())) {
+            e.preventDefault();
+            showViolationToast('⚠️ Tab operations are disabled during the exam!');
+            return false;
+        }
+    });
+
+    // Warn before leaving/closing the page
+    // NOTE: We do NOT record a violation here anymore.
+    // Accidental closing, power cuts, or browser crashes should be recoverable
+    // without penalty. The auto-save system will restore the exam state when
+    // the student comes back. Only intentional tab-switching (visibilitychange)
+    // counts as a violation.
+    window.addEventListener('beforeunload', function(e) {
+        if (!examActive || autoSubmitTriggered) return;
+        
+        // Save progress one final time before potential shutdown
+        // (async, best-effort — fire and forget)
+        saveProgressToBackend();
+        
+        // Standard beforeunload warning
+        e.preventDefault();
+        e.returnValue = '⚠️ Are you sure you want to leave the exam? Your progress has been saved and you can resume later.';
+        return e.returnValue;
+    });
+
+    // Silently block back button (NO violation counted)
+    (function() {
+        // Push dummy states to trap back button
+        history.pushState({exam: true}, '');
+        history.pushState({exam: true}, '');
+        
+        window.addEventListener('popstate', function(e) {
+            if (!examActive) return;
+            e.preventDefault();
+            history.pushState({exam: true}, '');
+            showViolationToast('⚠️ Back button is disabled during the exam!');
+        });
+    })();
+
+    // Request fullscreen automatically on exam load — show prompt if denied
+    function requestFullscreen() {
+        const el = document.documentElement;
+        if (el.requestFullscreen) {
+            el.requestFullscreen().then(() => {
+                isFullscreen = true;
+                dismissFullscreenPrompt();
+            }).catch(function(err) {
+                console.warn('Fullscreen request denied:', err);
+                showFullscreenPrompt();
+            });
+        } else if (el.webkitRequestFullscreen) {
+            el.webkitRequestFullscreen();
+            isFullscreen = true;
+        } else {
+            showFullscreenPrompt();
+        }
+    }
+
+    // --- ZOOM LOGIC ---
+    let imgZoomLevel = 100;
+
+    function openZoom(src) {
+        const img = document.getElementById("modalImg");
+        img.src = src;
+        resetZoom(); 
+        document.getElementById("zoomModal").style.display = "flex";
+    }
+
+    function closeZoom() {
+        document.getElementById("zoomModal").style.display = "none";
+    }
+
+    function handleCanvasClick(event) {
+        if(event.target.id === "zoomCanvas") {
+            closeZoom();
+        }
+    }
+
+    function changeZoom(amount) {
+        imgZoomLevel += amount;
+        if (imgZoomLevel < 50) imgZoomLevel = 50;  
+        if (imgZoomLevel > 500) imgZoomLevel = 500; 
+        updateZoomCSS();
+    }
+
+    function resetZoom() {
+        imgZoomLevel = 100;
+        updateZoomCSS();
+    }
+
+    function updateZoomCSS() {
+        const img = document.getElementById("modalImg");
+        const canvas = document.getElementById("zoomCanvas");
+        
+        if (imgZoomLevel === 100) {
+            img.style.maxWidth = "90%";
+            img.style.maxHeight = "85vh";
+            img.style.width = "auto";
+            canvas.style.alignItems = "center";
+        } else {
+            img.style.maxWidth = "none";
+            img.style.maxHeight = "none";
+            img.style.width = imgZoomLevel + "%";
+            canvas.style.alignItems = imgZoomLevel > 100 ? "flex-start" : "center";
+        }
+    }
+
+    function handleSubImageSelect(input, subIdx) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') studentAnswers[currentIdx] = {};
+                if (!studentAnswers[currentIdx][subIdx] || typeof studentAnswers[currentIdx][subIdx] !== 'object') {
+                    studentAnswers[currentIdx][subIdx] = {text: '', image: ''};
+                }
+                studentAnswers[currentIdx][subIdx].image = e.target.result;
+                statusMap[currentIdx] = 'answered';
+                renderPalette();
+                showQuestion(currentIdx);
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    window.onload = async () => {
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        
+        if (!token) {
+            alert("Security Error: You must be logged in to take an exam.");
+            window.location.href = "login.html";
+            return; 
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const examId = urlParams.get('id') || urlParams.get('examId'); 
+        const isResuming = urlParams.get('resume') === 'true';
+
+        if (!examId) {
+            alert("Invalid Exam ID.");
+            window.location.href = "student_portal.html"; 
+            return; 
+        }
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/${examId}`, {
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            
+            if (!res.ok) throw new Error("Exam not found or unauthorized");
+            examData = await res.json();
+            
+            // ===== CHECK FOR SAVED PROGRESS FIRST (BEFORE SHUFFLING) =====
+            const savedProgress = await restoreExamProgress(examId);
+            
+            // ===== CHECK IF ADMIN APPROVAL IS REQUIRED BEFORE RESUMING =====
+            // If the exam was auto-submitted due to integrity violations,
+            // the student CANNOT resume until an admin approves it.
+            if (savedProgress && savedProgress.requiresAdminResume && !savedProgress.adminApproved) {
+                alert("⛔ This exam was auto-submitted due to exam integrity violations.\n\nAn admin must approve the resume before you can continue this exam.\n\nPlease contact your exam administrator.");
+                window.location.href = "student_portal.html";
+                return;
+            }
+            
+            // Only shuffle options if this is NOT a resume (fresh exam)
+            // For resumed exams, keep the original order to match saved progress
+            if (!savedProgress && examData.questions) {
+                examData.questions.forEach(q => {
+                    if (q.options && q.options.length > 1) {
+                        let pairs = q.options.map((text, idx) => ({
+                            text: text,
+                            img: (q.optionImages && q.optionImages.length > idx) ? q.optionImages[idx] : null
+                        }));
+                        
+                        for (let i = pairs.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+                        }
+                        
+                        q.options = pairs.map(p => p.text);
+                        if (q.optionImages) {
+                            q.optionImages = pairs.map(p => p.img);
+                        }
+                    }
+                });
+            }
+
+            document.getElementById("examTitle").innerText = examData.title || "JEE Mock Exam";
+            const allocatedMinutes = examData.timerMinutes || 180;
+            timeLeft = allocatedMinutes * 60; 
+            currentExamId = examId; // Store globally for progress save/delete
+
+            document.getElementById("examUI").style.display = "flex";
+            
+            if (savedProgress) {
+                // Restore all state from saved progress
+                studentAnswers = savedProgress.studentAnswers || {};
+                answerImages = savedProgress.answerImages || {};
+                statusMap = savedProgress.statusMap || {};
+                timeLeft = savedProgress.timeLeft || timeLeft;
+                currentIdx = savedProgress.currentIdx ?? -1;
+                currentSub = savedProgress.currentSub || 'Physics';
+                questionTimes = savedProgress.questionTimes || [];
+                subjectTimes = savedProgress.subjectTimes || {};
+                violationCount = savedProgress.violationCount || 0;
+                totalAwayTime = savedProgress.totalAwayTime || 0;
+                cheatingViolations = savedProgress.cheatingViolations || [];
+                autoSubmitTriggered = savedProgress.autoSubmitTriggered || false;
+                
+                // Show restoration banner at the top
+                const restoreBanner = document.createElement('div');
+                const lastSaved = savedProgress.updatedAt 
+                    ? new Date(savedProgress.updatedAt).toLocaleString() 
+                    : 'a previous session';
+                restoreBanner.style.cssText = `
+                    background: ${isResuming ? '#fff3cd' : '#d4edda'}; color: ${isResuming ? '#856404' : '#155724'}; 
+                    padding: 12px 20px; text-align: center; font-weight: bold; font-size: 16px;
+                    border-bottom: 2px solid ${isResuming ? '#ffeeba' : '#c3e6cb'};
+                `;
+                restoreBanner.id = 'restoreBanner';
+                restoreBanner.innerHTML = isResuming 
+                    ? `🔄 <strong>Resuming Exam!</strong> Your previous progress has been restored from ${lastSaved}. Continue from where you left off.`
+                    : `📋 <strong>Session Restored!</strong> We found your previous exam progress from ${lastSaved}. Your answers have been restored.`;
+                document.body.insertBefore(restoreBanner, document.body.firstChild);
+                
+                // Auto-dismiss the banner after 10 seconds (longer for resume)
+                setTimeout(() => {
+                    const banner = document.getElementById('restoreBanner');
+                    if (banner) {
+                        banner.style.transition = 'opacity 0.5s';
+                        banner.style.opacity = '0';
+                        setTimeout(() => banner.remove(), 500);
+                    }
+                }, 10000);
+                
+                // Set the active subject button
+                document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === currentSub));
+                
+                // If we have a valid current index, show that question
+                if (currentIdx >= 0 && currentIdx < examData.questions.length) {
+                    showQuestion(currentIdx);
+                } else {
+                    filterSubject(currentSub);
+                }
+                
+                // Restore violation badge display
+                if (violationCount > 0) {
+                    updateViolationBadge();
+                }
+                if (totalAwayTime > 0) {
+                    document.getElementById('violationAwayTime').innerText = 
+                        `Total time away: ${totalAwayTime}s / ${CHEAT_CONFIG.maxAwaySeconds}s`;
+                }
+                
+                console.log(isResuming 
+                    ? `🔄 Exam session resumed from question ${currentIdx + 1}, ${timeLeft}s remaining, ${violationCount} violations`
+                    : `♻️ Exam session restored! Resumed at question ${currentIdx + 1}, ${timeLeft}s remaining, ${violationCount} violations`
+                );
+            } else {
+                // Fresh start
+                filterSubject('Physics');
+            }
+            
+            startTimer();
+
+            // ===== ACTIVATE AUTO-SAVE INTERVAL =====
+            if (autoSaveInterval) clearInterval(autoSaveInterval);
+            autoSaveInterval = setInterval(saveProgressToBackend, AUTO_SAVE_INTERVAL_MS);
+
+            // ===== ACTIVATE ANTI-CHEAT SYSTEM =====
+            examActive = true;
+
+            // Initialize MathJax if not already initialized
+            if (window.MathJax && window.MathJax.startup) {
+                window.MathJax.startup.promise
+                    .then(() => console.log("MathJax initialized successfully"))
+                    .catch((err) => console.log("MathJax initialization error:", err));
+            }
+
+
+            // Request fullscreen automatically after exam loads
+            requestFullscreen();
+
+            // Initial violation tracking setup
+            console.log('🔒 Anti-cheat system activated');
+            console.log(`   Max violations: ${CHEAT_CONFIG.maxViolations}`);
+            console.log(`   Max away time: ${CHEAT_CONFIG.maxAwaySeconds}s`);
+            console.log(`   Fullscreen required: ${CHEAT_CONFIG.enforceFullscreen}`);
+
+        } catch (err) {
+            alert("Error loading exam. Redirecting back to dashboard.");
+            window.location.href = "student_portal.html"; 
+        }
+    };
+
+    function filterSubject(sub) {
+        currentSub = sub;
+        document.querySelectorAll('.sub-btn').forEach(b => b.classList.toggle('active', b.innerText === sub));
+        
+        let firstOfSub = -1;
+        if (examData && examData.questions) {
+            firstOfSub = examData.questions.findIndex(q => q.subject === sub);
+        }
+        
+        if (firstOfSub !== -1) {
+            showQuestion(firstOfSub);
+        } else {
+            document.getElementById("qNumber").innerText = sub;
+            document.getElementById("qText").innerHTML = "<i>No questions available for this subject yet.</i>";
+            document.getElementById("optionsList").innerHTML = "";
+            currentIdx = -1;
+            renderPalette();
+        }
+    }
+
+    function recordTimeOnCurrentQuestion() {
+        if (currentIdx === -1 || !examData) return;
+        const now = Date.now();
+        const elapsed = Math.round((now - questionStartTime) / 1000);
+        if (elapsed > 0) {
+            questionTimes[currentIdx] = (questionTimes[currentIdx] || 0) + elapsed;
+            const subject = examData.questions[currentIdx].subject || "Physics";
+            subjectTimes[subject] = (subjectTimes[subject] || 0) + elapsed;
+        }
+        questionStartTime = now;
+    }
+
+    function showQuestion(index) {
+        // Record time spent on current question before switching
+        recordTimeOnCurrentQuestion();
+        
+        // Mark the previous question as visited if it wasn't already marked
+        if (currentIdx !== -1 && !statusMap[currentIdx]) {
+            statusMap[currentIdx] = 'visited';
+        }
+        
+        currentIdx = index;
+        
+        // Only set to visited if this question has never been accessed before
+        // Preserve 'answered' and 'review-answered' statuses
+        if (!statusMap[currentIdx]) {
+            statusMap[currentIdx] = 'visited';
+        }
+        
+        const q = examData.questions[index];
+        document.getElementById("qNumber").innerText = `Question ${index + 1} (${q.subject})`;
+        
+        let qContent = q.question;
+
+        // Special handling for Assertion-Reasoning questions
+        if (q.questionType === 'assertion-reasoning' && (q.assertion || q.reason)) {
+            let arHTML = '<div style="background:#f0f8ff;border-left:4px solid #2e86c1;padding:16px;margin-bottom:16px;border-radius:6px;">';
+            if (q.assertion) {
+                arHTML += `<div style="margin-bottom:12px;"><strong style="color:#2c3e50;">Assertion (A):</strong> <span style="font-size:15px;">${q.assertion}</span></div>`;
+            }
+            if (q.reason) {
+                arHTML += `<div><strong style="color:#2c3e50;">Reason (R):</strong> <span style="font-size:15px;">${q.reason}</span></div>`;
+            }
+            arHTML += '</div>';
+            qContent = arHTML + qContent;
+        }
+
+        if (q.questionImage) {
+            qContent += `<br><img src="${q.questionImage}" class="exam-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Question Graphic">`;
+        }
+        document.getElementById("qText").innerHTML = qContent;
+
+        // Handle hints - always visible when enabled
+        const hintContainer = document.getElementById("hintContainer");
+        let hintsEnabled = examData.enableHints;
+        if (typeof hintsEnabled === 'string') hintsEnabled = hintsEnabled.toLowerCase() === 'true';
+        hintsEnabled = !!hintsEnabled;
+        const hintText = q.hint || (Array.isArray(q.hints) && q.hints.length ? q.hints.join(' ') : '');
+        if (hintsEnabled && hintText) {
+            hintContainer.style.display = "block";
+            hintContainer.innerHTML = `
+                <div class="hint-display">${hintText}</div>
+            `;
+        } else {
+            hintContainer.style.display = "none";
+            hintContainer.innerHTML = "";
+        }
+
+        const optDiv = document.getElementById("optionsList");
+        // ================= CASE-BASED (CBSE Section D) =================
+        if (q.subQuestions && q.subQuestions.length) {
+            let html = "";
+            if (q.casePassage) {
+                html += `<div style="background:#f0f4f8;border:1px solid #cfd8e3;border-left:4px solid var(--secondary);padding:14px;border-radius:6px;margin-bottom:18px;font-size:15px;line-height:1.6;">
+                    <div style="font-weight:bold;color:var(--secondary);margin-bottom:6px;">📖 Case Study / Passage</div>
+                    ${q.casePassage}</div>`;
+            }
+            let subAnswers = {};
+            if (studentAnswers[index] && typeof studentAnswers[index] === 'object' && !Array.isArray(studentAnswers[index])) {
+                subAnswers = studentAnswers[index];
+            }
+            q.subQuestions.forEach((sq, si) => {
+                const sel = subAnswers[String(si)];
+                let subContentHTML = "";
+
+                if (sq.type === 'subjective') {
+                    // Subjective sub-question
+                    const subAnswerData = (sel && typeof sel === 'object') ? sel : {text: '', image: ''};
+                    const existingText = subAnswerData.text || '';
+                    const existingImg = subAnswerData.image || '';
+
+                    subContentHTML += `
+                        <div style="background:#fefaf3;border:1px solid #f0d9a8;border-radius:6px;padding:12px;margin-top:10px;">
+                            <div style="font-weight:600;color:#b9770e;margin-bottom:10px;">✍️ Write your answer (admin will evaluate this)</div>
+                            <textarea class="subjective-sub-answer" data-sub="${si}" rows="4" placeholder="Type your answer here..." style="width:100%;padding:10px;font-size:15px;border:2px solid #ccc;border-radius:6px;resize:vertical;box-sizing:border-box;">${existingText}</textarea>
+                            <div style="margin-top:10px;">
+                                <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="document.getElementById('subImgInput-${si}').click()">📷 Upload / Capture Image</button>
+                                <button type="button" class="btn" style="background:#95a5a6;color:#fff;margin-left:8px;" onclick="removeSubAnswerImage(${si})">🗑️ Remove Image</button>
+                                <input type="file" accept="image/*" id="subImgInput-${si}" style="display:none;" capture="environment" onchange="handleSubImageSelect(this, ${si})">
+                                ${existingImg ? `<br><img src="${existingImg}" style="max-width:100%;max-height:200px;border:2px solid var(--secondary);border-radius:6px;margin-top:8px;cursor:zoom-in;" onclick="openZoom(this.src)">` : ''}
+                            </div>
+                        </div>`;
+                } else {
+                    // MCQ sub-question (existing)
+                    let subOptHTML = "";
+                    (sq.options || []).forEach((opt, oi) => {
+                        const checked = sel !== undefined && sel === opt ? 'checked' : '';
+                        const optAttr = String(opt).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        subOptHTML += `<div class="opt-row ${checked ? 'selected' : ''}" onclick="handleRowClick(this)">
+                            <label>
+                                <input type="radio" name="sub-${si}" value="${oi}" data-sub="${si}" data-opt="${optAttr}" ${checked} style="margin-right:12px;transform:scale(1.2);">
+                                <span style="font-size:15px;">${opt}</span>
+                            </label></div>`;
+                    });
+                    subContentHTML = subOptHTML;
+                }
+
+                html += `<div style="background:#fafbfc;border:1px solid #e0e0e0;border-radius:6px;padding:12px;margin-bottom:14px;">
+                    <div style="font-weight:600;color:var(--primary);margin-bottom:8px;">(${String.fromCharCode(97 + si)}) ${sq.q} <span style="color:#8e44ad;font-size:12px;">[${sq.marks || 1} mark${(sq.marks || 1) > 1 ? 's' : ''}]</span></div>
+                    ${subContentHTML}</div>`;
+            });
+            optDiv.innerHTML = html;
+
+            // MCQ event listeners
+            optDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        const si = this.getAttribute('data-sub');
+                        const opt = this.getAttribute('data-opt');
+                        if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') studentAnswers[currentIdx] = {};
+                        studentAnswers[currentIdx][si] = opt;
+                        statusMap[currentIdx] = 'answered';
+                        updateRowStyles(this);
+                        renderPalette();
+                    }
+                });
+            });
+
+            // Subjective event listeners
+            optDiv.querySelectorAll('.subjective-sub-answer').forEach(ta => {
+                ta.addEventListener('input', function() {
+                    const si = this.getAttribute('data-sub');
+                    if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') studentAnswers[currentIdx] = {};
+                    if (!studentAnswers[currentIdx][si] || typeof studentAnswers[currentIdx][si] !== 'object') {
+                        studentAnswers[currentIdx][si] = {text: '', image: ''};
+                    }
+                    studentAnswers[currentIdx][si].text = this.value;
+                    const hasText = this.value.trim() !== '';
+                    const hasImage = studentAnswers[currentIdx][si].image !== '';
+                    statusMap[currentIdx] = (hasText || hasImage) ? 'answered' : 'visited';
+                    renderPalette();
+                });
+            });
+        }
+        // ================= MULTIPLE CORRECT ANSWER (JEE Advance) =================
+        else if ((q.questionType === 'multiple' || (q.section && String(q.section).toLowerCase().includes('multiple'))) && q.options && q.options.length > 1) {
+            const storedMc = studentAnswers[index] && Array.isArray(studentAnswers[index]) ? studentAnswers[index] : [];
+            let mcHTML = `<div style="background:#eafaf1;border:1px solid #b8e6c8;border-left:4px solid #27ae60;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;color:#1e8449;font-weight:600;">☑️ Select ALL correct options (Multiple Correct Answer)</div>`;
+            q.options.forEach((opt, idx) => {
+                let imgHTML = "";
+                if (q.optionImages && q.optionImages[idx]) {
+                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
+                }
+                const checked = storedMc.includes(opt) ? 'checked' : '';
+                mcHTML += `
+                    <div class="opt-row ${checked ? 'selected' : ''}">
+                        <label>
+                            <input type="checkbox" name="mcans" value="${idx}" ${checked} style="margin-right: 15px; transform: scale(1.2);">
+                            <span style="font-size: 16px;">${opt}</span>
+                            ${imgHTML}
+                        </label>
+                    </div>`;
+            });
+            optDiv.innerHTML = mcHTML;
+            optDiv.querySelectorAll('input[type="checkbox"][name="mcans"]').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    const selected = Array.from(optDiv.querySelectorAll('input[type="checkbox"][name="mcans"]:checked')).map(c => q.options[parseInt(c.value)]);
+                    studentAnswers[currentIdx] = selected;
+                    statusMap[currentIdx] = selected.length ? 'answered' : 'visited';
+                    this.closest('.opt-row').classList.toggle('selected', this.checked);
+                    renderPalette();
+                });
+            });
+        }
+        // ================= MCQ / Assertion-Reasoning (CBSE Section A) =================
+        else if (q.options && q.options.length > 1 && q.questionType !== 'subjective' && q.questionType !== 'multiple') {
+            let optionsHTML = "";
+            
+            q.options.forEach((opt, idx) => {
+                let imgHTML = "";
+                if (q.optionImages && q.optionImages[idx]) {
+                    imgHTML = `<img src="${q.optionImages[idx]}" class="opt-img" title="Click to Magnify" onclick="openZoom(this.src)" alt="Option ${idx + 1} Graphic">`;
+                }
+                
+                // Check if this option index matches the stored selection
+                const selectedIdx = selectedOptionIndex[index];
+                const isChecked = selectedIdx !== undefined && selectedIdx == idx ? 'checked' : '';
+                const isSelectedClass = isChecked ? 'selected' : '';
+                
+                optionsHTML += `
+                    <div class="opt-row ${isSelectedClass}" onclick="handleRowClick(this)">
+                        <label>
+                            <input type="radio" name="ans" value="${idx}" ${isChecked} style="margin-right: 15px; transform: scale(1.2);">
+                            <span style="font-size: 16px;">${opt}</span>
+                            ${imgHTML}
+                        </label>
+                    </div>`;
+            });
+        optDiv.innerHTML = optionsHTML;
+        
+        // Add event listeners to radio buttons to track changes immediately
+        optDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    const selectedIdx = parseInt(this.value);
+                    selectedOptionIndex[currentIdx] = selectedIdx;
+                    studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
+                    statusMap[currentIdx] = 'answered';
+                    updateRowStyles(this);
+                    renderPalette();
+                }
+            });
+        });
+        } else if (q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical')))) {
+            optDiv.innerHTML = `<input type="number" step="any" id="numAns" value="${studentAnswers[index] !== undefined ? studentAnswers[index] : ''}" placeholder="Enter Value" style="padding: 10px; font-size: 16px; width: 200px; border: 2px solid #ccc; border-radius: 4px;">`;
+            
+            // Add input listener for numeric answers
+            const numInput = document.getElementById("numAns");
+            if (numInput) {
+                numInput.addEventListener('input', function() {
+                    if (this.value !== "") {
+                        studentAnswers[currentIdx] = this.value;
+                        statusMap[currentIdx] = 'answered';
+                        renderPalette();
+                    }
+                });
+            }
+        }
+        // ================= Subjective (CBSE Sections B/C/E) : text + image upload =================
+        else if (q.questionType === 'subjective' || (!q.subQuestions && !(q.options && q.options.length > 1) && q.questionType !== 'integer')) {
+            let subjHTML = "";
+            if (q.casePassage) {
+                subjHTML += `<div style="background:#f0f4f8;border:1px solid #cfd8e3;border-left:4px solid var(--secondary);padding:14px;border-radius:6px;margin-bottom:18px;font-size:15px;line-height:1.6;">
+                    <div style="font-weight:bold;color:var(--secondary);margin-bottom:6px;">📖 Passage</div>
+                    ${q.casePassage}</div>`;
+            }
+            const existingText = (studentAnswers[index] !== undefined && typeof studentAnswers[index] === 'string') ? studentAnswers[index] : '';
+            const existingImg = answerImages[index] || '';
+            subjHTML += `
+                <div style="margin-top:4px;background:#fefaf3;border:1px solid #f0d9a8;border-radius:6px;padding:14px;">
+                    <div style="font-weight:600;color:#b9770e;margin-bottom:10px;">✍️ Write / Upload your answer (the admin will evaluate this)</div>
+                    <textarea id="subjectiveAns" rows="5" placeholder="Type your answer here (optional)... or upload a clear image of your handwritten answer below." style="width:100%;padding:10px;font-size:15px;border:2px solid #ccc;border-radius:6px;resize:vertical;box-sizing:border-box;">${existingText}</textarea>
+                    <div style="margin-top:14px;">
+                        <div style="font-weight:600;color:#8e44ad;margin-bottom:8px;">📸 Attach Answer Image</div>
+                        <input type="file" accept="image/*" id="answerFileInput" style="display:none;" capture="environment">
+                        <button type="button" class="btn" style="background:var(--secondary);color:#fff;" onclick="suppressLossOfFocus=true; document.getElementById('answerFileInput').click(); setTimeout(function(){ suppressLossOfFocus=false; }, 5000);">📷 Upload / Capture Image</button>
+                        <button type="button" class="btn" style="background:#95a5a6;color:#fff;margin-left:8px;" onclick="removeAnswerImage()">🗑️ Remove Image</button>
+                    </div>
+                    <div id="answerImagePreview" style="margin-top:10px;${existingImg ? '' : 'display:none;'}">
+                        ${existingImg ? `<img src="${existingImg}" style="max-width:100%;max-height:260px;border:2px solid var(--secondary);border-radius:6px;cursor:zoom-in;" onclick="openZoom(this.src)">` : ''}
+                    </div>
+                </div>`;
+            optDiv.innerHTML = subjHTML;
+
+            const subjTa = document.getElementById("subjectiveAns");
+            if (subjTa) {
+                subjTa.addEventListener('input', function() {
+                    if (this.value.trim() !== "") {
+                        studentAnswers[currentIdx] = this.value;
+                        statusMap[currentIdx] = 'answered';
+                    } else if (!answerImages[currentIdx]) {
+                        delete studentAnswers[currentIdx];
+                        statusMap[currentIdx] = 'visited';
+                    }
+                    renderPalette();
+                });
+            }
+            const subjFi = document.getElementById("answerFileInput");
+            if (subjFi) {
+                // Remove any previously attached listener to prevent duplicates
+                // when showQuestion() is called multiple times for subjective questions
+                if (subjFi._answerImageHandler) {
+                    subjFi.removeEventListener('change', subjFi._answerImageHandler);
+                }
+                subjFi._answerImageHandler = function() {
+                    suppressLossOfFocus = false;
+                    if (this.files && this.files[0]) handleAnswerImageSelect(this.files[0]);
+                };
+                subjFi.addEventListener('change', subjFi._answerImageHandler);
+            }
+        }
+        
+        renderPalette();
+        renderMath();
+    }
+
+    function handleRowClick(rowDiv) {
+        const radio = rowDiv.querySelector('input[type="radio"]');
+        if (radio && !radio.checked) {
+            radio.checked = true;
+            updateRowStyles(radio);
+        }
+    }
+
+    function updateRowStyles(selectedRadio) {
+        document.querySelectorAll('.opt-row').forEach(row => row.classList.remove('selected'));
+        if (selectedRadio) {
+            selectedRadio.closest('.opt-row').classList.add('selected');
+        }
+    }
+
+    function renderPalette() {
+        const grid = document.getElementById("palette");
+        if (!examData || !examData.questions) return;
+        
+        let paletteHTML = "";
+        examData.questions.forEach((q, i) => {
+            if (q.subject === currentSub) {
+                let cls = statusMap[i] || '';
+                if (i === currentIdx) cls += ' active';
+                paletteHTML += `<div class="p-btn ${cls}" id="pbtn-${i}" onclick="showQuestion(${i})">${i + 1}</div>`;
+            }
+        });
+        grid.innerHTML = paletteHTML;
+        
+        const activeBtn = document.getElementById(`pbtn-${currentIdx}`);
+        if(activeBtn) {
+            activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+    }
+
+    async function saveAndNext() {
+        if (currentIdx === -1) return;
+        
+        const q = examData.questions[currentIdx];
+        const isCaseBased = q && q.subQuestions && q.subQuestions.length;
+        const isMcq = !isCaseBased && q && q.options && q.options.length > 1;
+        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical'))));
+        
+        if (isCaseBased) {
+            const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
+            const subKeys = Object.keys(subAns).filter(k => {
+                const val = subAns[k];
+                if (typeof val === 'object' && val !== null) {
+                    return (val.text && val.text.trim() !== '') || (val.image && val.image.trim() !== '');
+                }
+                return val !== undefined && val !== '' && val !== null;
+            });
+            statusMap[currentIdx] = subKeys.length > 0 ? 'answered' : 'visited';
+        } else if (!isMcq && !isInteger) {
+            // Subjective question (text / image answer)
+            const subjTa = document.getElementById("subjectiveAns");
+            const hasText = subjTa && subjTa.value.trim() !== "";
+            const hasImg = !!answerImages[currentIdx];
+            if (hasText) studentAnswers[currentIdx] = subjTa.value;
+            statusMap[currentIdx] = (hasText || hasImg) ? 'answered' : 'visited';
+        } else {
+            const mcSel = document.querySelectorAll('input[type="checkbox"][name="mcans"]:checked');
+            const radioSel = document.querySelector('input[name="ans"]:checked');
+            const numSel = document.getElementById("numAns");
+            if (mcSel.length > 0) {
+                studentAnswers[currentIdx] = Array.from(mcSel).map(cb => examData.questions[currentIdx].options[parseInt(cb.value)]);
+                statusMap[currentIdx] = 'answered';
+            } else if (radioSel) {
+                const selectedIdx = parseInt(radioSel.value);
+                selectedOptionIndex[currentIdx] = selectedIdx;
+                studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
+                statusMap[currentIdx] = 'answered';
+            } else if (numSel && numSel.value !== "") {
+                studentAnswers[currentIdx] = numSel.value;
+                statusMap[currentIdx] = 'answered';
+            } else {
+                statusMap[currentIdx] = 'visited';
+            }
+        }
+        
+        // Immediately save progress before moving to next question
+        await saveProgressToBackend();
+        nextLogic();
+    }
+
+    async function markForReview() {
+        if (currentIdx === -1) return;
+        
+        const q = examData.questions[currentIdx];
+        const isCaseBased = q && q.subQuestions && q.subQuestions.length;
+        const isMcq = !isCaseBased && q && q.options && q.options.length > 1;
+        const isInteger = !isCaseBased && !isMcq && q && (q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical'))));
+        
+        if (isCaseBased) {
+            const subAns = studentAnswers[currentIdx] && typeof studentAnswers[currentIdx] === 'object' ? studentAnswers[currentIdx] : {};
+            const subKeys = Object.keys(subAns).filter(k => {
+                const val = subAns[k];
+                if (typeof val === 'object' && val !== null) {
+                    return (val.text && val.text.trim() !== '') || (val.image && val.image.trim() !== '');
+                }
+                return val !== undefined && val !== '' && val !== null;
+            });
+            statusMap[currentIdx] = subKeys.length > 0 ? 'review-answered' : 'review';
+        } else if (!isMcq && !isInteger) {
+            // Subjective question (text / image answer)
+            const subjTa = document.getElementById("subjectiveAns");
+            const hasText = subjTa && subjTa.value.trim() !== "";
+            const hasImg = !!answerImages[currentIdx];
+            if (hasText) studentAnswers[currentIdx] = subjTa.value;
+            statusMap[currentIdx] = (hasText || hasImg) ? 'review-answered' : 'review';
+        } else {
+            const mcSel = document.querySelectorAll('input[type="checkbox"][name="mcans"]:checked');
+            const radioSel = document.querySelector('input[name="ans"]:checked');
+            const numSel = document.getElementById("numAns");
+            if (mcSel.length > 0) {
+                studentAnswers[currentIdx] = Array.from(mcSel).map(cb => examData.questions[currentIdx].options[parseInt(cb.value)]);
+                statusMap[currentIdx] = 'review-answered';
+            } else if (radioSel) {
+                const selectedIdx = parseInt(radioSel.value);
+                selectedOptionIndex[currentIdx] = selectedIdx;
+                studentAnswers[currentIdx] = examData.questions[currentIdx].options[selectedIdx];
+                statusMap[currentIdx] = 'review-answered';
+            } else if (numSel && numSel.value !== "") {
+                studentAnswers[currentIdx] = numSel.value;
+                statusMap[currentIdx] = 'review-answered';
+            } else {
+                statusMap[currentIdx] = 'review';
+            }
+        }
+        
+        // Immediately save progress before moving to next question
+        await saveProgressToBackend();
+        nextLogic();
+    }
+
+    function nextLogic() {
+        let nextIdx = -1;
+        for (let i = currentIdx + 1; i < examData.questions.length; i++) {
+            if (examData.questions[i].subject === currentSub) {
+                nextIdx = i;
+                break;
+            }
+        }
+        
+        if (nextIdx !== -1) {
+            showQuestion(nextIdx);
+        } else {
+            renderPalette();
+        }
+    }
+
+    function clearResponse() {
+        if (currentIdx === -1) return;
+        
+        delete studentAnswers[currentIdx];
+        delete answerImages[currentIdx];
+        statusMap[currentIdx] = 'visited'; 
+        
+        const radios = document.querySelectorAll('input[type="radio"]');
+        radios.forEach(r => r.checked = false);
+        document.querySelectorAll('.opt-row').forEach(row => row.classList.remove('selected')); 
+        
+        const numInput = document.getElementById("numAns");
+        if(numInput) numInput.value = "";
+        
+        const subjTa = document.getElementById("subjectiveAns");
+        if(subjTa) subjTa.value = "";
+        const subjFi = document.getElementById("answerFileInput");
+        if(subjFi) subjFi.value = "";
+        const prev = document.getElementById("answerImagePreview");
+        if(prev) prev.style.display = 'none';
+        
+        renderPalette();
+    }
+
+    // ===== ANSWER IMAGE UPLOAD FOR SUBJECTIVE QUESTIONS =====
+    async function compressAnswerImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    let scale = 1;
+                    const MAX_DIM = 1200;
+                    if (img.width > MAX_DIM || img.height > MAX_DIM) {
+                        scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height);
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    try {
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    } catch (err) {
+                        resolve(e.target.result);
+                    }
+                };
+                img.onerror = function() { resolve(e.target.result); };
+                img.src = e.target.result;
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handleAnswerImageSelect(file) {
+        if (!file) return;
+        try {
+            const dataUrl = await compressAnswerImage(file);
+            answerImages[currentIdx] = dataUrl;
+            statusMap[currentIdx] = 'answered';
+            const prev = document.getElementById("answerImagePreview");
+            if (prev) {
+                const img = prev.querySelector('img');
+                if (img) {
+                    img.src = dataUrl;
+                } else {
+                    prev.innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:260px;border:2px solid var(--secondary);border-radius:6px;cursor:zoom-in;" onclick="openZoom(this.src)">`;
+                }
+                prev.style.display = 'block';
+            }
+            renderPalette();
+        } catch (e) {
+            console.error(e);
+            alert("Failed to read image. Please try another file.");
+        }
+    }
+
+    function removeAnswerImage() {
+        delete answerImages[currentIdx];
+        const fi = document.getElementById("answerFileInput");
+        if (fi) fi.value = "";
+        const prev = document.getElementById("answerImagePreview");
+        if (prev) prev.style.display = 'none';
+        const subjTa = document.getElementById("subjectiveAns");
+        if ((!subjTa || subjTa.value.trim() === "") && (studentAnswers[currentIdx] === undefined || typeof studentAnswers[currentIdx] === 'object')) {
+            delete studentAnswers[currentIdx];
+            statusMap[currentIdx] = 'visited';
+        }
+        renderPalette();
+    }
+
+    function removeSubAnswerImage(subIdx) {
+        if (!studentAnswers[currentIdx] || typeof studentAnswers[currentIdx] !== 'object') return;
+        delete studentAnswers[currentIdx][subIdx];
+        
+        // Check if this was the only answer in the case-based question
+        const subAns = studentAnswers[currentIdx];
+        const remainingKeys = Object.keys(subAns).filter(k => subAns[k] !== undefined && subAns[k] !== '' && 
+            (typeof subAns[k] !== 'object' || (subAns[k].text && subAns[k].text.trim() !== '') || (subAns[k].image && subAns[k].image.trim() !== '')));
+        
+        if (remainingKeys.length === 0) {
+            delete studentAnswers[currentIdx];
+            statusMap[currentIdx] = 'visited';
+        }
+        
+        renderPalette();
+        showQuestion(currentIdx);
+    }
+
+    function startTimer() {
+        const timerInterval = setInterval(() => {
+            timeLeft--;
+            let h = Math.floor(timeLeft / 3600);
+            let m = Math.floor((timeLeft % 3600) / 60);
+            let s = timeLeft % 60;
+            document.getElementById("timer").innerText = 
+                `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                submitFinal();
+            }
+        }, 1000);
+    }
+
+    async function submitFinal() {
+        // If it's a regular submission (not auto), confirm
+        if (!autoSubmitTriggered) {
+            if (!confirm("Are you sure you want to submit the exam? You cannot change answers after this.")) return;
+        }
+        
+        if (currentIdx !== -1 && studentAnswers[currentIdx] === undefined) {
+            statusMap[currentIdx] = 'visited';
+        }
+        
+        // Stop anti-cheat system
+        examActive = false;
+        
+        document.getElementById("examUI").style.pointerEvents = "none";
+        document.getElementById("qText").innerHTML = "<h3 style='text-align:center; color: var(--nta-blue); margin-top: 50px;'>Submitting your exam, please wait... ⏳</h3>";
+        document.getElementById("optionsList").innerHTML = "";
+        
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("token") || localStorage.getItem("studentToken");
+        const subjectWiseData = {};
+        let totalScore = 0;
+        
+        if (examData && examData.questions) {
+            examData.questions.forEach((q, i) => {
+                const subject = q.subject || "Physics";
+                
+                if (!subjectWiseData[subject]) {
+                    subjectWiseData[subject] = {
+                        score: 0, correct: 0, incorrect: 0, notAttempted: 0, markedForReviewCount: 0
+                    };
+                }
+                
+                const studentAns = studentAnswers[i];
+                const correctAns = q.correctAnswer;
+                const status = statusMap[i] || 'unvisited';
+
+                if(status === 'review' || status === 'review-answered'){
+                     subjectWiseData[subject].markedForReviewCount++;
+                }
+                
+                const subQ = q.subQuestions && q.subQuestions.length;
+                const isIntegerQ = q.questionType === 'integer' || (q.section && (String(q.section).toLowerCase().includes('integer') || String(q.section).toLowerCase().includes('numerical')));
+                const isSubjective = !subQ && (q.questionType === 'subjective' || (!(q.options && q.options.length > 1) && !isIntegerQ));
+                const attempted = studentAns !== undefined && studentAns !== null && studentAns !== "" && !(typeof studentAns === 'object' && Object.keys(studentAns).length === 0);
+                const hasImage = !!answerImages[i];
+
+                if (subQ) {
+                    // Case-based: auto-graded subdivisions
+                    const subArr = (studentAns && typeof studentAns === 'object') ? studentAns : {};
+                    const answeredSubs = Object.keys(subArr).filter(k => {
+                        const val = subArr[k];
+                        if (typeof val === 'object' && val !== null) {
+                            return (val.text && val.text.trim() !== '') || (val.image && val.image.trim() !== '');
+                        }
+                        return val !== undefined && val !== '' && val !== null;
+                    });
+                    if (answeredSubs.length > 0) {
+                        subjectWiseData[subject].attempted = (subjectWiseData[subject].attempted || 0) + 1;
+                        subjectWiseData[subject].correct++;
+                    } else {
+                        subjectWiseData[subject].notAttempted++;
+                    }
+                    return;
+                }
+                
+                if (isSubjective) {
+                    if (attempted || hasImage) {
+                        subjectWiseData[subject].correct++;
+                    } else {
+                        subjectWiseData[subject].notAttempted++;
+                    }
+                    return;
+                }
+                
+                if (attempted) {
+                    const isMcSet = Array.isArray(studentAns) && Array.isArray(q.correctAnswers)
+                        && studentAns.slice().sort().join('|') === q.correctAnswers.slice().sort().join('|');
+                    if (studentAns == correctAns || isMcSet) {
+                        subjectWiseData[subject].correct++;
+                        subjectWiseData[subject].score += q.marks || 1;
+                    } else {
+                        subjectWiseData[subject].incorrect++;
+                    }
+                } else {
+                    subjectWiseData[subject].notAttempted++;
+                }
+            });
+            
+            for (const subject in subjectWiseData) {
+                totalScore += subjectWiseData[subject].score;
+            }
+        }
+        
+        // Record final time on current question before submitting
+        recordTimeOnCurrentQuestion();
+
+        // If away time is still being tracked, finalize it
+        if (awayStartTime !== null) {
+            totalAwayTime += Math.round((Date.now() - awayStartTime) / 1000);
+            awayStartTime = null;
+        }
+
+        const payload = {
+            studentName: localStorage.getItem("userName") || "Guest Student",
+            examTitle: examData.title || "Untitled Exam", 
+            examId: new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId'),
+            subjectWiseBreakdown: subjectWiseData,
+            studentAnswers: studentAnswers,
+            answerImages: answerImages,
+            statusMap: statusMap,
+            questionTimes: questionTimes,
+            subjectTimes: subjectTimes,
+            // ANTI-CHEAT DATA
+            cheatingViolations: cheatingViolations,
+            totalViolations: violationCount,
+            totalAwayTime: totalAwayTime,
+            autoSubmitted: autoSubmitTriggered,
+            autoSubmitReason: autoSubmitTriggered ? (cheatingViolations.find(v => v.type === 'auto-submit')?.details || 'Unknown') : null
+        };
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/exams/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            
+            if (res.ok) {
+                 const responseData = await res.json();
+                 
+                 // Delete saved progress after successful submission
+                 // ONLY for normal submissions. For auto-submitted exams (integrity violations),
+                 // keep the progress so an admin can resume the exam for the candidate later.
+                 if (!autoSubmitTriggered) {
+                     const submitExamId = new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('examId');
+                     await deleteExamProgress(submitExamId);
+                 }
+                 
+                 // Show success pop-up with score
+                 alert(`✅ Exam Submitted Successfully!\n\nYour Score: ${responseData.totalScore}\nCorrect: ${responseData.correctCount}\nIncorrect: ${responseData.incorrectCount}\nNot Attempted: ${responseData.notAttemptedCount}\n\nRedirecting to dashboard...`);
+                 
+                 window.location.href = "student_portal.html";
+            } else {
+                 let errorMsg = "API call failed";
+                 try {
+                     const errData = await res.json();
+                     errorMsg = errData.detail || errData.message || errorMsg;
+                 } catch(parseErr) {}
+                 throw new Error(errorMsg);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Submission Error: " + e.message);
+            
+            document.getElementById("examUI").style.pointerEvents = "auto";
+            if(currentIdx !== -1) {
+                showQuestion(currentIdx); 
+            } else {
+                document.getElementById("qText").innerHTML = "<h3 style='color: var(--red);'>Submission failed. Please try again.</h3>";
+            }
+            // Re-enable anti-cheat if submission failed
+            examActive = true;
+            autoSubmitTriggered = false;
+        }
+    }
+
+    function toggleHint(index) {
+        const hintDisplay = document.getElementById(`hint-display-${index}`);
+        if (hintDisplay) {
+            hintDisplay.classList.toggle('show');
+        }
+    }
+
+    function renderMath() {
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            const qText = document.getElementById('qText');
+            const optionsList = document.getElementById('optionsList');
+            const hintContainer = document.getElementById('hintContainer');
+            if (qText) MathJax.typesetClear([qText]);
+            if (optionsList) MathJax.typesetClear([optionsList]);
+            if (hintContainer) MathJax.typesetClear([hintContainer]);
+            const elements = [qText, optionsList, hintContainer].filter(Boolean);
+            MathJax.typesetPromise(elements).catch((err) => console.log('MathJax error:', err));
+        }
+    }
+    
+
+})();

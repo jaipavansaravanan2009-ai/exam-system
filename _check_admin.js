@@ -1,0 +1,3138 @@
+(function(){
+
+        window.MathJax = {
+            loader: {load: ['[tex]/mhchem']}, // Loads the chemistry extension
+            tex: { 
+                packages: {'[+]': ['mhchem']}, // Activates the extension
+                inlineMath: [['$', '$'], ['\\(', '\\)']], 
+                displayMath: [['$$', '$$'], ['\\[', '\\]']] 
+            },
+            startup: { typeset: false } // We will trigger manually after DOM updates
+        };
+    
+// =================
+
+    const BACKEND_URL = "https://jee-mock-portal.onrender.com";
+    
+    // 1. Get Tokens
+    const token = localStorage.getItem("adminToken");
+    const role = localStorage.getItem("userRole");
+
+    if (!token || !role || (role.toLowerCase() !== "admin" && role.toLowerCase() !== "setter")) {
+        console.error("⛔ ACCESS DENIED: Redirecting to login...");
+        alert("Unauthorized! Please login.");
+        window.location.href = "login.html";
+    }
+
+    const adminName = localStorage.getItem("userName");
+    if(adminName) { document.getElementById("adminName").innerText = "Welcome, " + adminName; }
+
+    let currentEditingExamId = null;
+    let editingQuestionIndex = null;
+    let currentExamQuestions = [];
+    let currentExamType = null; // Track current exam type for pattern segregation
+    
+    let editingQBId = null;
+    let currentQBQuestions = [];
+    
+    let qbCacheForImport = [];
+
+    function reRenderMathJax() {
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            // Clear and typeset all main content areas
+            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #adminAnalysisModal .question-analysis-card');
+            mainAreas.forEach(el => MathJax.typesetClear([el]));
+            MathJax.typesetPromise(mainAreas).catch((err) => console.log('MathJax error:', err));
+        }
+    }
+
+    let currentQuestionLists = [];
+    let currentQlDetailId = null;
+    let currentQlDetailQuestions = [];
+    let qbCacheForListImport = [];
+
+    function switchTab(tabId, btnElement) {
+        document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        btnElement.classList.add('active');
+        document.getElementById('pageTitle').innerText = btnElement.innerText.replace(/[^\w\s]/gi, '').trim();
+        if(tabId === 'view-question-bank') loadQuestionBank();
+        if(tabId === 'view-question-lists') loadQuestionLists();
+    }
+
+    let pastedImages = { 
+        qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null, examSolImg: null,
+        qbQImg: null, qbOpt1Img: null, qbOpt2Img: null, qbOpt3Img: null, qbOpt4Img: null, qbSolImg: null
+    };
+
+    let loadedExamImages = { qImg: null, opt1Img: null, opt2Img: null, opt3Img: null, opt4Img: null, examSolImg: null };
+    let loadedQBImages = { qbQImg: null, qbOpt1Img: null, qbOpt2Img: null, qbOpt3Img: null, qbOpt4Img: null, qbSolImg: null };
+
+    document.addEventListener("paste", function(e) {
+        const activeElement = document.activeElement;
+        if (!activeElement.classList.contains("paste-zone")) return;
+
+        const zoneId = activeElement.id.replace("zone-", "");
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+
+        for (let item of items) {
+            if (item.type.indexOf("image") === 0) {
+                const file = item.getAsFile();
+                pastedImages[zoneId] = file; 
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const imgPreview = document.getElementById(`preview-${zoneId}`);
+                    imgPreview.src = event.target.result;
+                    imgPreview.style.display = "block";
+                    activeElement.querySelector('.clear-img-btn').style.display = "block";
+                    activeElement.querySelector('.paste-text').style.display = "none";
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+    });
+
+    function clearPasteZone(zoneId, event) {
+        if(event) event.stopPropagation();
+        pastedImages[zoneId] = null; 
+        
+        if(loadedExamImages.hasOwnProperty(zoneId)) loadedExamImages[zoneId] = null;
+        if(loadedQBImages.hasOwnProperty(zoneId)) loadedQBImages[zoneId] = null;
+
+        document.getElementById(`preview-${zoneId}`).style.display = "none";
+        document.getElementById(`preview-${zoneId}`).src = "";
+        document.querySelector(`#zone-${zoneId} .clear-img-btn`).style.display = "none";
+        document.querySelector(`#zone-${zoneId} .paste-text`).style.display = "inline";
+    }
+
+    function preloadImageZone(zoneId, imgBase64, memoryStore) {
+        if(imgBase64) {
+            document.getElementById(`preview-${zoneId}`).src = imgBase64;
+            document.getElementById(`preview-${zoneId}`).style.display = "block";
+            document.querySelector(`#zone-${zoneId} .clear-img-btn`).style.display = "block";
+            document.querySelector(`#zone-${zoneId} .paste-text`).style.display = "none";
+            memoryStore[zoneId] = imgBase64;
+        } else {
+            clearPasteZone(zoneId);
+        }
+    }
+
+    function compressImage(file) {
+        return new Promise((resolve) => {
+            if (!file) return resolve(null);
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = event => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 700;
+                    let width = img.width; let height = img.height;
+                    if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+                    canvas.width = width; canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+                }
+            };
+        });
+    }
+
+    function logout() { localStorage.clear(); window.location.href = "login.html"; }
+
+    async function createNewExam() {
+        if(role.toLowerCase() !== "admin") return alert("Only Admins can create exams.");
+        const title = document.getElementById("newExamTitle").value;
+        const type = document.getElementById("newExamType").value;
+        const timer = parseInt(document.getElementById("newExamTimer").value) || 180;
+        const enableHints = document.getElementById("newExamEnableHints").checked;
+        if (!title) return alert("Please enter an Exam Title!");
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, {
+                method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ title: title, examType: type, timerMinutes: timer, enableHints: enableHints, questions: [] })
+            });
+            if (res.ok) { alert("Exam created!"); document.getElementById("newExamTitle").value = ""; document.getElementById("newExamEnableHints").checked = false; loadExams(); } 
+            else alert("Failed to create exam.");
+        } catch (err) { console.error(err); }
+    }
+
+    async function loadExams() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            const list = document.getElementById("examList");
+            list.innerHTML = "";
+            
+            exams.forEach(exam => {
+                const examTypeStr = exam.examType ? `<span style="background:var(--secondary); color:white; padding:2px 8px; border-radius:12px; font-size:11px; margin-left:8px;">${exam.examType}</span>` : '';
+                const examTimerStr = exam.timerMinutes ? ` | ⏱️ ${exam.timerMinutes} mins` : ' | ⏱️ 180 mins';
+                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border: none;" onclick="deleteExam('${exam.id}')">🗑️ Delete</button>` : "";
+
+                list.innerHTML += `
+                    <div class="exam-item">
+                        <div><strong>${exam.title}</strong> ${examTypeStr}<br><small>${exam.questions ? exam.questions.length : 0} Questions ${examTimerStr}</small></div>
+                        <div>
+                            <button class="btn btn-outline btn-small" onclick="openEditor('${exam.id}', '${exam.title}')">⚙️ Manage</button>
+                            ${delBtn}
+                        </div>
+                    </div>`;
+            });
+            reRenderMathJax(); 
+        } catch(e) { console.error("Could not load exams:", e); }
+    }
+
+    async function deleteExam(id) {
+        if(!confirm("Are you sure you want to delete this entire exam?")) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            if(res.ok) loadExams();
+        } catch(e) { console.error(e); }
+    }
+
+    function handleSectionChange() {
+        const section = document.getElementById('qbSection').value;
+        const optionsContainer = document.getElementById('qbOptionsContainer');
+        const integerContainer = document.getElementById('qbIntegerContainer');
+
+        optionsContainer.style.display = 'none'; integerContainer.style.display = 'none';
+
+        if (isIntegerSection(section)) {
+            integerContainer.style.display = 'block';
+        } else if (isMultipleSection(section)) {
+            optionsContainer.style.display = 'block';
+            document.querySelectorAll('.qb-selector').forEach(el => { el.setAttribute('type', 'checkbox'); el.removeAttribute('name'); });
+        } else {
+            optionsContainer.style.display = 'block';
+            document.querySelectorAll('.qb-selector').forEach(el => { el.setAttribute('type', 'radio'); el.setAttribute('name', 'qbCorrectSelect'); });
+        }
+    }
+
+    function openQBEditor() {
+        resetQBForm();
+        document.getElementById("qbEditorModal").style.display = "flex";
+        handleSectionChange();
+    }
+
+    function closeQBEditor() {
+        document.getElementById("qbEditorModal").style.display = "none";
+        loadQuestionBank();
+    }
+
+    function resetQBForm() {
+        editingQBId = null;
+        document.getElementById("qbFormTitle").innerText = "Add to Question Bank";
+        document.getElementById("addQBBtn").innerText = "Add to Question Bank ✅";
+        document.getElementById("cancelQBEditBtn").style.display = "none";
+        
+        document.getElementById("qbQText").value = ""; document.getElementById("qbTopics").value = "";
+        document.getElementById("qbOpt1").value = ""; document.getElementById("qbOpt2").value = "";
+        document.getElementById("qbOpt3").value = ""; document.getElementById("qbOpt4").value = "";
+        document.getElementById("qbHint").value = ""; document.getElementById("qbSolutionText").value = "";
+        document.getElementById("qbIntInput").value = "";
+        
+        document.querySelectorAll('.qb-selector').forEach((sel, i) => sel.checked = (i===0));
+        
+        clearPasteZone('qbQImg'); clearPasteZone('qbOpt1Img'); clearPasteZone('qbOpt2Img'); 
+        clearPasteZone('qbOpt3Img'); clearPasteZone('qbOpt4Img'); clearPasteZone('qbSolImg');
+    }
+
+    async function loadQuestionBank() {
+        try {
+            const fSub = document.getElementById("qbFilterSubject") ? document.getElementById("qbFilterSubject").value : "";
+            const fSec = document.getElementById("qbFilterSection") ? document.getElementById("qbFilterSection").value : "";
+            const fTopic = document.getElementById("qbFilterTopic") ? document.getElementById("qbFilterTopic").value : "";
+            
+            const params = new URLSearchParams();
+            if(fSub) params.append("subject", fSub);
+            if(fSec) params.append("section", fSec);
+            if(fTopic) params.append("topic", fTopic);
+            const queryStr = params.toString() ? `?${params.toString()}` : "";
+
+            const res = await fetch(`${BACKEND_URL}/api/question_bank${queryStr}`, { headers: { "Authorization": `Bearer ${token}` } });
+            let qbList = await res.json();
+            
+            // Update the all count in folder sidebar
+            const allCount = document.getElementById("qbAllCount");
+            if (allCount) allCount.innerText = `${qbList.length} questions`;
+
+            // Filter by selected list if one is selected
+            if (qbSelectedListId) {
+                const listDoc = qbListsCache.find(l => l.id === qbSelectedListId);
+                if (listDoc && listDoc.questionIds && listDoc.questionIds.length > 0) {
+                    const validIds = new Set(listDoc.questionIds);
+                    qbList = qbList.filter(q => validIds.has(q.id));
+                } else {
+                    qbList = [];
+                }
+            }
+
+            currentQBQuestions = qbList; 
+            const listDiv = document.getElementById("qbList");
+            listDiv.innerHTML = "";
+            
+            if(qbList.length === 0) {
+                const msg = qbSelectedListId ? "This list has no questions yet. Add questions from the bank!" : "Bank is empty or no matches found. Add questions!";
+                return listDiv.innerHTML = `<div style='padding: 15px; color: #777;'>${msg}</div>`;
+            }
+
+            const listsForDropdown = qbListsCache;
+
+            qbList.forEach((q, i) => {
+                const delBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-primary btn-small" style="background:#e74c3c; border:none; width:100%;" onclick="deleteQBQuestion('${q.id}')">🗑️ Delete</button>` : "";
+                const editBtn = role.toLowerCase() === "admin" ? `<button class="btn btn-outline btn-small" style="width:100%;" onclick="loadEditQBQuestion('${q.id}')">✏️ Edit</button>` : "";
+
+                let optionsHTML = "";
+                if (q.options && q.options.length > 0) {
+                    optionsHTML = `<div class="q-options-grid">`;
+                    q.options.forEach((opt, idx) => {
+                        const isCorrect = q.correctAnswers && q.correctAnswers.includes(opt);
+                        const highlightClass = isCorrect ? 'correct' : '';
+                        const optionLetter = String.fromCharCode(65 + idx);
+                        optionsHTML += `
+                            <div class="opt-item-card ${highlightClass}">
+                                <strong>${optionLetter}.</strong> 
+                                <span>${opt}</span>
+                                ${isCorrect ? '<span style="margin-left:auto; color:var(--success); font-weight:bold;">✓</span>' : ''}
+                            </div>
+                        `;
+                    });
+                    optionsHTML += `</div>`;
+                } else {
+                    optionsHTML = `
+                        <div style="padding: 10px; background: #e8f8f5; border: 1px solid var(--success); border-radius: 4px; margin: 15px 0;">
+                            <strong>Numerical Answer:</strong> ${q.correctAnswers ? q.correctAnswers.join(', ') : 'N/A'}
+                        </div>
+                    `;
+                }
+
+                let listOptionsHtml = '<option value="">Add to List...</option>';
+                if (listsForDropdown.length > 0) {
+                    listsForDropdown.forEach(l => {
+                        const alreadyInList = l.questionIds && l.questionIds.includes(q.id);
+                        const label = alreadyInList ? `${l.name} (✓ already in)` : l.name;
+                        listOptionsHtml += `<option value="${l.id}" ${alreadyInList ? 'disabled' : ''}>${label}</option>`;
+                    });
+                }
+                listOptionsHtml += '<option value="__create__">➕ Create new list...</option>';
+
+                listDiv.innerHTML += `
+                    <div class="q-card">
+                        <div class="q-card-header">
+                            <div>
+                                <div class="badges">
+                                    <span class="badge badge-type">${q.exam_type || 'N/A'}</span>
+                                    <span class="badge badge-subject">${q.subject || 'N/A'}</span>
+                                    <span class="badge badge-section">${q.section || 'N/A'}</span>
+                                </div>
+                                <div style="margin-top: 8px; font-size: 15px; max-width: 650px;">
+                                    <strong>Q:</strong> ${q.question ? q.question.substring(0,100)+'...' : '<i>[Image Only]</i>'}
+                                </div>
+                                <div style="margin-top: 8px;">
+                                    <span class="badge badge-topic">🏷️ ${q.topics && q.topics.length ? q.topics.join(', ') : 'Uncategorized'}</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-direction: column; align-items: flex-end; min-width: 140px;">
+                                <div style="display: flex; gap: 4px; width: 100%;">
+                                    <select class="qb-add-to-list-select" onchange="handleAddToList(this, '${q.id}')" style="flex: 1; padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0;">
+                                        ${listOptionsHtml}
+                                    </select>
+                                    <button class="btn btn-primary btn-small" style="padding: 4px 6px; font-size: 10px; background: var(--success); border: none;" onclick="addSingleQuestionToExamFromBank('${q.id}')" title="Add to Exam">📥</button>
+                                </div>
+                                <div style="display: flex; gap: 4px; width: 100%;">
+                                    <button class="btn btn-outline btn-small" onclick="toggleView('qb-details-${i}')" style="flex: 1;">👁️ Details</button>
+                                    ${editBtn}
+                                </div>
+                                ${delBtn ? `<div style="width: 100%;">${delBtn}</div>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div id="qb-details-${i}" class="q-details-box">
+                            <div style="font-size: 15px; margin-bottom: 10px;">${q.question || ''}</div>
+                            ${q.questionImage ? `<img src="${q.questionImage}" style="max-width: 100%; max-height: 200px;">` : ''}
+                            
+                            ${optionsHTML}
+                            
+                            ${q.hint ? `<p style="background: #fff3cd; padding: 8px; border-left: 3px solid #ffeeba; margin-bottom: 10px;"><b>Hint:</b> ${q.hint}</p>` : ''}
+                            ${q.solution ? `<p style="background: #d4edda; padding: 8px; border-left: 3px solid #c3e6cb;"><b>Solution:</b> ${q.solution}</p>` : ''}
+                            ${q.solutionImage ? `<img src="${q.solutionImage}" style="max-width: 100%; max-height: 200px; margin-top: 10px;">` : ''}
+                        </div>
+                    </div>`;
+            });
+            reRenderMathJax(); 
+        } catch(e) { console.error("Could not load Question Bank:", e); }
+    }
+
+    function toggleView(divId) {
+        const el = document.getElementById(divId);
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        reRenderMathJax(); 
+    }
+
+    function loadEditQBQuestion(id) {
+        if(role.toLowerCase() !== "admin") return alert("Only Admins can edit question bank.");
+        editingQBId = id;
+        const q = currentQBQuestions.find(x => x.id === id);
+        if(!q) return;
+
+        document.getElementById("qbFormTitle").innerText = "Edit Question";
+        document.getElementById("addQBBtn").innerText = "Update Question in Bank ✏️";
+        document.getElementById("cancelQBEditBtn").style.display = "block";
+
+        document.getElementById("qbExamType").value = q.exam_type || "Practice type";
+        document.getElementById("qbSubject").value = q.subject || "Physics";
+        document.getElementById("qbSection").value = q.section || "Single correct answer";
+        document.getElementById("qbTopics").value = (q.topics || []).join(', ');
+        
+        handleSectionChange(); 
+
+        document.getElementById("qbQText").value = q.question || "";
+        document.getElementById("qbHint").value = q.hint || "";
+        document.getElementById("qbSolutionText").value = q.solution || "";
+
+        if (isIntegerSection(q.section)) {
+            document.getElementById("qbIntInput").value = (q.correctAnswers && q.correctAnswers[0]) ? q.correctAnswers[0] : "";
+        } else {
+            document.getElementById("qbOpt1").value = q.options[0] || "";
+            document.getElementById("qbOpt2").value = q.options[1] || "";
+            document.getElementById("qbOpt3").value = q.options[2] || "";
+            document.getElementById("qbOpt4").value = q.options[3] || "";
+            
+            const selectors = document.querySelectorAll('.qb-selector');
+            selectors.forEach((sel, idx) => {
+                sel.checked = (q.correctAnswers || []).includes(q.options[idx]);
+            });
+        }
+
+        preloadImageZone('qbQImg', q.questionImage, loadedQBImages);
+        preloadImageZone('qbOpt1Img', q.optionImages ? q.optionImages[0] : null, loadedQBImages);
+        preloadImageZone('qbOpt2Img', q.optionImages ? q.optionImages[1] : null, loadedQBImages);
+        preloadImageZone('qbOpt3Img', q.optionImages ? q.optionImages[2] : null, loadedQBImages);
+        preloadImageZone('qbOpt4Img', q.optionImages ? q.optionImages[3] : null, loadedQBImages);
+        preloadImageZone('qbSolImg', q.solutionImage, loadedQBImages);
+
+        document.getElementById("qbEditorModal").style.display = "flex";
+        document.getElementById("qbEditorModal").querySelector('.modal-content').scrollTo(0,0);
+    }
+
+    async function deleteQBQuestion(id) {
+        if(!confirm("Are you sure you want to delete this question from the bank?")) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_bank/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            if(res.ok) loadQuestionBank();
+        } catch(e) { console.error(e); }
+    }
+
+    async function submitNewQBQuestion() {
+        const btn = document.getElementById("addQBBtn");
+        btn.innerText = "Processing Images... ⏳"; btn.disabled = true;
+
+        try {
+            const section = document.getElementById("qbSection").value;
+            const qText = document.getElementById("qbQText").value.trim();
+
+            const finalQImage = pastedImages.qbQImg ? await compressImage(pastedImages.qbQImg) : loadedQBImages.qbQImg;
+            const finalO1Img = pastedImages.qbOpt1Img ? await compressImage(pastedImages.qbOpt1Img) : loadedQBImages.qbOpt1Img;
+            const finalO2Img = pastedImages.qbOpt2Img ? await compressImage(pastedImages.qbOpt2Img) : loadedQBImages.qbOpt2Img;
+            const finalO3Img = pastedImages.qbOpt3Img ? await compressImage(pastedImages.qbOpt3Img) : loadedQBImages.qbOpt3Img;
+            const finalO4Img = pastedImages.qbOpt4Img ? await compressImage(pastedImages.qbOpt4Img) : loadedQBImages.qbOpt4Img;
+            const finalSolImg = pastedImages.qbSolImg ? await compressImage(pastedImages.qbSolImg) : loadedQBImages.qbSolImg;
+
+            if (!qText && !finalQImage) return alert("You must provide either Question Text or a Question Image.");
+
+            const payload = {
+                exam_type: document.getElementById('qbExamType').value, subject: document.getElementById('qbSubject').value, section: section,
+                topics: document.getElementById('qbTopics').value.split(',').map(t=>t.trim()).filter(t=>t),
+                question: qText, questionImage: finalQImage, hint: document.getElementById('qbHint').value.trim(),
+                solution: document.getElementById('qbSolutionText').value.trim(), solutionImage: finalSolImg,
+                options: [], optionImages: [], correctAnswers: []
+            };
+
+            if (isIntegerSection(section)) {
+                const intAns = document.getElementById("qbIntInput").value;
+                if(intAns === "") return alert("Please provide a numerical answer.");
+                payload.correctAnswers = [intAns]; 
+            } else {
+                const optTexts = [
+                    document.getElementById("qbOpt1").value.trim() || "Option A", document.getElementById("qbOpt2").value.trim() || "Option B",
+                    document.getElementById("qbOpt3").value.trim() || "Option C", document.getElementById("qbOpt4").value.trim() || "Option D"
+                ];
+                payload.options = optTexts;
+                payload.optionImages = [finalO1Img, finalO2Img, finalO3Img, finalO4Img];
+
+                const selectors = document.querySelectorAll('.qb-selector');
+                selectors.forEach((sel, idx) => { if(sel.checked) payload.correctAnswers.push(optTexts[idx]); });
+                if(payload.correctAnswers.length === 0) return alert("Select at least one correct option.");
+            }
+
+            let endpoint = `${BACKEND_URL}/api/question_bank`;
+            let method = "POST";
+
+            if(editingQBId !== null) {
+                endpoint = `${BACKEND_URL}/api/question_bank/${editingQBId}`;
+                method = "PUT";
+            }
+
+            const res = await fetch(endpoint, {
+                method: method, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+
+            if(res.ok) {
+                const responseData = await res.json();
+                
+                // If in "add to list" mode, also add the question to the current list
+                if (addingToListMode && currentQlDetailId) {
+                    const newQuestionId = responseData.id;
+                    if (newQuestionId) {
+                        const addToListRes = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}/questions`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                            body: JSON.stringify({ questionIds: [newQuestionId] })
+                        });
+                        if (addToListRes.ok) {
+                            alert("Question added to Bank & List! ✅");
+                        } else {
+                            alert("Question saved to Bank, but failed to add to list.");
+                        }
+                    }
+                } else {
+                    alert(editingQBId ? "Question Updated! ✅" : "Question added to Bank! ✅");
+                }
+                
+                closeQBEditor();
+                if (addingToListMode && currentQlDetailId) {
+                    openListDetail(currentQlDetailId);
+                }
+            } else alert("Failed to save question.");
+        } catch(e) { console.error(e); alert("Error saving question.");
+        } finally { 
+            btn.innerText = "Add to Question Bank ✅"; 
+            btn.disabled = false; 
+            addingToListMode = false; 
+        }
+    }
+
+    function onQBZipModeChange() {
+        const modeEl = document.getElementById('qbZipMode');
+        const infoEl = document.getElementById('qbJeeFormatInfo');
+        if (infoEl) infoEl.style.display = (modeEl && modeEl.value === 'jee') ? 'block' : 'none';
+    }
+
+    async function uploadQBZIP() { 
+        const fileInput = document.getElementById('qbZipFile');
+        const files = fileInput.files;
+        const btn = document.getElementById('qbZipUploadBtn');
+        
+        if (!files || files.length === 0) return alert("Please select at least one .zip file first!");
+        
+        btn.innerText = `Processing 0 of ${files.length}... ⏳`;
+        btn.disabled = true;
+        
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+            formData.append("files", files[i]);
+        }
+        const zipModeEl = document.getElementById('qbZipMode');
+        formData.append("mode", (zipModeEl && zipModeEl.value === 'jee') ? "jee" : "default");
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_bank/bulk-upload-zip`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });
+            const data = await res.json();
+            if (res.ok) { 
+                alert(data.message); 
+                fileInput.value = ""; 
+                closeQBEditor(); 
+                
+                // If a question list is selected in the folder sidebar, add the newly uploaded questions to it
+                if (qbSelectedListId && data.total_added > 0) {
+                    try {
+                        // Fetch the question bank to get the most recently added questions
+                        const qbRes = await fetch(`${BACKEND_URL}/api/question_bank`, { 
+                            headers: { "Authorization": `Bearer ${token}` } 
+                        });
+                        if (qbRes.ok) {
+                            const allQb = await qbRes.json();
+                            // Get the most recently added questions (last N based on total_added)
+                            const newQuestions = allQb.slice(-data.total_added);
+                            const newQuestionIds = newQuestions.map(q => q.id);
+                            
+                            if (newQuestionIds.length > 0) {
+                                await fetch(`${BACKEND_URL}/api/question_lists/${qbSelectedListId}/questions`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                                    body: JSON.stringify({ questionIds: newQuestionIds })
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error adding uploaded questions to list:", e);
+                    }
+                }
+            } 
+            else alert("Upload Failed: " + (data.detail || "Unknown error"));
+        } catch (e) { console.error(e); alert("Connection error during upload."); } 
+        finally { btn.innerText = "Upload ZIP(s)"; btn.disabled = false; }
+    }
+
+    async function uploadQLZIP() {
+        const fileInput = document.getElementById('qlZipFile');
+        const files = fileInput.files;
+        const btn = document.getElementById('qlZipUploadBtn');
+        
+        if (!files || files.length === 0) return alert("Please select at least one .zip file first!");
+        if (!currentQlDetailId) return alert("No list selected.");
+
+        btn.innerText = `Processing 0 of ${files.length}... ⏳`;
+        btn.disabled = true;
+
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+            formData.append("files", files[i]);
+        }
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}/bulk-upload-zip`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });
+            const data = await res.json();
+            if (res.ok) { 
+                alert(data.message); 
+                fileInput.value = ""; 
+                openListDetail(currentQlDetailId);
+                loadQBFolders();
+            } else alert("Upload Failed: " + (data.detail || "Unknown error"));
+        } catch (e) { console.error(e); alert("Connection error during upload."); } 
+        finally { btn.innerText = "Upload ZIP(s)"; btn.disabled = false; }
+    }
+
+    async function searchQBForExam() {
+        const btn = document.querySelector('button[onclick="searchQBForExam()"]');
+        btn.innerText = "Searching... ⏳";
+        
+        try {
+            if(qbCacheForImport.length === 0) {
+                const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
+                qbCacheForImport = await res.json();
+            }
+            
+            const fType = document.getElementById("importFilterType").value;
+            const fSub = document.getElementById("importFilterSubject").value;
+            const fSec = document.getElementById("importFilterSection").value;
+            const fTopic = document.getElementById("importFilterTopic").value.toLowerCase();
+            
+            const filtered = qbCacheForImport.filter(q => {
+                const matchType = !fType || q.exam_type === fType;
+                const matchSub = !fSub || q.subject === fSub;
+                const matchSec = !fSec || q.section === fSec;
+                const matchTopic = !fTopic || (q.topics && q.topics.some(t => t.toLowerCase().includes(fTopic)));
+                return matchType && matchSub && matchSec && matchTopic;
+            });
+            
+            const resDiv = document.getElementById("importQBResults");
+            const importBtn = document.getElementById("btnImportSelected");
+            
+            resDiv.style.display = "block";
+            resDiv.innerHTML = "";
+            
+            if(filtered.length === 0) {
+                resDiv.innerHTML = "<div style='color:#777; text-align:center;'>No questions match your filters.</div>";
+                importBtn.style.display = "none";
+            } else {
+                filtered.forEach(q => {
+                    const qText = q.question ? q.question.substring(0, 80) + '...' : '<i>[Image Only]</i>';
+                    resDiv.innerHTML += `
+                        <div style="display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; background: #fafafa; margin-bottom: 5px; border-radius: 4px;">
+                            <input type="checkbox" class="qb-import-cb" value="${q.id}" style="margin-right: 15px; width: 18px; height: 18px;">
+                            <div style="flex: 1;">
+                                <div class="badges" style="margin-bottom: 5px;">
+                                    <span class="badge badge-subject" style="font-size: 9px; padding: 2px 6px;">${q.subject}</span>
+                                    <span class="badge badge-section" style="font-size: 9px; padding: 2px 6px;">${q.section}</span>
+                                </div>
+                                <span style="font-size: 13px;">${qText}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                importBtn.style.display = "block";
+            }
+            reRenderMathJax(); 
+        } catch(e) {
+            console.error(e);
+            alert("Error loading Question Bank.");
+        } finally {
+            btn.innerText = "🔍 Search Question Bank";
+        }
+    }
+
+    async function importSelectedQBQuestions() {
+        const checkboxes = document.querySelectorAll('.qb-import-cb:checked');
+        if(checkboxes.length === 0) return alert("Select at least one question to import.");
+        
+        const btn = document.getElementById("btnImportSelected");
+        btn.innerText = "Importing... ⏳";
+        btn.disabled = true;
+        
+        try {
+            const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+            const questionsToAdd = [];
+            
+            selectedIds.forEach(id => {
+                const q = qbCacheForImport.find(x => x.id === id);
+                if(q) {
+                    const secStr = String(q.section || "").toLowerCase();
+                    let derivedType = "mcq";
+                    if (secStr.includes("integer") || secStr.includes("numerical")) derivedType = "integer";
+                    else if (secStr.includes("multiple correct")) derivedType = "multiple";
+                    else if (secStr.includes("match")) derivedType = "match";
+                    else if (secStr.includes("passage") || secStr.includes("case")) derivedType = "case-based";
+                    const examQ = {
+                        subject: q.subject || "Physics",
+                        question: q.question || "",
+                        questionImage: q.questionImage || null,
+                        options: q.options || [],
+                        optionImages: q.optionImages || [],
+                        correctAnswer: (q.correctAnswers && q.correctAnswers.length > 0) ? q.correctAnswers[0] : "", 
+                        correctAnswers: q.correctAnswers || [], 
+                        questionType: derivedType,
+                        marks: q.marks || 1,
+                        section: q.section || "Single correct answer",
+                        hint: q.hint || "",
+                        solution: q.solution || "",
+                        solutionImage: q.solutionImage || null,
+                        topics: q.topics || []
+                    };
+                    questionsToAdd.push(examQ);
+                }
+            });
+            
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/import-questions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify(questionsToAdd)
+            });
+            
+            if(res.ok) {
+                alert(`${questionsToAdd.length} questions imported successfully! ✅`);
+                document.getElementById("importQBResults").style.display = "none";
+                btn.style.display = "none";
+                refreshQuestionList(currentEditingExamId);
+            } else {
+                let errorMsg = "Failed to import questions.";
+                try {
+                    const errData = await res.json();
+                    errorMsg = errData.detail || errData.message || errorMsg;
+                } catch(parseErr) {}
+                alert(errorMsg);
+            }
+        } catch(e) {
+            console.error(e);
+            alert("Connection error during import.");
+        } finally {
+            btn.innerText = "📥 Import Selected Questions";
+            btn.disabled = false;
+        }
+    }
+
+    // ============ EXAM PATTERN SEGREGATION ============
+    // Defines which sections + question types each exam pattern may use.
+    // questionTypes map to internal engine values via QUESTION_TYPE_MAP below.
+    const EXAM_PATTERNS = {
+        cbse: {
+            label: "CBSE Pattern",
+            sections: [
+                { value: "CBSE Section A", label: "CBSE Section A (MCQ + Assertion-Type - 1 mark each)", defaultMarks: 1 },
+                { value: "CBSE Section B", label: "CBSE Section B (Short Answer - 2 marks)", defaultMarks: 2 },
+                { value: "CBSE Section C", label: "CBSE Section C (Short Answer - 3 marks)", defaultMarks: 3 },
+                { value: "CBSE Section D", label: "CBSE Section D (Case Study - 4 marks)", defaultMarks: 4 },
+                { value: "CBSE Section E", label: "CBSE Section E (Long Answer - 5 marks)", defaultMarks: 5 }
+            ],
+            questionTypes: [
+                { value: "mcq", label: "Multiple Choice Question" },
+                { value: "assertion-reasoning", label: "Assertion Type Question" },
+                { value: "case-based", label: "Case Based Question" },
+                { value: "subjective", label: "Subjective Question" }
+            ]
+        },
+        mains: {
+            label: "JEE Mains",
+            sections: [
+                { value: "Single Correct Answer", label: "Section A - Single Correct Answer", defaultMarks: 4 },
+                { value: "Numerical Answer", label: "Section B - Numerical Answer", defaultMarks: 4 }
+            ],
+            questionTypes: [
+                { value: "single-correct", label: "Single Correct Answer" },
+                { value: "integer", label: "Integer Based Question" }
+            ]
+        },
+        advance: {
+            label: "JEE Advance",
+            sections: [
+                { value: "Single Correct Answer", label: "Section 1 - Single Correct Answer", defaultMarks: 3 },
+                { value: "Multiple Correct Answer", label: "Section 2 - Multiple Correct Answer", defaultMarks: 4 },
+                { value: "Match Matrix", label: "Section 3 - Match Matrix", defaultMarks: 4 },
+                { value: "Passage based Questions", label: "Section 4 - Passage based Questions", defaultMarks: 4 },
+                { value: "Numerical Answer", label: "Section 5 - Numerical Answer", defaultMarks: 4 }
+            ],
+            questionTypes: [
+                { value: "single-correct", label: "Single Correct Answer" },
+                { value: "multiple", label: "Multiple Correct Answer" },
+                { value: "match", label: "Match Matrix" },
+                { value: "passage", label: "Passage based Question" },
+                { value: "integer", label: "Integer Based Question" }
+            ]
+        },
+        practice: {
+            label: "Practice (Topic-wise)",
+            sections: [
+                { value: "Single correct answer", label: "Single correct answer", defaultMarks: 1 },
+                { value: "Integer based question", label: "Integer based question", defaultMarks: 1 },
+                { value: "Multiple correct answer", label: "Multiple correct answer", defaultMarks: 1 },
+                { value: "Match the following", label: "Match the following", defaultMarks: 1 }
+            ],
+            questionTypes: [
+                { value: "mcq", label: "MCQ (Multiple Choice)" },
+                { value: "assertion-reasoning", label: "Assertion-Reasoning" },
+                { value: "subjective", label: "Subjective (Text Answer)" },
+                { value: "case-based", label: "Case Based (Passage + MCQs)" },
+                { value: "integer", label: "Integer Based Question" },
+                { value: "multiple", label: "Multiple Correct Answer" },
+                { value: "match", label: "Match the Following" }
+            ]
+        }
+    };
+
+    // Map user-facing pattern question types to internal engine values used for
+    // grading + student rendering (mcq / assertion-reasoning / case-based / subjective / integer / multiple / match)
+    const QUESTION_TYPE_MAP = {
+        "single-correct": "mcq",
+        "mcq": "mcq",
+        "integer": "integer",
+        "multiple": "multiple",
+        "match": "match",
+        "passage": "case-based",
+        "case-based": "case-based",
+        "assertion-reasoning": "assertion-reasoning",
+        "subjective": "subjective"
+    };
+
+    function getExamPattern() {
+        const t = String(currentExamType || "").toLowerCase();
+        if (t.includes('cbse')) return EXAM_PATTERNS.cbse;
+        if (t.includes('mains')) return EXAM_PATTERNS.mains;
+        if (t.includes('advance')) return EXAM_PATTERNS.advance;
+        return EXAM_PATTERNS.practice;
+    }
+
+    function isIntegerSection(sec) {
+        const s = String(sec || "").toLowerCase();
+        return s.includes("integer") || s.includes("numerical");
+    }
+    function isSubjectiveSection(sec) {
+        const s = String(sec || "");
+        return s.includes("CBSE Section B") || s.includes("CBSE Section C") || s.includes("CBSE Section E");
+    }
+    function isCaseSection(sec) {
+        const s = String(sec || "").toLowerCase();
+        return s.includes("cbse section d") || s.includes("case based") || s.includes("case-based") || s.includes("passage");
+    }
+    function isMultipleSection(sec) {
+        const s = String(sec || "").toLowerCase();
+        return s.includes("multiple correct");
+    }
+    function isMatchSection(sec) {
+        const s = String(sec || "").toLowerCase();
+        return s.includes("match");
+    }
+
+    function updateSectionDropdown(selectedValue) {
+        const sectionSelect = document.getElementById("examQuestionSection");
+        sectionSelect.innerHTML = "";
+        const pattern = getExamPattern();
+        (pattern.sections || []).forEach(sec => {
+            sectionSelect.innerHTML += `<option value="${sec.value}">${sec.label}</option>`;
+        });
+        if (selectedValue) {
+            const exists = Array.from(sectionSelect.options).some(o => o.value === selectedValue);
+            if (exists) {
+                sectionSelect.value = selectedValue;
+            } else {
+                // Legacy / cross-pattern section value - keep it selectable so editing doesn't break
+                sectionSelect.insertAdjacentHTML('afterbegin', `<option value="${selectedValue}" selected>${selectedValue}</option>`);
+            }
+        }
+    }
+
+    function updateQuestionTypeDropdown(selectedValue) {
+        const qTypeSelect = document.getElementById("questionType");
+        const pattern = getExamPattern();
+        const requestedInt = QUESTION_TYPE_MAP[selectedValue] || "mcq";
+        qTypeSelect.innerHTML = "";
+        let matched = false;
+        (pattern.questionTypes || []).forEach(qt => {
+            const intVal = QUESTION_TYPE_MAP[qt.value] || qt.value;
+            qTypeSelect.innerHTML += `<option value="${intVal}">${qt.label}</option>`;
+            if (intVal === requestedInt) matched = true;
+        });
+        if (matched) qTypeSelect.value = requestedInt;
+    }
+
+    function handleExamSectionChange() {
+        const sec = document.getElementById("examQuestionSection").value;
+        const optCon = document.getElementById("examOptionsContainer");
+        const intCon = document.getElementById("examIntegerContainer");
+        const caseCon = document.getElementById("casePassageContainer");
+        const subCon = document.getElementById("caseSubQuestionsContainer");
+        const arCon = document.getElementById("assertionReasonContainer");
+        const questionTypeSelect = document.getElementById("questionType");
+        
+        // Auto-set marks + question type dropdown based on section + pattern
+        const pattern = getExamPattern();
+        const sectionDef = (pattern.sections || []).find(s => s.value === sec);
+        const qMarksEl = document.getElementById("questionMarks");
+        if (sectionDef && sectionDef.defaultMarks) qMarksEl.value = String(sectionDef.defaultMarks);
+        if (isSubjectiveSection(sec)) {
+            updateQuestionTypeDropdown("subjective");
+        } else if (isCaseSection(sec)) {
+            updateQuestionTypeDropdown("case-based");
+        } else if (isIntegerSection(sec)) {
+            updateQuestionTypeDropdown("integer");
+        } else if (isMultipleSection(sec)) {
+            updateQuestionTypeDropdown("multiple");
+        } else if (isMatchSection(sec)) {
+            updateQuestionTypeDropdown("match");
+        } else {
+            updateQuestionTypeDropdown("mcq");
+        }
+        
+        // Show/hide case passage container (CBSE Section D / JEE Advance Passage)
+        const dLabel = document.getElementById("caseSubTitle");
+        if (dLabel) {
+            dLabel.innerText = String(sec).toLowerCase().includes("passage")
+                ? "📚 Passage Sub-Questions (auto-graded MCQs - total must equal question marks)"
+                : "📚 Section D Sub-Questions (3-4 MCQs, marks 1 or 2 each, total MUST equal question marks — auto-graded, no manual evaluation)";
+        }
+        if (isCaseSection(sec) || questionTypeSelect.value === "case-based") {
+            caseCon.style.display = "block";
+            subCon.style.display = "block";
+        } else {
+            caseCon.style.display = "none";
+            subCon.style.display = "none";
+        }
+        
+        // (marks auto-set now handled above via pattern defaultMarks)
+        
+        // Show/hide assertion-reasoning container
+        if(questionTypeSelect.value === "assertion-reasoning") {
+            arCon.style.display = "block";
+            optCon.style.display = "grid";  // AR questions have options A, B, C, D
+        } else {
+            arCon.style.display = "none";
+        }
+        
+        if (questionTypeSelect.value === "integer" || isIntegerSection(sec)) {
+            optCon.style.display = "none";
+            intCon.style.display = "block";
+        } else if (questionTypeSelect.value === "case-based" || isCaseSection(sec)) {
+            optCon.style.display = "none";
+            intCon.style.display = "none";
+        } else if (questionTypeSelect.value === "subjective" || isSubjectiveSection(sec)) {
+            optCon.style.display = "none";
+            intCon.style.display = "none";
+        } else {
+            optCon.style.display = "grid";
+            intCon.style.display = "none";
+        }
+        
+        // Trigger question type change handler
+        handleQuestionTypeChange();
+    }
+    
+    function handleQuestionTypeChange() {
+        const qType = document.getElementById("questionType").value;
+        const caseContainer = document.getElementById("casePassageContainer");
+        const subCon = document.getElementById("caseSubQuestionsContainer");
+        const sec = document.getElementById("examQuestionSection").value;
+        const optCon = document.getElementById("examOptionsContainer");
+        const intCon = document.getElementById("examIntegerContainer");
+        const arCon = document.getElementById("assertionReasonContainer");
+        const mcCon = document.getElementById("examMultiCorrectPicker");
+        
+        const isCaseish = (qType === "case-based" || isCaseSection(sec));
+        const isIntish = (qType === "integer" || isIntegerSection(sec));
+        const isSubj = (qType === "subjective" || isSubjectiveSection(sec));
+        const isMulti = (qType === "multiple" || isMultipleSection(sec));
+        
+        if (mcCon) mcCon.style.display = (isMulti && !isIntish) ? "block" : "none";
+        
+        if (isCaseish) {
+            caseContainer.style.display = "block";
+            subCon.style.display = "block";
+            optCon.style.display = "none";
+            intCon.style.display = "none";
+            arCon.style.display = "none";
+        } else if (isIntish) {
+            caseContainer.style.display = "none";
+            subCon.style.display = "none";
+            optCon.style.display = "none";
+            intCon.style.display = "block";
+            arCon.style.display = "none";
+        } else if (isSubj) {
+            caseContainer.style.display = "none";
+            subCon.style.display = "none";
+            optCon.style.display = "none";
+            intCon.style.display = "none";
+            arCon.style.display = "none";
+        } else {
+            caseContainer.style.display = "none";
+            subCon.style.display = "none";
+            optCon.style.display = "grid";
+            intCon.style.display = "none";
+            arCon.style.display = (qType === "assertion-reasoning") ? "block" : "none";
+        }
+        
+        // Auto-populate default options for assertion-reasoning questions
+        if (qType === "assertion-reasoning") {
+            const opt1 = document.getElementById("opt1");
+            const opt2 = document.getElementById("opt2");
+            const opt3 = document.getElementById("opt3");
+            const opt4 = document.getElementById("opt4");
+            
+            // Only set defaults if options are empty
+            if (opt1 && !opt1.value) {
+                opt1.value = "Both Assertion (A) and Reason (R) are true, and R is the correct explanation of A";
+            }
+            if (opt2 && !opt2.value) {
+                opt2.value = "Both A and R are true, but R is not the correct explanation of A";
+            }
+            if (opt3 && !opt3.value) {
+                opt3.value = "A is true, but R is false";
+            }
+            if (opt4 && !opt4.value) {
+                opt4.value = "A is false, but R is true";
+            }
+        }
+        
+        updateCaseSubTotalMarks();
+    }
+
+    // ===== SECTION D SUB-QUESTION EDITOR (case-based) =====
+    // Total marks for case-based questions must ALWAYS equal 4 (CBSE Section D standard)
+    const CASE_SUB_TOTAL_MARKS = 4;
+
+    let caseSubQuestions = [];
+
+    function addCaseSubQuestion(data) {
+        data = data || {};
+        caseSubQuestions.push({
+            q: data.q || "",
+            type: data.type || "mcq",
+            options: Array.isArray(data.options) && data.options.length >= 2 ? data.options.slice(0, 4) : ["", "", "", ""],
+            correctAnswer: data.correctAnswer || (data.options && data.options[0]) || "A",
+            marks: parseInt(data.marks) || 1,
+            referenceAnswer: data.referenceAnswer || ""
+        });
+        renderCaseSubQuestions();
+    }
+
+    function removeCaseSubQuestion(idx) {
+        caseSubQuestions.splice(idx, 1);
+        renderCaseSubQuestions();
+    }
+
+    function handleSubTypeChange(idx) {
+        const type = document.querySelector(`.cas-sub-type[data-idx="${idx}"]`).value;
+        const sq = caseSubQuestions[idx];
+        if (type === 'subjective') {
+            sq.type = 'subjective';
+            sq.options = [];
+            sq.correctAnswer = null;
+            sq.referenceAnswer = sq.referenceAnswer || '';
+        } else {
+            sq.type = 'mcq';
+            sq.options = sq.options.length >= 2 ? sq.options.slice(0, 4) : ["", "", "", ""];
+            sq.correctAnswer = sq.correctAnswer || sq.options[0] || "A";
+            sq.referenceAnswer = '';
+        }
+        renderCaseSubQuestions();
+        const restoredSelect = document.querySelector(`.cas-sub-type[data-idx="${idx}"]`);
+        if (restoredSelect) restoredSelect.value = type;
+    }
+
+    function renderCaseSubQuestions() {
+        const list = document.getElementById("caseSubQuestionsList");
+        if (!list) return;
+        list.innerHTML = "";
+        if (!caseSubQuestions.length) {
+            list.innerHTML = '<div style="font-size:12px;color:#999;font-style:italic;">Add sub-questions. Total marks must equal 4.</div>';
+        }
+        const letters = ['A', 'B', 'C', 'D'];
+        caseSubQuestions.forEach((sq, idx) => {
+            const isMcq = sq.type !== 'subjective';
+            let typeHTML = `<div style="margin-bottom:8px;">
+                <span style="font-size:12px;color:#555;">Type:</span>
+                <select class="cas-sub-type" data-idx="${idx}" style="padding:4px;border:2px solid #ccc;border-radius:4px;" onchange="handleSubTypeChange(${idx})">
+                    <option value="mcq" ${isMcq ? 'selected' : ''}>MCQ (Auto-graded)</option>
+                    <option value="subjective" ${!isMcq ? 'selected' : ''}>Subjective (Manual)</option>
+                </select>
+            </div>`;
+            let optionsHTML = "";
+            if (isMcq) {
+                optionsHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">';
+                for (let oi = 0; oi < 4; oi++) {
+                    optionsHTML += `<div><input type="text" class="cas-sub-opt" data-idx="${idx}" data-oi="${oi}" value="${(sq.options[oi] || '').replace(/"/g, '&quot;')}" placeholder="Option ${letters[oi]}"></div>`;
+                }
+                optionsHTML += '</div>';
+                let selOpts = '';
+                for (let oi = 0; oi < 4; oi++) {
+                    const isSel = sq.correctAnswer === (sq.options[oi] || '') || (sq.correctAnswer === letters[oi] && oi === 0);
+                    selOpts += `<option value="${letters[oi]}" ${isSel ? 'selected' : ''}>${letters[oi]}</option>`;
+                }
+                optionsHTML += `<div style="margin-top:8px;">
+                    <span style="font-size:12px;color:#555;">Correct Answer:</span>
+                    <select class="cas-sub-correct" data-idx="${idx}" style="padding:6px;border:2px solid #ccc;border-radius:4px;">${selOpts}</select>
+                </div>`;
+            } else {
+                optionsHTML = `<div style="margin-top:8px;">
+                    <textarea class="cas-sub-ref-answer" data-idx="${idx}" placeholder="Reference answer / marking scheme (optional)" style="width:100%;padding:8px;border:2px solid #ccc;border-radius:4px;min-height:60px;box-sizing:border-box;">${(sq.referenceAnswer || '').replace(/"/g, '&quot;')}</textarea>
+                </div>`;
+            }
+            const currentMarks = parseInt(sq.marks) || 1;
+            optionsHTML += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:12px;color:#555;">Marks:</span>
+                <input type="number" class="cas-sub-marks" data-idx="${idx}" value="${currentMarks}" min="1" max="4" style="padding:6px;border:2px solid #ccc;border-radius:4px;width:60px;">
+                <span style="font-size:11px;color:#777;">(Total must = 4)</span>
+            </div>`;
+            list.innerHTML += `
+                <div style="background:#fff;border:1px solid #e0b3d1;border-radius:6px;padding:12px;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <strong style="color:#d63384;">Sub-Question ${idx + 1}</strong>
+                        <button type="button" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="removeCaseSubQuestion(${idx})">🗑️ Remove</button>
+                    </div>
+                    ${typeHTML}
+                    <input type="text" class="cas-sub-q" data-idx="${idx}" value="${(sq.q || '').replace(/"/g, '&quot;')}" placeholder="Enter sub-question text..." style="width:100%;margin-top:8px;padding:8px;border:2px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                    ${optionsHTML}
+                </div>`;
+        });
+        list.querySelectorAll('.cas-sub-q').forEach(inp => inp.addEventListener('input', function() {
+            caseSubQuestions[parseInt(this.getAttribute('data-idx'))].q = this.value;
+        }));
+        list.querySelectorAll('.cas-sub-type').forEach(sel => sel.addEventListener('change', function() {
+            handleSubTypeChange(parseInt(this.getAttribute('data-idx')));
+        }));
+        list.querySelectorAll('.cas-sub-opt').forEach(inp => inp.addEventListener('input', function() {
+            caseSubQuestions[parseInt(this.getAttribute('data-idx'))].options[parseInt(this.getAttribute('data-oi'))] = this.value;
+        }));
+        list.querySelectorAll('.cas-sub-correct').forEach(sel => sel.addEventListener('change', function() {
+            const entry = caseSubQuestions[parseInt(this.getAttribute('data-idx'))];
+            const letter = this.value;
+            const idxMap = {A: 0, B: 1, C: 2, D: 3};
+            entry.correctAnswer = (entry.options[idxMap[letter]] || "").trim() || letter;
+        }));
+        list.querySelectorAll('.cas-sub-marks').forEach(inp => inp.addEventListener('input', function() {
+            caseSubQuestions[parseInt(this.getAttribute('data-idx'))].marks = parseInt(this.value) || 1;
+            updateCaseSubTotalMarks();
+        }));
+        updateCaseSubTotalMarks();
+    }
+    function updateCaseSubTotalMarks() {
+        const el = document.getElementById("caseSubTotalMarks");
+        if (!el) return;
+        const total = (caseSubQuestions || []).reduce((a, s) => a + (parseInt(s.marks) || 1), 0);
+        el.innerHTML = `Total marks: ${total} / ${CASE_SUB_TOTAL_MARKS} ${total !== CASE_SUB_TOTAL_MARKS ? `<span style="color:#e74c3c;"> (must equal ${CASE_SUB_TOTAL_MARKS})</span>` : ' <span style="color:#27ae60;">✅</span>'}`;
+    }
+
+    function collectCaseSubQuestions() {
+        renderCaseSubQuestions();
+        const result = [];
+        const questions = document.querySelectorAll('.cas-sub-q');
+        const types = document.querySelectorAll('.cas-sub-type');
+        const marks = document.querySelectorAll('.cas-sub-marks');
+
+        questions.forEach((qEl, idx) => {
+            const type = types[idx] ? types[idx].value : 'mcq';
+            const sq = {
+                q: String(qEl.value || "").trim(),
+                type: type,
+                marks: marks[idx] ? parseInt(marks[idx].value) || 1 : 1
+            };
+
+            if (type === 'mcq') {
+                const opts = [];
+                document.querySelectorAll(`.cas-sub-opt[data-idx="${idx}"]`).forEach(optEl => {
+                    opts.push(optEl.value.trim());
+                });
+                sq.options = opts;
+
+                const correctSel = document.querySelector(`.cas-sub-correct[data-idx="${idx}"]`);
+                if (correctSel) {
+                    const letter = correctSel.value;
+                    const idxMap = {A: 0, B: 1, C: 2, D: 3};
+                    sq.correctAnswer = (opts[idxMap[letter]] || "").trim() || letter;
+                }
+                sq.referenceAnswer = '';
+            } else {
+                sq.options = [];
+                sq.correctAnswer = null;
+
+                const refAnswer = document.querySelector(`.cas-sub-ref-answer[data-idx="${idx}"]`);
+                if (refAnswer) {
+                    sq.referenceAnswer = refAnswer.value.trim();
+                }
+            }
+
+            result.push(sq);
+        });
+
+        return result.filter(s => s.q !== "");
+    }
+
+    function resetExamForm() {
+        editingQuestionIndex = null;
+        document.getElementById("examFormTitle").innerText = "Add Individual Question to Paper";
+        document.getElementById("addQuestionBtn").innerText = "Add Question ✅";
+        document.getElementById("cancelExamEditBtn").style.display = "none";
+        
+        document.getElementById("newQ").value = ""; 
+        document.getElementById("opt1").value = ""; document.getElementById("opt2").value = "";
+        document.getElementById("opt3").value = ""; document.getElementById("opt4").value = "";
+        document.getElementById("examIntInput").value = "";
+        
+        // Update section + question type dropdowns based on exam pattern
+        updateSectionDropdown();
+        document.getElementById("questionMarks").value = "1";
+        handleExamSectionChange();
+        ["examMcA","examMcB","examMcC","examMcD"].forEach(id => { const el = document.getElementById(id); if(el) el.checked = false; });
+        document.getElementById("casePassage").value = "";
+        caseSubQuestions = [];
+        if (document.getElementById("caseSubQuestionsList")) renderCaseSubQuestions();
+        
+        handleQuestionTypeChange();
+        clearPasteZone('qImg'); clearPasteZone('opt1Img'); clearPasteZone('opt2Img'); 
+        clearPasteZone('opt3Img'); clearPasteZone('opt4Img'); clearPasteZone('examSolImg');
+        document.getElementById("examHint").value = "";
+        document.getElementById("examSolutionText").value = "";
+    }
+
+    function loadEditQuestion(index) {
+        editingQuestionIndex = index;
+        const q = currentExamQuestions[index];
+        if(!q) return;
+
+        document.getElementById("examFormTitle").innerText = `Edit Question ${index + 1}`;
+        document.getElementById("addQuestionBtn").innerText = "Update Question ✏️";
+        document.getElementById("cancelExamEditBtn").style.display = "block";
+
+        document.getElementById("newQ").value = q.question || "";
+        document.getElementById("subjectSelect").value = q.subject || "Physics";
+        
+        const sec = q.section || "Single correct answer";
+        updateSectionDropdown(sec);
+        handleExamSectionChange();
+
+        document.getElementById("casePassage").value = q.casePassage || "";
+        document.getElementById("assertionText").value = q.assertion || "";
+        document.getElementById("reasonText").value = q.reason || "";
+
+        // Restore marks + question type from the stored question
+        if (q.marks) document.getElementById("questionMarks").value = q.marks;
+        updateQuestionTypeDropdown(q.questionType || "mcq");
+        handleQuestionTypeChange();
+
+        // Repopulate Section D / Passage sub-questions when editing
+        if (q.subQuestions && q.subQuestions.length) {
+            caseSubQuestions = JSON.parse(JSON.stringify(q.subQuestions));
+            if (document.getElementById("caseSubQuestionsList")) renderCaseSubQuestions();
+        }
+
+        if (isIntegerSection(sec) || q.questionType === "integer") {
+            document.getElementById("examIntInput").value = q.correctAnswer || "";
+        } else {
+            document.getElementById("opt1").value = q.options[0] || "";
+            document.getElementById("opt2").value = q.options[1] || "";
+            document.getElementById("opt3").value = q.options[2] || "";
+            document.getElementById("opt4").value = q.options[3] || "";
+        }
+
+        // Restore multiple-correct / match-matrix correct selection
+        const pickerIds = ["examMcA", "examMcB", "examMcC", "examMcD"];
+        const correctSet = new Set(q.correctAnswers || (q.correctAnswer ? [q.correctAnswer] : []));
+        (q.options || []).forEach((opt, idx) => {
+            const el = document.getElementById(pickerIds[idx]);
+            if (el) el.checked = !!opt && correctSet.has(opt);
+        });
+
+        preloadImageZone('qImg', q.questionImage, loadedExamImages);
+        preloadImageZone('opt1Img', q.optionImages ? q.optionImages[0] : null, loadedExamImages);
+        preloadImageZone('opt2Img', q.optionImages ? q.optionImages[1] : null, loadedExamImages);
+        preloadImageZone('opt3Img', q.optionImages ? q.optionImages[2] : null, loadedExamImages);
+        preloadImageZone('opt4Img', q.optionImages ? q.optionImages[3] : null, loadedExamImages);
+
+        document.getElementById("examHint").value = q.hint || "";
+        document.getElementById("examSolutionText").value = q.solution || "";
+        preloadImageZone('examSolImg', q.solutionImage, loadedExamImages);
+
+        document.getElementById("newQ").scrollIntoView({behavior: "smooth"});
+    }
+
+    async function submitNewQuestion() {
+        const btn = document.getElementById("addQuestionBtn");
+        btn.innerText = "Processing... ⏳"; btn.disabled = true;
+
+        try {
+            const qText = document.getElementById("newQ").value.trim();
+            const secType = document.getElementById("examQuestionSection").value;
+            const marks = parseInt(document.getElementById("questionMarks").value) || 1;
+            const questionType = document.getElementById("questionType").value;
+            const casePassage = document.getElementById("casePassage").value.trim();
+            
+            const finalQImage = pastedImages.qImg ? await compressImage(pastedImages.qImg) : loadedExamImages.qImg;
+            const finalO1Img = pastedImages.opt1Img ? await compressImage(pastedImages.opt1Img) : loadedExamImages.opt1Img;
+            const finalO2Img = pastedImages.opt2Img ? await compressImage(pastedImages.opt2Img) : loadedExamImages.opt2Img;
+            const finalO3Img = pastedImages.opt3Img ? await compressImage(pastedImages.opt3Img) : loadedExamImages.opt3Img;
+            const finalO4Img = pastedImages.opt4Img ? await compressImage(pastedImages.opt4Img) : loadedExamImages.opt4Img;
+
+            // Validation: Must have question text or image
+            if (!qText && !finalQImage) {
+                btn.innerText = "Add Question ✅"; btn.disabled = false;
+                return alert("You must provide either Question Text or a Question Image.");
+            }
+
+            // Validation for subjective questions (CBSE Sections B/C/E)
+            if(isSubjectiveSection(secType)) {
+                if(!qText && !finalQImage) {
+                    btn.innerText = "Add Question ✅"; btn.disabled = false;
+                    return alert("Subjective questions must have either Question Text or Question Image.");
+                }
+            }
+
+            // Validation for case / passage based questions
+            let subQuestions = [];
+            if(isCaseSection(secType) || questionType === "case-based") {
+                if(!casePassage) {
+                    btn.innerText = "Add Question ✅"; btn.disabled = false;
+                    return alert("Case / Passage based questions must have a passage.");
+                }
+                subQuestions = collectCaseSubQuestions();
+                const totalSubMarks = subQuestions.reduce((a, s) => a + (s.marks || 1), 0);
+                if (subQuestions.length < 1) {
+                    btn.innerText = "Add Question ✅"; btn.disabled = false;
+                    return alert("Case / Passage based questions require at least 1 sub-question.");
+                }
+                if (totalSubMarks !== CASE_SUB_TOTAL_MARKS) {
+                    btn.innerText = "Add Question ✅"; btn.disabled = false;
+                    return alert(`Sub-question marks must total exactly ${CASE_SUB_TOTAL_MARKS} marks (currently ${totalSubMarks}). CBSE Section D requires exactly ${CASE_SUB_TOTAL_MARKS} marks total.`);
+                }
+                for (let si = 0; si < subQuestions.length; si++) {
+                    const s = subQuestions[si];
+                    if (!s.q) {
+                        btn.innerText = "Add Question ✅"; btn.disabled = false;
+                        return alert(`Sub-question ${si + 1} must have text.`);
+                    }
+                    if (s.type === "mcq" && (!s.options || s.options.filter(o => o !== "").length < 2)) {
+                        btn.innerText = "Add Question ✅"; btn.disabled = false;
+                        return alert(`Sub-question ${si + 1} (MCQ) must have at least 2 options.`);
+                    }
+                }
+            }
+            // CBSE Section E is a supported subjective section (long answer - 5 marks)
+
+            let optTexts = [];
+            let finalAns = "";
+            let finalCorrectAnswers = null;
+            const isMultiType = (questionType === "multiple" || isMultipleSection(secType));
+
+            if (questionType === "integer" || isIntegerSection(secType)) {
+                finalAns = document.getElementById("examIntInput").value;
+                if(finalAns === "") {
+                    btn.innerText = "Add Question ✅"; btn.disabled = false;
+                    return alert("Please enter a numerical answer.");
+                }
+                optTexts = [];
+            } else if (questionType === "subjective" || isSubjectiveSection(secType)) {
+                // Subjective questions (CBSE Sections B/C/E) - no options
+                optTexts = [];
+                finalAns = "";
+            } else if (questionType === "case-based" || isCaseSection(secType)) {
+                // Case / Passage based - options are held per sub-question
+                optTexts = [];
+                finalAns = "";
+            } else {
+                optTexts = [
+                    document.getElementById("opt1").value.trim() || "Option A", document.getElementById("opt2").value.trim() || "Option B",
+                    document.getElementById("opt3").value.trim() || "Option C", document.getElementById("opt4").value.trim() || "Option D"
+                ];
+                if (isMultiType) {
+                    // Multiple Correct Answer - collect all ticked correct options
+                    const pickerIds = ["examMcA", "examMcB", "examMcC", "examMcD"];
+                    finalCorrectAnswers = [];
+                    pickerIds.forEach((pid, idx) => {
+                        const el = document.getElementById(pid);
+                        if (el && el.checked && optTexts[idx]) finalCorrectAnswers.push(optTexts[idx]);
+                    });
+                    if (finalCorrectAnswers.length === 0) {
+                        btn.innerText = "Add Question ✅"; btn.disabled = false;
+                        return alert("Please tick at least one correct option for this Multiple Correct Answer question.");
+                    }
+                    finalAns = finalCorrectAnswers[0];
+                } else {
+                    finalCorrectAnswers = null;
+                    finalAns = optTexts[0];
+                }
+            }
+
+            const payload = { 
+                question: qText, 
+                questionImage: finalQImage, 
+                options: optTexts, 
+                optionImages: [finalO1Img, finalO2Img, finalO3Img, finalO4Img], 
+                correctAnswer: finalAns, 
+                subject: document.getElementById("subjectSelect").value,
+                section: secType,
+                questionType: questionType,
+                marks: marks,
+                casePassage: casePassage || null,
+                subQuestions: subQuestions,
+                correctAnswers: finalCorrectAnswers,
+                assertion: questionType === "assertion-reasoning" ? document.getElementById("assertionText").value.trim() : null,
+                reason: questionType === "assertion-reasoning" ? document.getElementById("reasonText").value.trim() : null,
+                hint: document.getElementById("examHint").value.trim(),
+                solution: document.getElementById("examSolutionText").value.trim(),
+                solutionImage: pastedImages.examSolImg ? await compressImage(pastedImages.examSolImg) : loadedExamImages.examSolImg,
+                requiresImageUpload: (questionType === "subjective" || isSubjectiveSection(secType))
+            };
+
+            let endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions`;
+            let method = "POST";
+
+            if(editingQuestionIndex !== null) {
+                endpoint = `${BACKEND_URL}/api/exams/${currentEditingExamId}/questions/${editingQuestionIndex}`;
+                method = "PUT";
+            }
+
+            const res = await fetch(endpoint, { method: method, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload) });
+
+            if(res.ok) {
+                alert(editingQuestionIndex !== null ? "Question Updated! ✅" : "Question added! ✅");
+                resetExamForm();
+                refreshQuestionList(currentEditingExamId);
+            } else {
+                const errorData = await res.json().catch(() => ({}));
+                alert("Failed to save question: " + (errorData.detail || "Unknown error"));
+            }
+        } catch(e) { 
+            console.error(e); 
+            alert("Error saving question. Please try again."); 
+        } finally { 
+            btn.innerText = "Add Question ✅"; 
+            btn.disabled = false; 
+        }
+    }
+
+    async function refreshQuestionList(examId) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            const exam = exams.find(e => e.id === examId);
+            const list = document.getElementById("existingQuestionsList");
+            list.innerHTML = "";
+            
+            if (exam && exam.questions) {
+                currentExamQuestions = exam.questions; 
+                
+                exam.questions.forEach((q, i) => {
+                    const hasImg = q.questionImage ? '🖼️ [Image Attached]' : '';
+                    const qTextDisplay = q.question || "<i>(Image Only Question)</i>";
+                    
+                    let optionsHTML = "";
+                    if (!isIntegerSection(q.section) && q.questionType !== "integer" && q.options && q.options.length > 0) {
+                        optionsHTML = `<div class="q-options-grid">`;
+                        q.options.forEach((opt, idx) => {
+                            const isCorrect = (q.correctAnswer === opt) || ((q.correctAnswers || []).includes(opt));
+                            const highlightClass = isCorrect ? 'correct' : '';
+                            const optionLetter = String.fromCharCode(65 + idx);
+                            optionsHTML += `
+                                <div class="opt-item-card ${highlightClass}">
+                                    <strong>${optionLetter}.</strong> <span>${opt}</span>
+                                    ${isCorrect ? '<span style="margin-left:auto; color:var(--success); font-weight:bold;">✓</span>' : ''}
+                                </div>
+                            `;
+                        });
+                        optionsHTML += `</div>`;
+                    } else {
+                        optionsHTML = `<div style="padding: 10px; background: #e8f8f5; border: 1px solid var(--success); border-radius: 4px; margin: 15px 0;"><strong>Numerical Answer:</strong> ${q.correctAnswer}</div>`;
+                    }
+                    
+                    list.innerHTML += `
+                    <div class="q-card">
+                        <div class="q-card-header">
+                            <div>
+                                <div class="badges" style="margin-bottom: 5px;">
+                                    <span class="badge badge-subject">${q.subject}</span>
+                                    <span class="badge badge-type" style="background: #34495e;">Q${i+1}</span>
+                                </div>
+                                <div style="margin-top: 8px;"><strong>${qTextDisplay}</strong></div>
+                                <small style="color: blue;">${hasImg}</small>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-direction: column; min-width: 100px;">
+                                <button class="btn btn-outline btn-small" style="width: 100%;" onclick="toggleView('q-details-${i}')">👁️ View</button>
+                                <button class="btn btn-outline btn-small" style="width: 100%;" onclick="loadEditQuestion(${i})">✏️ Edit</button>
+                                <button class="btn btn-primary btn-small" style="background:#ff7675; border:none; width: 100%;" onclick="deleteQuestion('${examId}', ${i})">🗑️ Delete</button>
+                            </div>
+                        </div>
+                        <div id="q-details-${i}" class="q-details-box">
+                            ${q.questionImage ? `<img src="${q.questionImage}" style="max-width: 100%; max-height: 200px;">` : ''}
+                            ${optionsHTML}
+                        </div>
+                    </div>`;
+                });
+            }
+            reRenderMathJax(); 
+        } catch(e) { console.error(e); }
+    }
+
+    async function uploadZIP() {
+        const fileInput = document.getElementById('zipFile');
+        const files = fileInput.files;
+        const btn = document.getElementById('zipUploadBtn');
+        
+        if (!files || files.length === 0) return alert("Please select at least one .zip file first!");
+        if (!currentEditingExamId) return alert("No exam selected.");
+        
+        btn.innerText = `Processing 0 of ${files.length}... ⏳`;
+        btn.disabled = true;
+        
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+            formData.append("files", files[i]);
+        }
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams/${currentEditingExamId}/bulk-upload-zip`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });
+            const data = await res.json();
+            if (res.ok) { 
+                alert(data.message); 
+                fileInput.value = ""; 
+                refreshQuestionList(currentEditingExamId); 
+            } else alert("Upload Failed: " + (data.detail || "Unknown error"));
+        } catch (e) { console.error(e); alert("Connection error during upload."); } 
+        finally { btn.innerText = "Upload ZIP(s)"; btn.disabled = false; }
+    }
+
+    async function deleteQuestion(examId, index) {
+        if(!confirm("Delete this question?")) return;
+        try { const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/questions/${index}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } }); if(res.ok) refreshQuestionList(examId); } catch(e) { console.error(e); }
+    }
+
+    async function openEditor(id, title) {
+        currentEditingExamId = id;
+        
+        // Fetch exam details to get examType for pattern segregation
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            if (res.ok) {
+                const exams = await res.json();
+                const exam = exams.find(e => e.id === id);
+                currentExamType = exam?.examType?.toLowerCase() || null;
+            }
+        } catch (e) {
+            console.error("Could not fetch exam type:", e);
+            currentExamType = null;
+        }
+        
+        resetExamForm();
+        document.getElementById("modalExamTitle").innerText = `Editing: ${title}`;
+        document.getElementById("editorModal").style.display = "flex";
+        
+        document.getElementById("importQBResults").style.display = "none";
+        document.getElementById("btnImportSelected").style.display = "none";
+        
+        refreshQuestionList(id);
+    }
+
+    function closeEditor() { document.getElementById("editorModal").style.display = "none"; loadExams(); }
+
+    async function createUser() {
+        if(role.toLowerCase() !== "admin") return alert("Only Admins can create users.");
+        const name = document.getElementById("userName").value.trim(); const email = document.getElementById("userEmail").value.trim(); const password = document.getElementById("userPass").value.trim(); const userRole = document.getElementById("userRole").value;
+        if (!name || !email || !password) return alert("Please fill all user fields.");
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/users`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify({ name, email, password, role: userRole }) });
+            if (res.ok) { alert(`User ${name} created successfully! ✅`); document.getElementById("userName").value = ""; document.getElementById("userEmail").value = ""; document.getElementById("userPass").value = ""; } else alert("Failed to create user.");
+        } catch (error) { console.error("Error creating user:", error); }
+    }
+
+    async function loadResults() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/results`, { headers: { "Authorization": `Bearer ${token}` } });
+            if(res.ok) {
+                const results = await res.json(); 
+                const list = document.getElementById("resultsList");
+                if(results.length === 0) {
+                    list.innerHTML = "<div style='padding: 15px; text-align: center; color: #777;'>No results yet.</div>";
+                } else {
+                    let html = "";
+                    results.forEach(r => {
+                        let dateDisplay = "Unknown Date";
+                        if(r.submittedAt) {
+                            const date = new Date(r.submittedAt);
+                            dateDisplay = date.toLocaleDateString() + " " + date.toLocaleTimeString().substring(0,5);
+                        }
+                        const score = r.totalScore || r.score || 0;
+                        const isAutoSubmitted = r.autoSubmitted || false;
+                        
+                        // Add auto-submit badge if applicable
+                        const autoBadge = isAutoSubmitted ? `<span style="background: var(--danger); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 5px; font-weight: bold;">🚫 AUTO</span>` : '';
+                        
+                        // Add resume and finish buttons if auto-submitted and not completed
+                        const actionButtons = (isAutoSubmitted && !r.completed) 
+                            ? `<button class="btn btn-success btn-small" onclick="resumeExam('${r.id}')" style="margin-right: 3px;">🔄 Resume</button>
+                               <button class="btn btn-outline btn-small" onclick="finishResult('${r.id}')" style="margin-right: 3px; border-color: #e74c3c; color: #e74c3c;">🏁 Finish</button>
+                               <button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 Analysis</button>`
+                            : `<button class="btn btn-primary btn-small" onclick="viewAdminAnalysis('${r.id}')">📊 View Analysis</button>`;
+                        
+                        html += `<div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;">
+                            <div style="flex: 2; font-weight: bold; color: var(--primary);">${r.studentName || 'Guest Student'}${autoBadge}</div>
+                            <div style="flex: 3; color: #555;">${r.examTitle}</div>
+                            <div style="flex: 1; text-align: right; color: #777; font-size: 13px;">${dateDisplay}</div>
+                            <div style="flex: 1; text-align: right; font-weight: bold; color: ${score >= 0 ? 'var(--success)' : 'var(--danger)'};">${score}</div>
+                            <div style="width: 180px; text-align: right;">
+                                ${actionButtons}
+                            </div>
+                        </div>`;
+                    });
+                    list.innerHTML = html;
+                }
+            } else document.getElementById("resultsList").innerHTML = "<div>Cannot fetch results.</div>";
+        } catch(e) { console.error("Could not load results:", e); }
+    }
+
+    async function resumeExam(resultId) {
+        if (!confirm("Are you sure you want to resume this exam?\n\nThe student will be able to continue from where they left off. Their previous answers and progress will be restored.")) {
+            return;
+        }
+        
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = "Resuming... ⏳";
+        btn.disabled = true;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/resume`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert("✅ Exam resumed successfully!\n\nThe student can now continue the exam from where they left off. Their saved progress has been preserved.");
+                loadResults(); // Refresh the results list
+            } else {
+                alert("Failed to resume exam: " + (data.detail || "Unknown error"));
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            console.error("Error resuming exam:", e);
+            alert("Error resuming exam. Please try again.");
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    async function finishResult(resultId) {
+        if (!confirm("Are you sure you want to finish this exam?\n\nThis will finalize the result and clear any saved progress. The student will NOT be able to resume this exam.")) {
+            return;
+        }
+        
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = "Finishing... ⏳";
+        btn.disabled = true;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/finish`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert("✅ Exam finalized successfully!\n\nThe result has been marked as completed and saved progress has been cleared.");
+                loadResults(); // Refresh the results list
+            } else {
+                alert("Failed to finish exam: " + (data.detail || "Unknown error"));
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            console.error("Error finishing exam:", e);
+            alert("Error finishing exam. Please try again.");
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
+
+async function viewAdminAnalysis(resultId) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/public/results/${resultId}/analysis`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            
+            if (!res.ok) {
+                alert("Could not load analysis for this result.");
+                return;
+            }
+            
+            const analysisData = await res.json();
+            
+            const modal = document.createElement('div');
+            modal.id = 'adminAnalysisModal';
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 3000; backdrop-filter: blur(4px);';
+
+            // ===== OVERALL PERFORMANCE =====
+            const overallHTML = `
+                <div style="background: #f4f6f9; border-radius: 10px; padding: 20px; margin-bottom: 25px; border: 1px solid #e1e8ed;">
+                    <h3 style="text-align: center; color: var(--primary); margin-bottom: 15px; font-size: 16px;">
+                        🏆 OVERALL PERFORMANCE <span style="color: #777; font-size: 14px;">(${analysisData.totalStudents || 0} STUDENTS)</span>
+                    </h3>
+                    <div style="display: flex; justify-content: space-around; text-align: center;">
+                        <div>
+                            <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; text-transform: uppercase;">Total Score</div>
+                            <div style="font-size: 24px; font-weight: bold; color: var(--primary);">${analysisData.overall ? analysisData.overall.myScore : 'N/A'}</div>
+                        </div>
+                        <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                            <div style="font-size: 12px; color: #e67e22; font-weight: bold; text-transform: uppercase;">Rank</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #d35400;">#${analysisData.overall ? analysisData.overall.rank : 'N/A'}</div>
+                        </div>
+                        <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                            <div style="font-size: 12px; color: #27ae60; font-weight: bold; text-transform: uppercase;">Top Score</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #27ae60;">${analysisData.overall ? analysisData.overall.top : 'N/A'}</div>
+                        </div>
+                        <div style="border-left: 2px solid #ddd; padding-left: 20px;">
+                            <div style="font-size: 12px; color: #7f8c8d; font-weight: bold; text-transform: uppercase;">Total Students</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #7f8c8d;">${analysisData.totalStudents || 'N/A'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // ===== SUBJECT-WISE BREAKDOWN (live rank/avg/top) =====
+            let subjectBreakdownHTML = '';
+            if (analysisData.subjectWiseBreakdown) {
+                for (const subject in analysisData.subjectWiseBreakdown) {
+                    const staticStats = analysisData.subjectWiseBreakdown[subject];
+                    const dynamicStats = (analysisData.subjects && analysisData.subjects[subject]) || { rank: "-", avg: 0, top: 0, myScore: staticStats.score };
+
+                    const totalMarks = staticStats.subjectTotalMarks || 1;
+
+                    const youWidth = Math.max(5, (dynamicStats.myScore / totalMarks) * 100);
+                    const avgWidth = Math.max(5, (dynamicStats.avg / totalMarks) * 100);
+                    const topWidth = Math.max(5, (dynamicStats.top / totalMarks) * 100);
+
+                    let subColor = "var(--secondary)"; 
+                    if(subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
+                    if(subject.toLowerCase().includes("math")) subColor = "#8e44ad"; 
+
+                    subjectBreakdownHTML += `
+                        <div style="background: white; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 15px; border-left: 5px solid ${subColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div style="font-weight: bold; color: ${subColor}; font-size: 18px;">${subject}</div>
+                                <div style="font-size: 14px; font-weight: bold; background: #fdf2e9; color: #d35400; padding: 4px 10px; border-radius: 4px;">Subject Rank: #${dynamicStats.rank}</div>
+                            </div>
+                            
+                            <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+                                <div style="width: 80px; height: 80px; border-radius: 50%; border: 6px solid ${subColor}; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                                    <span style="font-size: 20px; font-weight: bold; color: ${subColor};">${dynamicStats.myScore}</span>
+                                    <span style="font-size: 10px; color: #777;">out of ${totalMarks}</span>
+                                </div>
+                                
+                                <div style="flex: 1; font-size: 13px;">
+                                    <div style="margin-bottom: 8px;">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                            <span><b>You</b></span><span>${dynamicStats.myScore}</span>
+                                        </div>
+                                        <div style="background: #eee; height: 8px; border-radius: 4px; width: 100%;">
+                                            <div style="background: ${subColor}; height: 8px; border-radius: 4px; width: ${youWidth}%;"></div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-bottom: 8px;">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                            <span style="color: #7f8c8d;">Average</span><span style="color: #7f8c8d;">${dynamicStats.avg}</span>
+                                        </div>
+                                        <div style="background: #eee; height: 6px; border-radius: 3px; width: 100%;">
+                                            <div style="background: #bdc3c7; height: 6px; border-radius: 3px; width: ${avgWidth}%;"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                            <span style="color: #27ae60;">Top Score</span><span style="color: #27ae60;">${dynamicStats.top}</span>
+                                        </div>
+                                        <div style="background: #eee; height: 6px; border-radius: 3px; width: 100%;">
+                                            <div style="background: #2ecc71; height: 6px; border-radius: 3px; width: ${topWidth}%;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 20px; font-size: 13px; background: #fdfdfd; padding: 10px; border-radius: 6px; border: 1px solid #f0f0f0;">
+                                <div style="color: #555;"><b>✅ Correct:</b> ${staticStats.correct}</div>
+                                <div style="color: var(--danger);"><b>❌ Incorrect:</b> ${staticStats.incorrect}</div>
+                                <div style="color: #8e44ad;"><b>⚪ Skipped:</b> ${staticStats.notAttempted}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            // ===== EXAM INTEGRITY REPORT =====
+            const violationData = analysisData.cheatingViolations || [];
+            const totalViolations = analysisData.totalViolations || 0;
+            const awayTime = analysisData.totalAwayTime || 0;
+            const autoSubmitted = analysisData.autoSubmitted || false;
+            const autoSubmitReason = analysisData.autoSubmitReason || '';
+            const violationCount = violationData.length || totalViolations;
+
+            let violationHTML = '';
+            if (totalViolations > 0 || awayTime > 0) {
+                const violationColor = totalViolations >= 3 ? 'var(--danger)' : (totalViolations > 0 ? '#e67e22' : 'var(--success)');
+                violationHTML = `
+                    <div style="background: white; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 20px; border-left: 5px solid ${violationColor};">
+                        <h3 style="color: var(--primary); margin-bottom: 15px; font-size: 16px;">🔒 Exam Integrity Report</h3>
+                        <div style="display: flex; gap: 25px; flex-wrap: wrap; font-size: 14px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 20px;">⚠️</span>
+                                <div>
+                                    <div style="font-weight: bold; color: ${violationColor};">${totalViolations} Violation${totalViolations !== 1 ? 's' : ''}</div>
+                                    <div style="font-size: 12px; color: #888;">Out of 3 allowed</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 20px;">⏱️</span>
+                                <div>
+                                    <div style="font-weight: bold; color: #555;">${awayTime}s away</div>
+                                    <div style="font-size: 12px; color: #888;">Total time outside exam</div>
+                                </div>
+                            </div>
+                            ${autoSubmitted ? `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 20px;">🚫</span>
+                                <div>
+                                    <div style="font-weight: bold; color: var(--danger);">Auto-Submitted</div>
+                                    <div style="font-size: 12px; color: #888;">${autoSubmitReason}</div>
+                                </div>
+                            </div>` : ''}
+                        </div>
+                        ${violationCount > 0 ? `
+                        <details style="margin-top: 12px;">
+                            <summary style="font-size: 13px; color: #888; cursor: pointer;">View violation details (${violationCount})</summary>
+                            <div style="margin-top: 8px; max-height: 150px; overflow-y: auto; background: #f9f9f9; border-radius: 6px; padding: 10px;">
+                                ${violationData.map(v => `
+                                    <div style="padding: 4px 0; font-size: 12px; color: #555; border-bottom: 1px solid #eee;">
+                                        <span style="font-weight: bold;">#${v.violationNumber}</span>
+                                        <span style="color: #888;">${v.type}</span>
+                                        <span style="color: #999; float: right;">${new Date(v.timestamp).toLocaleTimeString()}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </details>` : ''}
+                        ${autoSubmitted ? `
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-success" onclick="resumeExamFromAnalysis('${resultId}')" style="font-size: 14px; padding: 10px 20px;">
+                                🔄 Resume Exam for Candidate
+                            </button>
+                            <button class="btn btn-outline" onclick="finishExamFromAnalysis('${resultId}')" style="font-size: 14px; padding: 10px 20px; border-color: #e74c3c; color: #e74c3c;">
+                                🏁 Finish Exam
+                            </button>
+                            <p style="font-size: 12px; color: #888; margin-top: 8px; width: 100%;">Resume lets the student continue where they left off. Finish finalizes the result and clears saved progress.</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+// ===== SUBJECT TIME SUMMARY =====
+            let subjectTimeHTML = '';
+            if (analysisData.subjectTimes && Object.keys(analysisData.subjectTimes).length > 0) {
+                const totalTime = Object.values(analysisData.subjectTimes).reduce((a, b) => a + b, 0);
+                subjectTimeHTML = `
+                    <h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">⏱️ Time Spent Per Subject</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                `;
+                let subColors = { "physics": "var(--secondary)", "chemistry": "var(--success)", "maths": "#8e44ad" };
+                for (const subject in analysisData.subjectTimes) {
+                    const secs = analysisData.subjectTimes[subject];
+                    const mins = Math.floor(secs / 60);
+                    const remainingSecs = secs % 60;
+                    const pct = totalTime > 0 ? (secs / totalTime * 100) : 0;
+                    let color = "var(--secondary)";
+                    for (const key in subColors) {
+                        if (subject.toLowerCase().includes(key)) color = subColors[key];
+                    }
+                    subjectTimeHTML += `
+                        <div style="background: white; border: 1px solid #eee; border-radius: 8px; padding: 15px; border-left: 4px solid ${color};">
+                            <div style="font-weight: bold; color: ${color}; margin-bottom: 8px;">${subject}</div>
+                            <div style="font-size: 22px; font-weight: bold;">${mins}:${remainingSecs.toString().padStart(2, '0')}</div>
+                            <div style="font-size: 12px; color: #777;">${pct.toFixed(0)}% of total time</div>
+                            <div style="background: #eee; height: 6px; border-radius: 3px; margin-top: 8px;">
+                                <div style="background: ${color}; height: 6px; border-radius: 3px; width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+                subjectTimeHTML += '</div>';
+            }
+// ===== QUESTION-WISE DETAILED ANALYSIS =====
+            let questionAnalysisHTML = '';
+            if (analysisData.questionAnalysis && analysisData.questionAnalysis.length > 0) {
+                questionAnalysisHTML = `
+                    <h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Detailed Analysis</h3>
+                `;
+
+                analysisData.questionAnalysis.forEach((qa, index) => {
+                    const isCBSE = String(analysisData.examType || '').toLowerCase().includes('cbse');
+                    const isSkipped = !qa.isAttempted;
+                    const isManualQ = qa.questionType === 'subjective' || qa.questionType === 'case-based' || (!isCBSE && qa.marks > 1);
+
+                    let statusText, statusBadgeClass;
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        statusText = qa.isAttempted ? (qa.isCorrect ? 'Correct' : 'Attempted') : 'Skipped';
+                        statusBadgeClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
+                    } else if (isManualQ) {
+                        statusText = qa.isAttempted ? (qa.awardedMarks !== null && qa.awardedMarks !== undefined ? 'Evaluated' : 'Pending Eval') : 'Skipped';
+                        statusBadgeClass = qa.isAttempted ? (qa.awardedMarks !== null && qa.awardedMarks !== undefined ? 'evaluated' : 'pending') : 'skipped';
+                    } else {
+                        statusText = qa.isCorrect ? 'Correct' : (isSkipped ? 'Skipped' : 'Incorrect');
+                        statusBadgeClass = qa.isCorrect ? 'correct' : (isSkipped ? 'skipped' : 'incorrect');
+                    }
+
+                    let marks;
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        marks = `${qa.scoredMarks || 0}/${qa.marks}`;
+                    } else if (isManualQ) {
+                        marks = (qa.awardedMarks !== null && qa.awardedMarks !== undefined) ? `${qa.awardedMarks}` : (qa.isAttempted ? 'Pending' : '—');
+                    } else {
+                        marks = qa.isCorrect ? `+${qa.marks || 1}` : (isSkipped ? '0' : (isCBSE ? '0' : '-1'));
+                    }
+
+                    let timeDisplay = '';
+                    if (qa.timeSpent !== null && qa.timeSpent !== undefined) {
+                        const mins = Math.floor(qa.timeSpent / 60);
+                        const secs = qa.timeSpent % 60;
+                        timeDisplay = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+                    }
+
+                    let subColor = "var(--secondary)"; 
+                    if(qa.subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
+                    if(qa.subject.toLowerCase().includes("math")) subColor = "#8e44ad";
+
+                    // Build options display with correct/incorrect highlighting
+                    let optionsDisplay = '';
+                    if (qa.options && qa.options.length > 0) {
+                        qa.options.forEach((opt, idx) => {
+                            const letter = String.fromCharCode(65 + idx);
+                            const isCorrectOpt = qa.correctAnswer === opt;
+                            const isSelectedOpt = qa.studentAnswer === opt;
+                            let cls = 'neutral', indicator = '';
+                            if (isCorrectOpt && isSelectedOpt) { cls = 'correct'; indicator = '✅'; }
+                            else if (isCorrectOpt) { cls = 'correct'; indicator = '✓'; }
+                            else if (isSelectedOpt) { cls = 'wrong'; indicator = '❌'; }
+                            let optImg = (qa.optionImages && qa.optionImages[idx]) ? `<br><img src="${qa.optionImages[idx]}" style="max-width: 120px; max-height: 80px; margin-top: 5px; border-radius: 4px; cursor: zoom-in;" onclick="openZoom(this.src)" alt="Option ${idx + 1} Image">` : '';
+                            optionsDisplay += `<div class="analysis-option-row ${cls}">${letter}. ${opt} <strong>${indicator}</strong>${optImg}</div>`;
+                        });
+                    }
+
+                    // Solution image HTML
+                    let solutionImgHtml = '';
+                    if (qa.solutionImage) {
+                        solutionImgHtml = `<div class="solution-image-wrapper"><img src="${qa.solutionImage}" onclick="openZoom(this.src)" alt="Solution Image"></div>`;
+                    }
+
+                    // Question image
+                    let qImgHtml = '';
+                    if (qa.questionImage) {
+                        qImgHtml = `<br><img src="${qa.questionImage}" style="max-width: 100%; max-height: 200px; border-radius: 4px; margin-top: 8px; cursor: zoom-in;" onclick="openZoom(this.src)" alt="Question Image">`;
+                    }
+// Section D (case-based) sub-question analysis
+                    let subQuestionsHtml = '';
+                    if (qa.subQuestions && qa.subQuestions.length) {
+                        let subBlocks = '';
+                        qa.subQuestions.forEach((sq, si) => {
+                            let subOpts = '';
+                            (sq.options || []).forEach((opt, oi) => {
+                                const letter = String.fromCharCode(65 + oi);
+                                const isCorr = sq.correctAnswer === opt;
+                                const isSel = sq.studentAnswer === opt;
+                                let sbg = '#f9f9f9', sbd = '1px solid #ddd', sind = '';
+                                if (isCorr && isSel) { sbg = '#e8f8e5'; sbd = '2px solid var(--success)'; sind = '✅'; }
+                                else if (isCorr) { sbg = '#e8f8e5'; sbd = '2px solid var(--success)'; sind = '✓'; }
+                                else if (isSel) { sbg = '#ffebee'; sbd = '2px solid var(--danger)'; sind = '❌'; }
+                                subOpts += `<div style="padding:6px;border-radius:4px;background:${sbg};border:${sbd};font-size:13px;margin:4px 0;">${letter}. ${opt} <strong>${sind}</strong></div>`;
+                            });
+                            const sStatus = sq.isCorrect ? '✅ Correct' : (sq.isAttempted ? '❌ Incorrect' : '— Not Attempted');
+                            subBlocks += `
+                                <div class="analysis-sub-block">
+                                    <div style="font-weight:600;color:var(--primary);">(${String.fromCharCode(97 + si)}) ${sq.subQuestion} <span style="color:#8e44ad;font-size:12px;">[${sq.marks} mark${sq.marks > 1 ? 's' : ''}]</span> <span style="font-size:12px;color:#555;">${sStatus} — ${sq.scoredMarks}/${sq.marks} marks</span></div>
+                                    ${subOpts}
+                                </div>`;
+                        });
+                        subQuestionsHtml = `
+                            ${qa.casePassage ? `<div class="case-passage"><strong>📖 Passage:</strong><br>${qa.casePassage}</div>` : ''}
+                            <div style="margin:10px 0;font-weight:600;color:var(--primary);">Sub-Questions (auto-graded):</div>
+                            ${subBlocks}
+                            <div style="font-size:13px;color:#555;margin-top:4px;">Total earned: <strong>${qa.scoredMarks || 0} / ${qa.marks}</strong> marks</div>`;
+                    }
+
+                    // Answer image (for subjective questions) — ADMIN ONLY
+                    let answerImageHtml = '';
+                    if (qa.answerImage) {
+                        answerImageHtml = `
+                            <div class="answer-image-box">
+                                <div style="font-size: 12px; font-weight: bold; color: var(--secondary); margin-bottom: 8px;">📸 Student's Answer Image</div>
+                                <img src="${qa.answerImage}" style="max-width: 100%; max-height: 300px; border-radius: 6px; cursor: zoom-in;" onclick="openZoom(this.src)">
+                            </div>
+                        `;
+                    }
+
+                    // Manual evaluation UI (for subjective questions) — ADMIN ONLY
+                    let manualEvaluationHtml = '';
+                    if (!qa.subQuestions && (qa.questionType === 'subjective' || qa.questionType === 'case-based' || qa.marks > 1)) {
+                        const maxMarks = qa.marks || 5;
+                        const awardedMarks = qa.awardedMarks !== undefined ? qa.awardedMarks : null;
+                        manualEvaluationHtml = `
+                            <div class="manual-eval-box">
+                                <div style="font-size: 13px; font-weight: bold; color: #d35400; margin-bottom: 8px;">✏️ Manual Evaluation (Max: ${maxMarks} marks - decimals allowed e.g. 1.5)</div>
+                                <div id="marks-display-${index}" style="display: ${awardedMarks !== null ? 'block' : 'none'}; font-size: 16px; font-weight: bold; color: var(--success);">
+                                    ${awardedMarks !== null ? `${awardedMarks}/${maxMarks} marks` : ''}
+                                </div>
+                                <div id="marks-input-${index}" style="display: ${awardedMarks !== null ? 'none' : 'block'};">
+                                    <input type="number" id="marks-q-${index}" data-max-marks="${maxMarks}" value="0" min="0" max="${maxMarks}" step="0.25" 
+                                        style="padding: 8px; width: 100px; border: 2px solid #f39c12; border-radius: 4px; font-size: 14px; font-weight: bold;">
+                                    <button class="btn btn-small" style="background: var(--success); color: white; margin-left: 8px;" 
+                                        onclick="updateSubjectiveMarks('${resultId}', ${index})">Save Marks</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    // Hint box
+                    const hintText = qa.hint || (Array.isArray(qa.hints) && qa.hints.length ? qa.hints.join(' ') : '');
+                    const hintHtml = hintText ? `<div class="hint-box">${hintText}</div>` : '';
+questionAnalysisHTML += `
+                        <div class="question-analysis-card">
+                            <div class="question-analysis-header ${statusBadgeClass}" onclick="toggleQuestionAnalysis(this)">
+                                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                                    <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
+                                    <span style="font-size: 13px; padding: 2px 8px; border-radius: 12px; background: ${subColor}; color: white;">${qa.subject}</span>
+                                    ${qa.topics && qa.topics.length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${qa.topics.slice(0, 3).join(', ')}</span>` : ''}
+                                    ${timeDisplay ? `<span style="font-size: 12px; color: #888;">${timeDisplay}</span>` : ''}
+                                    ${qa.marks ? `<span style="font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #9b59b6; color: white;">${qa.marks} marks</span>` : ''}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${marks}</span>
+                                    <span class="status-badge ${statusBadgeClass}">${statusText}</span>
+                                    <span style="font-size: 18px; color: #999;">▼</span>
+                                </div>
+                            </div>
+                            <div class="question-analysis-body">
+                                <div class="question-text">
+                                    <span style="color: #666; font-size: 13px;">${qa.subject} | Topics: ${qa.topics ? qa.topics.join(', ') : 'N/A'}</span><br><br>
+                                    ${qa.question}
+                                    ${qImgHtml}
+                                </div>
+                                ${subQuestionsHtml}
+                                ${optionsDisplay}
+                                ${hintHtml}
+                                ${answerImageHtml}
+                                ${manualEvaluationHtml}
+                                ${!qa.subQuestions ? `
+                                <div class="answer-comparison">
+                                    <div class="answer-box your-answer">
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Student Answer</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${qa.isAttempted ? qa.studentAnswer : '<span style="color: #999;">Not Attempted</span>'}</div>
+                                    </div>
+                                    <div class="answer-box correct-answer">
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Correct Answer</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: var(--success);">${qa.correctAnswer}</div>
+                                    </div>
+                                </div>` : ''}
+                                ${qa.solution || solutionImgHtml ? `
+                                <div class="solution-container">
+                                    <div class="solution-header">
+                                        <div class="solution-icon">${qa.solution ? '💡' : '🖼'}</div>
+                                        <div class="solution-title">${qa.solution ? 'Detailed Solution' : 'Solution Image'}</div>
+                                    </div>
+                                    <div class="solution-content">
+                                        ${qa.solution ? enhanceSolutionText(qa.solution) : ''}
+                                        ${solutionImgHtml}
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+modal.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 950px; max-height: 90vh; overflow-y: auto;">
+                    <button class="btn" style="float:right; background:#333; color:white;" onclick="this.parentElement.parentElement.remove()">Close X</button>
+                    <h2 style="color: var(--primary); margin-bottom: 5px;">📊 Result Analysis</h2>
+                    <p style="color: #777; font-size: 14px; margin-bottom: 20px;">Candidate: ${analysisData.studentName || 'Student'}</p>
+                    <hr style="margin: 20px 0;">
+                    
+                    ${overallHTML}
+                    ${subjectBreakdownHTML}
+                    ${violationHTML}
+                    ${subjectTimeHTML}
+                    ${questionAnalysisHTML}
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Admin-only actions inside the analysis modal
+            window.resumeExamFromAnalysis = async function(resultId) {
+                if (!confirm("Are you sure you want to resume this exam?\n\nThe student will be able to continue from where they left off. Their previous answers and progress will be restored.")) {
+                    return;
+                }
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/resume`, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert("✅ Exam resumed successfully!\n\nThe student can now continue the exam from where they left off.");
+                        modal.remove();
+                        loadResults();
+                    } else {
+                        alert("Failed to resume exam: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("Error resuming exam:", e);
+                    alert("Error resuming exam. Please try again.");
+                }
+            };
+
+            window.finishExamFromAnalysis = async function(resultId) {
+                if (!confirm("Are you sure you want to finish this exam?\n\nThis will finalize the result and clear any saved progress. The student will NOT be able to resume this exam.")) {
+                    return;
+                }
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/finish`, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert("✅ Exam finalized successfully!\n\nThe result has been marked as completed and saved progress has been cleared.");
+                        modal.remove();
+                        loadResults();
+                    } else {
+                        alert("Failed to finish exam: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("Error finishing exam:", e);
+                    alert("Error finishing exam. Please try again.");
+                }
+            };
+
+            // Manual evaluation function for subjective questions
+            window.updateSubjectiveMarks = async function(resultId, questionIndex) {
+                const marksInput = document.getElementById(`marks-q-${questionIndex}`);
+                const marks = parseFloat(marksInput.value);
+                const maxMarks = parseFloat(marksInput.getAttribute('data-max-marks'));
+                if (isNaN(marks) || marks < 0 || marks > maxMarks) {
+                    alert(`Please enter valid marks (0-${maxMarks})`);
+                    return;
+                }
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/admin/results/${resultId}/update-marks`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            subjectiveMarks: {
+                                [questionIndex]: marks
+                            }
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        const marksDisplay = document.getElementById(`marks-display-${questionIndex}`);
+                        marksDisplay.innerHTML = `<span style="color: var(--success); font-weight: bold;">${marks}/${maxMarks}</span>`;
+                        marksInput.style.display = 'none';
+                        marksDisplay.style.display = 'block';
+                        alert("Marks updated successfully! ✅");
+                    } else {
+                        alert("Failed to update marks: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("Error updating marks:", e);
+                    alert("Error updating marks. Please try again.");
+                }
+            };
+
+            // Render MathJax on the modal content
+            reRenderMathJax();
+            
+        } catch(e) {
+            console.error(e);
+            alert("Error loading analysis: " + e.message);
+        }
+    }
+
+    // Helper function to enhance solution text with step/formula formatting
+    function enhanceSolutionText(solutionText) {
+        if (!solutionText) return '';
+        let enhanced = solutionText;
+        enhanced = enhanced.replace(/<p>/gi, '<p style="padding: 10px; border-radius: 6px; background: #f8f9fa; border-left: 3px solid #dee2e6;">');
+        enhanced = enhanced.replace(/\$\$([^$]+)\$\$/g, '<div class="solution-formula">$$$1$$</div>');
+        enhanced = enhanced.replace(/\\\[([^\]]+)\\\]/g, '<div class="solution-formula">\\[$1\\]</div>');
+        enhanced = enhanced.replace(/\$([^$]+)\$/g, '<span style="background: #fffef5; padding: 2px 6px; border-radius: 3px; font-family: Courier New, monospace; font-weight: 600; color: #d68910;">$$$1$$</span>');
+        enhanced = enhanced.replace(/(Step\s+\d+[:：\s]+)/gi, '<div class="solution-step"><span class="solution-step-number">$1</span>');
+        enhanced = enhanced.replace(/(\d+\.\s+)/g, '<div class="solution-step"><span class="solution-step-number">$1</span>');
+        return enhanced;
+    }
+
+    function toggleQuestionAnalysis(headerElement) {
+        const body = headerElement.nextElementSibling;
+        body.classList.toggle('show');
+        const arrow = headerElement.querySelector('span:last-child');
+        if (body.classList.contains('show')) {
+            arrow.innerText = '▲';
+        } else {
+            arrow.innerText = '▼';
+        }
+    }
+
+    // ================= QUESTION LIST FUNCTIONS =================
+    let editingQlId = null;
+    let quickCreateFromBank = false; // When true, a newly created list is auto-selected in the Question Bank folder sidebar
+    let addingToListMode = false; // When true, submitNewQBQuestion will also add the question to the current list
+
+    async function loadQuestionLists() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists`, { headers: { "Authorization": `Bearer ${token}` } });
+            const lists = await res.json();
+            currentQuestionLists = lists;
+            const container = document.getElementById("qlList");
+            container.innerHTML = "";
+            
+            if (lists.length === 0) {
+                container.innerHTML = "<div style='padding: 15px; color: #777; text-align: center;'>No question lists yet. Create one!</div>";
+                return;
+            }
+
+            lists.forEach(list => {
+                const qCount = list.questionIds ? list.questionIds.length : 0;
+                const date = list.createdAt ? new Date(list.createdAt._seconds * 1000 || list.createdAt).toLocaleDateString() : "Unknown";
+                container.innerHTML += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px; background: #fdfdfd; border: 1px solid #e0e0e0; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border-left: 5px solid var(--secondary); transition: 0.2s;">
+                        <div style="flex: 1; cursor: pointer;" onclick="openListDetail('${list.id}')">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <span style="font-size: 28px;">📁</span>
+                                <div>
+                                    <strong style="font-size: 16px; color: var(--primary);">${list.name}</strong>
+                                    ${list.description ? `<p style="color: #777; font-size: 12px; margin-top: 3px;">${list.description}</p>` : ''}
+                                    <p style="color: #888; font-size: 11px; margin-top: 5px;">${qCount} question(s) · Created ${date}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-direction: row; min-width: 180px; justify-content: flex-end;">
+                            <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); addListToExam('${list.id}', '${list.name.replace(/'/g, "\\'")}')">📥 Add to Exam</button>
+                            <button class="btn btn-outline btn-small" onclick="event.stopPropagation(); openEditListModal('${list.id}')">✏️</button>
+                            <button class="btn btn-outline btn-small" onclick="event.stopPropagation(); deleteListOnly('${list.id}')" title="Delete list only">🗑️ List</button>
+                            <button class="btn btn-primary btn-small" style="background:#e74c3c; border:none;" onclick="event.stopPropagation(); fullDeleteList('${list.id}')" title="Delete list and all questions">🔥 Delete All</button>
+                        </div>
+                    </div>
+                `;
+            });
+        } catch (e) {
+            console.error("Could not load question lists:", e);
+            document.getElementById("qlList").innerHTML = "<div style='color: #e74c3c;'>Failed to load question lists.</div>";
+        }
+    }
+
+    function openCreateListModal() {
+        editingQlId = null;
+        document.getElementById("qlFormTitle").innerText = "Create Question List";
+        document.getElementById("qlSaveBtn").innerText = "Create List ✅";
+        document.getElementById("qlName").value = "";
+        document.getElementById("qlDesc").value = "";
+        document.getElementById("qlEditorModal").style.display = "flex";
+    }
+
+    function openEditListModal(id) {
+        const list = currentQuestionLists.find(l => l.id === id);
+        if (!list) return;
+        editingQlId = id;
+        document.getElementById("qlFormTitle").innerText = "Edit Question List";
+        document.getElementById("qlSaveBtn").innerText = "Update List ✏️";
+        document.getElementById("qlName").value = list.name || "";
+        document.getElementById("qlDesc").value = list.description || "";
+        document.getElementById("qlEditorModal").style.display = "flex";
+    }
+
+    function closeListModal() {
+        document.getElementById("qlEditorModal").style.display = "none";
+    }
+
+    async function saveQuestionList() {
+        const name = document.getElementById("qlName").value.trim();
+        const description = document.getElementById("qlDesc").value.trim();
+        if (!name) return alert("Please enter a list name.");
+        
+        const btn = document.getElementById("qlSaveBtn");
+        btn.innerText = "Saving... ⏳";
+        btn.disabled = true;
+
+        try {
+            if (editingQlId) {
+                const res = await fetch(`${BACKEND_URL}/api/question_lists/${editingQlId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify({ name, description })
+                });
+                if (res.ok) {
+                    alert("List updated! ✅");
+                    closeListModal();
+                    loadQuestionLists();
+                } else alert("Failed to update list.");
+            } else {
+                const res = await fetch(`${BACKEND_URL}/api/question_lists`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify({ name, description })
+                });
+                if (res.ok) {
+                    alert("List created! ✅");
+                    closeListModal();
+                    loadQuestionLists();
+                    // When created from the Question Bank folder sidebar, auto-select the new list there
+                    if (quickCreateFromBank) {
+                        const data = await res.json();
+                        loadQBFolders();
+                        qbSelectedListId = data.id;
+                        selectQBListFolder(data.id);
+                    }
+                } else alert("Failed to create list.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error saving list.");
+        } finally {
+            btn.innerText = editingQlId ? "Update List ✏️" : "Create List ✅";
+            btn.disabled = false;
+            quickCreateFromBank = false;
+        }
+    }
+
+    async function deleteListOnly(id) {
+        if (!confirm("Delete this question list only? The questions will remain in the Question Bank.")) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            if (res.ok) {
+                loadQuestionLists();
+                loadQBFolders();
+            } else alert("Failed to delete list.");
+        } catch (e) { console.error(e); }
+    }
+
+    async function fullDeleteList(id) {
+        const list = currentQuestionLists.find(l => l.id === id);
+        const qCount = list && list.questionIds ? list.questionIds.length : 0;
+        if (!confirm(`PERMANENTLY DELETE this list AND all ${qCount} questions from the Question Bank?\n\nThis action CANNOT be undone!`)) return;
+        if (!confirm(`Are you absolutely sure? All ${qCount} questions will be permanently removed from the bank.`)) return;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${id}/full-delete`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || "List and questions deleted successfully! ✅");
+                loadQuestionLists();
+                loadQBFolders();
+            } else {
+                alert("Failed to fully delete: " + (data.detail || "Unknown error"));
+            }
+        } catch (e) { console.error(e); alert("Error deleting list."); }
+    }
+
+    async function clearListQuestions() {
+        if (!currentQlDetailId) return alert("No list selected.");
+        if (!confirm("Are you sure you want to remove ALL questions from this list? This action cannot be undone.")) return;
+        if (!confirm("This will permanently clear the list. Are you absolutely sure?")) return;
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}/questions`, { 
+                method: "DELETE", headers: { "Authorization": `Bearer ${token}` } 
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || "List cleared successfully! ✅");
+                openListDetail(currentQlDetailId);
+                loadQBFolders();
+                loadQuestionLists();
+            } else {
+                alert("Failed to clear list: " + (data.detail || "Unknown error"));
+            }
+        } catch (e) { 
+            console.error(e); 
+            alert("Error clearing list.");
+        }
+    }
+
+    async function openListDetail(id) {
+        currentQlDetailId = id;
+        document.getElementById("qlListView").style.display = "none";
+        document.getElementById("qlDetailView").style.display = "block";
+        document.getElementById("qlTitle").innerText = "📁 List Detail";
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${id}`, { headers: { "Authorization": `Bearer ${token}` } });
+            const data = await res.json();
+            
+            document.getElementById("qlDetailTitle").innerText = data.name || "Untitled List";
+            document.getElementById("qlDetailDesc").innerText = (data.description || "") + ` · ${data.questions ? data.questions.length : 0} question(s)`;
+            
+            const container = document.getElementById("qlDetailQuestions");
+            container.innerHTML = "";
+
+            if (!data.questions || data.questions.length === 0) {
+                container.innerHTML = "<div style='padding: 20px; text-align: center; color: #777;'>This list is empty. Add questions from the bank!</div>";
+                currentQlDetailQuestions = [];
+                return;
+            }
+
+            currentQlDetailQuestions = data.questions;
+            data.questions.forEach((q, i) => {
+                let optionsHTML = "";
+                if (q.options && q.options.length > 0) {
+                    optionsHTML = `<div class="q-options-grid">`;
+                    q.options.forEach((opt, idx) => {
+                        const isCorrect = q.correctAnswers && q.correctAnswers.includes(opt);
+                        const hl = isCorrect ? 'correct' : '';
+                        const letter = String.fromCharCode(65 + idx);
+                        optionsHTML += `<div class="opt-item-card ${hl}"><strong>${letter}.</strong> <span>${opt}</span>${isCorrect ? '<span style="margin-left:auto; color:var(--success); font-weight:bold;">✓</span>' : ''}</div>`;
+                    });
+                    optionsHTML += `</div>`;
+                } else if (q.correctAnswers && q.correctAnswers.length) {
+                    optionsHTML = `<div style="padding: 10px; background: #e8f8f5; border: 1px solid var(--success); border-radius: 4px; margin: 15px 0;"><strong>Numerical Answer:</strong> ${q.correctAnswers.join(', ')}</div>`;
+                }
+
+                container.innerHTML += `
+                    <div class="q-card">
+                        <div class="q-card-header">
+                            <div style="flex: 1;">
+                                <div class="badges">
+                                    <span class="badge badge-subject">${q.subject || 'N/A'}</span>
+                                    <span class="badge badge-section">${q.section || 'N/A'}</span>
+                                </div>
+                                <div style="margin-top: 8px;"><strong>Q${i+1}:</strong> ${q.question ? q.question.substring(0, 120) : '<i>[Image]</i>'}</div>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-direction: column; min-width: 120px;">
+                                <button class="btn btn-outline btn-small" onclick="toggleView('ql-q-details-${i}')" style="width: 100%;">👁️ View</button>
+                                <button class="btn btn-primary btn-small" onclick="addSingleQuestionToExam('${q.id}')" style="width: 100%;">📥 Add to Exam</button>
+                                <button class="btn btn-outline btn-small" onclick="replaceQuestionInList('${id}', '${q.id}')" style="width: 100%;">🔄 Replace</button>
+                                <button class="btn btn-primary btn-small" style="background:#ff7675; border:none; width: 100%;" onclick="removeQuestionFromList('${id}', '${q.id}')">✖ Remove</button>
+                            </div>
+                        </div>
+                        <div id="ql-q-details-${i}" class="q-details-box">
+                            <div style="font-size: 15px; margin-bottom: 10px;">${q.question || ''}</div>
+                            ${q.questionImage ? `<img src="${q.questionImage}" style="max-width: 100%; max-height: 200px;">` : ''}
+                            ${optionsHTML}
+                            ${q.hint ? `<p style="background: #fff3cd; padding: 8px; border-left: 3px solid #ffeeba;"><b>Hint:</b> ${q.hint}</p>` : ''}
+                            ${q.solution ? `<p style="background: #d4edda; padding: 8px; border-left: 3px solid #c3e6cb;"><b>Solution:</b> ${q.solution}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            reRenderMathJax();
+        } catch (e) {
+            console.error("Could not load list detail:", e);
+            document.getElementById("qlDetailQuestions").innerHTML = "<div style='color: #e74c3c;'>Failed to load list details.</div>";
+        }
+    }
+
+    function backToLists() {
+        document.getElementById("qlDetailView").style.display = "none";
+        document.getElementById("qlListView").style.display = "block";
+        document.getElementById("qlTitle").innerText = "📁 Question Lists";
+        loadQuestionLists();
+    }
+
+    async function removeQuestionFromList(listId, questionId) {
+        if (!confirm("Remove this question from the list?")) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${listId}/questions/${questionId}`, { 
+                method: "DELETE", headers: { "Authorization": `Bearer ${token}` } 
+            });
+            if (res.ok) {
+                openListDetail(listId);
+            } else alert("Failed to remove question.");
+        } catch (e) { console.error(e); }
+    }
+
+    async function replaceQuestionInList(listId, questionId) {
+        if (!confirm("Replace this question with a new one? You'll need to enter the new question details.")) return;
+        
+        try {
+            const q = currentQlDetailQuestions.find(x => x.id === questionId);
+            if (!q) return alert("Question not found.");
+            
+            const newQuestionText = prompt("Enter new question text:", q.question || "");
+            if (newQuestionText === null) return;
+            if (!newQuestionText.trim()) return alert("Question text is required.");
+            
+            const payload = {
+                question: newQuestionText.trim(),
+                subject: q.subject || "Physics",
+                section: q.section || "Single correct answer",
+                options: q.options || [],
+                optionImages: q.optionImages || [],
+                correctAnswers: q.correctAnswers || [],
+                correctAnswer: q.correctAnswer || "",
+                questionImage: q.questionImage || null,
+                hint: q.hint || "",
+                solution: q.solution || "",
+                solutionImage: q.solutionImage || null,
+                topics: q.topics || [],
+                exam_type: q.exam_type || "Practice"
+            };
+            
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${listId}/questions/${questionId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await res.json();
+            if (res.ok) {
+                alert("Question replaced successfully! ✅");
+                openListDetail(listId);
+            } else {
+                alert("Failed to replace: " + (data.detail || "Unknown error"));
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error replacing question.");
+        }
+    }
+
+    async function addSingleQuestionToExam(questionId) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
+            const allQb = await res.json();
+            const q = allQb.find(x => x.id === questionId);
+            if (!q) return alert("Question not found in bank.");
+
+            const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await examsRes.json();
+            
+            if (exams.length === 0) return alert("No exams exist. Create an exam first!");
+
+            const filteredExams = exams; // Use all exams for the selector
+
+            openExamSelector("Choose an exam to add this question to:", async (examId, examTitle) => {
+                const examQ = {
+                    subject: q.subject || "Physics",
+                    question: q.question || "",
+                    questionImage: q.questionImage || null,
+                    options: q.options || [],
+                    optionImages: q.optionImages || [],
+                    correctAnswer: (q.correctAnswers || [""])[0],
+                    correctAnswers: q.correctAnswers || [],
+                    section: q.section || "Single correct answer",
+                    hint: q.hint || "",
+                    solution: q.solution || "",
+                    solutionImage: q.solutionImage || null,
+                    topics: q.topics || []
+                };
+
+                const importRes = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-questions`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify([examQ])
+                });
+                
+                if (importRes.ok) {
+                    alert(`Question added to "${examTitle}"! ✅`);
+                } else alert("Failed to add question to exam.");
+            });
+        } catch (e) {
+            console.error(e);
+            alert("Error adding question to exam.");
+        }
+    }
+
+    function addNewQuestionToList() {
+        if (!currentQlDetailId) return alert("No list selected.");
+        addingToListMode = true;
+        resetQBForm();
+        document.getElementById("qbFormTitle").innerText = "Add New Question to List";
+        document.getElementById("addQBBtn").innerText = "Add to Bank & List ✅";
+        document.getElementById("qbEditorModal").style.display = "flex";
+        handleSectionChange();
+    }
+
+    function openAddToListModal() {
+        document.getElementById("qlAddResults").style.display = "none";
+        document.getElementById("qlAddSelectedBtn").style.display = "none";
+        document.getElementById("qlAddFilterSubject").value = "";
+        document.getElementById("qlAddFilterSection").value = "";
+        document.getElementById("qlAddFilterTopic").value = "";
+        document.getElementById("qlAddFromBankModal").style.display = "flex";
+    }
+
+    function closeAddToListModal() {
+        document.getElementById("qlAddFromBankModal").style.display = "none";
+    }
+
+    async function searchQBForList() {
+        const btn = document.querySelector('#qlAddFromBankModal button[onclick*="searchQBForList"]');
+        btn.innerText = "Searching... ⏳";
+        
+        try {
+            // Fetch the current list detail to know which questions are already in it
+            let existingQuestionIds = new Set();
+            if (currentQlDetailId) {
+                try {
+                    const listRes = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}`, { headers: { "Authorization": `Bearer ${token}` } });
+                    const listData = await listRes.json();
+                    if (listData.questions) {
+                        existingQuestionIds = new Set(listData.questions.map(q => q.id));
+                    }
+                } catch (e) {
+                    console.error("Could not fetch list details for existing questions check:", e);
+                }
+            }
+
+            const res = await fetch(`${BACKEND_URL}/api/question_bank`, { headers: { "Authorization": `Bearer ${token}` } });
+            qbCacheForListImport = await res.json();
+            
+            const fSub = document.getElementById("qlAddFilterSubject").value;
+            const fSec = document.getElementById("qlAddFilterSection").value;
+            const fTopic = document.getElementById("qlAddFilterTopic").value.toLowerCase();
+            
+            const filtered = qbCacheForListImport.filter(q => {
+                const matchSub = !fSub || q.subject === fSub;
+                const matchSec = !fSec || q.section === fSec;
+                const matchTopic = !fTopic || (q.topics && q.topics.some(t => t.toLowerCase().includes(fTopic)));
+                return matchSub && matchSec && matchTopic;
+            });
+            
+            const resDiv = document.getElementById("qlAddResults");
+            const addBtn = document.getElementById("qlAddSelectedBtn");
+            
+            resDiv.style.display = "block";
+            resDiv.innerHTML = "";
+            
+            if (filtered.length === 0) {
+                resDiv.innerHTML = "<div style='color:#777; text-align:center;'>No questions match your filters.</div>";
+                addBtn.style.display = "none";
+            } else {
+                filtered.forEach(q => {
+                    const alreadyInList = existingQuestionIds.has(q.id);
+                    const qText = q.question ? q.question.substring(0, 80) + '...' : '<i>[Image]</i>';
+                    const disabledAttr = alreadyInList ? 'disabled' : '';
+                    const bgColor = alreadyInList ? '#f0f0f0' : '#fafafa';
+                    const statusBadge = alreadyInList ? '<span style="margin-left: 8px; font-size: 10px; color: var(--success); font-weight: bold;">✓ Already in list</span>' : '';
+                    resDiv.innerHTML += `
+                        <div style="display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; background: ${bgColor}; margin-bottom: 5px; border-radius: 4px; ${alreadyInList ? 'opacity: 0.7;' : ''}">
+                            <input type="checkbox" class="ql-add-cb" value="${q.id}" style="margin-right: 15px; width: 18px; height: 18px;" ${disabledAttr}>
+                            <div style="flex: 1;">
+                                <div class="badges" style="margin-bottom: 5px;">
+                                    <span class="badge badge-subject" style="font-size: 9px; padding: 2px 6px;">${q.subject}</span>
+                                    <span class="badge badge-section" style="font-size: 9px; padding: 2px 6px;">${q.section}</span>
+                                </div>
+                                <span style="font-size: 13px;">${qText}${statusBadge}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                addBtn.style.display = "block";
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error searching question bank.");
+        } finally {
+            btn.innerText = "🔍 Search";
+        }
+    }
+
+    async function addSelectedToList() {
+        const checkboxes = document.querySelectorAll('.ql-add-cb:checked');
+        if (checkboxes.length === 0) return alert("Select at least one question.");
+        
+        const btn = document.getElementById("qlAddSelectedBtn");
+        btn.innerText = "Adding... ⏳";
+        btn.disabled = true;
+        
+        try {
+            const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}/questions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ questionIds: selectedIds })
+            });
+            
+            if (res.ok) {
+                alert(`${selectedIds.length} question(s) added to list! ✅`);
+                closeAddToListModal();
+                openListDetail(currentQlDetailId);
+            } else alert("Failed to add questions.");
+        } catch (e) {
+            console.error(e);
+            alert("Error adding questions.");
+        } finally {
+            btn.innerText = "➕ Add Selected to List";
+            btn.disabled = false;
+        }
+    }
+
+    async function importListToExam() {
+        if (!currentQlDetailId) {
+            console.error("importListToExam: currentQlDetailId is not set");
+            return alert("No list selected. Please open a list first.");
+        }
+        
+        try {
+            console.log("importListToExam: Starting import for list", currentQlDetailId);
+            
+            // First, verify the list has questions
+            const listRes = await fetch(`${BACKEND_URL}/api/question_lists/${currentQlDetailId}`, { 
+                headers: { "Authorization": `Bearer ${token}` } 
+            });
+            if (!listRes.ok) {
+                const errData = await listRes.json();
+                return alert("Failed to load list: " + (errData.detail || "Unknown error"));
+            }
+            const listData = await listRes.json();
+            const questionIds = listData.questionIds || [];
+            if (questionIds.length === 0) {
+                return alert("This question list is empty. Add questions to the list first!");
+            }
+            console.log(`importListToExam: List has ${questionIds.length} questions`);
+
+            const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await examsRes.json();
+            if (exams.length === 0) return alert("No exams exist. Create an exam first!");
+
+            const listName = listData.name || '';
+            const listId = currentQlDetailId;
+            
+            openExamSelector(`Select exam to import the list "${listName}" (${questionIds.length} questions) into:`, async (examId, examTitle) => {
+                console.log(`importListToExam: Importing list ${listId} into exam ${examId}`);
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                        method: "POST",
+                        headers: { 
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}` 
+                        }
+                    });
+                    
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message || "Questions imported! ✅");
+                    } else {
+                        alert("Failed to import: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("importListToExam: Fetch error", e);
+                    alert("Network error importing list to exam.");
+                }
+            });
+        } catch (e) {
+            console.error("importListToExam: Error", e);
+            alert("Error importing list to exam: " + e.message);
+        }
+    }
+
+    async function addListToExam(listId, listName) {
+        try {
+            const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await examsRes.json();
+            if (exams.length === 0) return alert("No exams exist. Create an exam first!");
+            
+            openExamSelector(`Select exam to add "${listName}" to:`, async (examId, examTitle) => {
+                console.log(`addListToExam: Importing list ${listId} into exam ${examId}`);
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                        method: "POST",
+                        headers: { 
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}` 
+                        }
+                    });
+                    
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message || "Questions imported! ✅");
+                    } else {
+                        alert("Failed to import: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("addListToExam: Fetch error", e);
+                    alert("Network error importing list to exam.");
+                }
+            });
+        } catch (e) {
+            console.error(e);
+            alert("Error importing list to exam.");
+        }
+    }
+
+    // ================= QUESTION BANK FOLDER SIDEBAR =================
+    let qbSelectedListId = ''; // '' means "All Questions"
+    let qbListsCache = [];
+
+    async function loadQBFolders() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists`, { headers: { "Authorization": `Bearer ${token}` } });
+            qbListsCache = await res.json();
+            
+            const folderDiv = document.getElementById("qbFolderList");
+            folderDiv.innerHTML = `
+                <div class="qb-folder-item ${qbSelectedListId === '' ? 'active' : ''}" data-list-id="" onclick="selectQBListFolder('')" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; ${qbSelectedListId === '' ? 'background: var(--secondary); color: white;' : 'background: transparent; color: #333;'}">
+                    <span style="font-size: 20px;">📦</span>
+                    <div style="flex: 1;">
+                        <strong style="font-size: 14px;">All Questions</strong>
+                        <span id="qbAllCount" style="font-size: 11px; opacity: 0.8; display: block;">0 questions</span>
+                    </div>
+                </div>
+            `;
+
+            if (qbListsCache.length === 0) {
+                folderDiv.innerHTML += `<div style="color: #999; font-size: 12px; padding: 15px; text-align: center;">No lists yet.<br>Click ➕ to create one</div>`;
+            } else {
+                qbListsCache.forEach(list => {
+                    const qCount = list.questionIds ? list.questionIds.length : 0;
+                    const isActive = qbSelectedListId === list.id;
+                    const bgStyle = isActive ? 'background: var(--secondary); color: white;' : 'background: transparent; color: #333;';
+                    folderDiv.innerHTML += `
+                        <div class="qb-folder-item" data-list-id="${list.id}" onclick="selectQBListFolder('${list.id}')" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; ${bgStyle}" onmouseover="if(!this.classList.contains('active')) this.style.background='#f0f4f8'" onmouseout="if(!this.classList.contains('active')) this.style.background='transparent'">
+                            <span style="font-size: 20px;">📁</span>
+                            <div style="flex: 1; min-width: 0;">
+                                <strong style="font-size: 13px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${list.name}</strong>
+                                <span style="font-size: 11px; opacity: 0.8; display: block;">${qCount} questions</span>
+                            </div>
+                            <div style="display: flex; gap: 3px; flex-shrink: 0;">
+                                <button class="btn btn-primary btn-small" style="padding: 2px 5px; font-size: 10px; background: var(--success); border: none;" onclick="event.stopPropagation(); addListToExamFromBank('${list.id}', '${list.name.replace(/'/g, "\\'")}')" title="Add all to exam">📥</button>
+                                <button class="btn btn-primary btn-small" style="padding: 2px 5px; font-size: 10px; background: #e74c3c; border: none;" onclick="event.stopPropagation(); deleteQBListFolder('${list.id}')" title="Delete list">🗑️</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+        } catch (e) {
+            console.error("Failed to load folders:", e);
+        }
+    }
+
+    function selectQBListFolder(listId) {
+        qbSelectedListId = listId;
+        document.querySelectorAll('.qb-folder-item').forEach(el => {
+            const id = el.getAttribute('data-list-id');
+            if (id === listId) {
+                el.style.background = 'var(--secondary)';
+                el.style.color = 'white';
+                el.classList.add('active');
+            } else {
+                el.style.background = 'transparent';
+                el.style.color = '#333';
+                el.classList.remove('active');
+            }
+        });
+        if (listId === '') {
+            document.getElementById("qbViewTitle").innerHTML = '🗄️ All Questions';
+            document.getElementById("qbViewSubtitle").innerText = 'Browse and manage all questions';
+        } else {
+            const list = qbListsCache.find(l => l.id === listId);
+            const name = list ? list.name : 'Unknown';
+            document.getElementById("qbViewTitle").innerHTML = `📁 ${name}`;
+            document.getElementById("qbViewSubtitle").innerText = `Questions in this list - ${list ? (list.questionIds ? list.questionIds.length : 0) : 0} questions`;
+        }
+        loadQuestionBank();
+    }
+
+    function openQBListQuickCreate() {
+        quickCreateFromBank = true;
+        document.getElementById("qlFormTitle").innerText = "Quick Create List";
+        document.getElementById("qlSaveBtn").innerText = "Create List ✅";
+        document.getElementById("qlName").value = "";
+        document.getElementById("qlDesc").value = "";
+        editingQlId = null;
+        document.getElementById("qlEditorModal").style.display = "flex";
+    }
+
+    async function addListToExamFromBank(listId, listName) {
+        try {
+            const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await examsRes.json();
+            if (exams.length === 0) return alert("No exams exist. Create an exam first!");
+            
+            openExamSelector(`Select exam to add "${listName}" to:`, async (examId, examTitle) => {
+                console.log(`addListToExamFromBank: Importing list ${listId} into exam ${examId}`);
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-question-list/${listId}`, {
+                        method: "POST",
+                        headers: { 
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}` 
+                        }
+                    });
+                    
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message || "Questions imported! ✅");
+                    } else {
+                        alert("Failed to import: " + (data.detail || "Unknown error"));
+                    }
+                } catch (e) {
+                    console.error("addListToExamFromBank: Fetch error", e);
+                    alert("Network error importing list to exam.");
+                }
+            });
+        } catch (e) {
+            console.error(e);
+            alert("Error importing list to exam.");
+        }
+    }
+
+    async function deleteQBListFolder(id) {
+        if (!confirm("Delete this question list? The questions themselves will NOT be deleted from the bank.")) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            if (res.ok) {
+                if (qbSelectedListId === id) {
+                    qbSelectedListId = '';
+                    selectQBListFolder('');
+                }
+                loadQBFolders();
+                loadQuestionLists();
+            } else alert("Failed to delete list.");
+        } catch (e) { console.error(e); }
+    }
+
+    // Handle Add to List dropdown selection
+    async function handleAddToList(selectEl, questionId) {
+        const listId = selectEl.value;
+        if (!listId) return;
+        
+        if (listId === '__create__') {
+            selectEl.value = '';
+            const listName = prompt("Enter a name for the new question list:");
+            if (!listName || !listName.trim()) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/question_lists`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify({ name: listName.trim(), description: "" })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const newListId = data.id;
+                    const addRes = await fetch(`${BACKEND_URL}/api/question_lists/${newListId}/questions`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                        body: JSON.stringify({ questionIds: [questionId] })
+                    });
+                    if (addRes.ok) {
+                        alert(`Question added to new list "${listName.trim()}"! ✅`);
+                        loadQBFolders();
+                        loadQuestionLists();
+                    } else alert("Failed to add question to new list.");
+                } else alert("Failed to create list.");
+            } catch(e) { console.error(e); }
+            return;
+        }
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/question_lists/${listId}/questions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ questionIds: [questionId] })
+            });
+            if (res.ok) {
+                alert("Question added to list! ✅");
+                loadQBFolders();
+                if (qbSelectedListId === listId) selectQBListFolder(listId);
+                loadQuestionBank();  // Refresh to update dropdown states
+            } else alert("Failed to add question to list.");
+        } catch(e) { console.error(e); }
+        selectEl.value = '';
+    }
+
+    // Add a single question from bank directly to an exam
+    async function addSingleQuestionToExamFromBank(questionId) {
+        const q = currentQBQuestions.find(x => x.id === questionId);
+        if (!q) return alert("Question not found.");
+
+        try {
+            const examsRes = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await examsRes.json();
+            if (exams.length === 0) return alert("No exams exist. Create an exam first!");
+            
+            openExamSelector("Select exam to add this question to:", async (examId, examTitle) => {
+                const examQ = {
+                    subject: q.subject || "Physics",
+                    question: q.question || "",
+                    questionImage: q.questionImage || null,
+                    options: q.options || [],
+                    optionImages: q.optionImages || [],
+                    correctAnswer: (q.correctAnswers || [""])[0],
+                    correctAnswers: q.correctAnswers || [],
+                    section: q.section || "Single correct answer",
+                    hint: q.hint || "",
+                    solution: q.solution || "",
+                    solutionImage: q.solutionImage || null,
+                    topics: q.topics || []
+                };
+
+                const importRes = await fetch(`${BACKEND_URL}/api/exams/${examId}/import-questions`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify([examQ])
+                });
+                
+                if (importRes.ok) {
+                    alert(`Question added to "${examTitle}"! ✅`);
+                } else alert("Failed to add question to exam.");
+            });
+        } catch (e) {
+            console.error(e);
+            alert("Error adding question to exam.");
+        }
+    }
+
+    // ================= EXAM SELECTOR MODAL =================
+    let examSelectorCallback = null; // Stores the callback to execute when an exam is selected
+
+    function openExamSelector(promptText, callback) {
+        examSelectorCallback = callback;
+        document.getElementById("examSelectorPrompt").innerText = promptText || "Choose an exam to add the selected item to:";
+        document.getElementById("examSelectorModal").style.display = "flex";
+        loadExamSelectorList();
+    }
+
+    function closeExamSelector() {
+        document.getElementById("examSelectorModal").style.display = "none";
+        examSelectorCallback = null;
+    }
+
+    async function loadExamSelectorList() {
+        const listDiv = document.getElementById("examSelectorList");
+        listDiv.innerHTML = '<div style="text-align: center; padding: 30px; color: #999;">Loading exams...</div>';
+        
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
+            const exams = await res.json();
+            
+            if (exams.length === 0) {
+                listDiv.innerHTML = '<div style="text-align: center; padding: 30px; color: #999;">No exams exist. Create an exam first!</div>';
+                return;
+            }
+            
+            listDiv.innerHTML = "";
+            exams.forEach((exam, idx) => {
+                const qCount = exam.questions ? exam.questions.length : 0;
+                const examType = exam.examType || 'Practice';
+                const typeIcon = examType.toLowerCase().includes('mains') ? '📝' : 
+                                examType.toLowerCase().includes('advance') ? '🎯' : '📋';
+                listDiv.innerHTML += `
+                    <div class="exam-selector-item" onclick="selectExamFromModal('${exam.id}', '${exam.title.replace(/'/g, "\\'")}')">
+                        <div class="exam-icon">${typeIcon}</div>
+                        <div class="exam-info">
+                            <div class="exam-title">${exam.title}</div>
+                            <div class="exam-meta">${examType} · ${qCount} questions · ⏱️ ${exam.timerMinutes || 180} mins</div>
+                        </div>
+                        <div class="exam-select-arrow">➜</div>
+                    </div>
+                `;
+            });
+        } catch (e) {
+            console.error("Failed to load exams:", e);
+            listDiv.innerHTML = '<div style="text-align: center; padding: 30px; color: #e74c3c;">Failed to load exams.</div>';
+        }
+    }
+
+    function selectExamFromModal(examId, examTitle) {
+        const callback = examSelectorCallback;
+        closeExamSelector();
+        if (callback) {
+            callback(examId, examTitle);
+        }
+    }
+
+    // Override the tab switch to also load folders when question bank tab is shown
+    const originalSwitchTab = switchTab;
+    switchTab = function(tabId, btnElement) {
+        document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        btnElement.classList.add('active');
+        document.getElementById('pageTitle').innerText = btnElement.innerText.replace(/[^\w\s]/gi, '').trim();
+        if(tabId === 'view-question-bank') {
+            loadQBFolders();
+            loadQuestionBank();
+        }
+        if(tabId === 'view-question-lists') loadQuestionLists();
+        if(tabId === 'view-exams') loadExams();
+        if(tabId === 'view-results') loadResults();
+    };
+
+    // Also load folders on initial load
+    if (token && role && (role.toLowerCase() === "admin" || role.toLowerCase() === "setter")) {
+        loadExams(); loadResults();
+        if(role.toLowerCase() === "setter") document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
+        setTimeout(loadQBFolders, 100);
+    }
+
+    // ================= ZOOM FUNCTIONS FOR ADMIN PORTAL =================
+    let adminZoomLevel = 100;
+
+    function openZoom(src) {
+        const img = document.getElementById("adminZoomImg");
+        img.src = src;
+        adminResetZoom();
+        document.getElementById("adminZoomModal").style.display = "flex";
+    }
+
+    function adminCloseZoom() {
+        document.getElementById("adminZoomModal").style.display = "none";
+    }
+
+    function adminChangeZoom(amount) {
+        adminZoomLevel += amount;
+        if (adminZoomLevel < 50) adminZoomLevel = 50;
+        if (adminZoomLevel > 500) adminZoomLevel = 500;
+        const img = document.getElementById("adminZoomImg");
+        if (adminZoomLevel === 100) {
+            img.style.maxWidth = "90%";
+            img.style.maxHeight = "85vh";
+            img.style.width = "auto";
+        } else {
+            img.style.maxWidth = "none";
+            img.style.maxHeight = "none";
+            img.style.width = adminZoomLevel + "%";
+        }
+    }
+
+    function adminResetZoom() {
+        adminZoomLevel = 100;
+        const img = document.getElementById("adminZoomImg");
+        img.style.maxWidth = "90%";
+        img.style.maxHeight = "85vh";
+        img.style.width = "auto";
+    }
+
+})();
