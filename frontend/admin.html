@@ -457,13 +457,15 @@
 
             <div style="margin-bottom: 5px;">
                 <label style="font-weight: bold; font-size: 14px; color: #555;">Exam Type:</label><br>
-                <select id="newExamType" style="margin-top: 5px;">
+                <select id="newExamType" style="margin-top: 5px;" onchange="updateMarkingSchemeHint()">
                     <option value="Practice">Practice (Topic-wise)</option>
                     <option value="Mains">JEE Mains</option>
                     <option value="Advance">JEE Advance</option>
                     <option value="CBSE">CBSE Pattern</option>
                 </select>
             </div>
+
+            <div id="markingSchemeHint" style="margin: 4px 0 12px; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block;"></div>
 
             <div style="margin-bottom: 20px;">
                 <label style="font-weight: bold; font-size: 14px; color: #555;">Timer Duration (in minutes):</label><br>
@@ -1240,6 +1242,27 @@
         } catch (err) { console.error(err); }
     }
 
+    function updateMarkingSchemeHint() {
+        const el = document.getElementById("markingSchemeHint");
+        if (!el) return;
+        const t = String((document.getElementById("newExamType") || {}).value || "").toLowerCase();
+        let html, bg, border, color;
+        if (t.includes('cbse')) {
+            html = "📋 Marking: Section A MCQ = +1 · wrong = 0 (NO negative marking) · Sections B–E subjective = manual evaluation";
+            bg = '#fef9e7'; border = '#f1c40f'; color = '#7d6608';
+        } else if (t.includes('mains') || t.includes('advance')) {
+            html = "🎯 Marking (JEE): Correct = +4 · Wrong = −1 · Unattempted = 0";
+            bg = '#eafaf1'; border = '#b8e6c8'; color = '#1e8449';
+        } else {
+            html = "📝 Marking (Practice): Correct = +1 · Wrong = −1 · Unattempted = 0";
+            bg = '#eaf2f8'; border = '#aed6f1'; color = '#21618c';
+        }
+        el.style.background = bg;
+        el.style.border = `1px solid ${border}`;
+        el.style.color = color;
+        el.innerHTML = html;
+    }
+
     async function loadExams() {
         try {
             const res = await fetch(`${BACKEND_URL}/api/exams`, { headers: { "Authorization": `Bearer ${token}` } });
@@ -1838,8 +1861,8 @@
         mains: {
             label: "JEE Mains",
             sections: [
-                { value: "Single Correct Answer", label: "Section A - Single Correct Answer", defaultMarks: 4 },
-                { value: "Numerical Answer", label: "Section B - Numerical Answer", defaultMarks: 4 }
+                { value: "Single Correct Answer", label: "Section A - Single Correct Answer (+4 / −1)", defaultMarks: 4 },
+                { value: "Numerical Answer", label: "Section B - Numerical Answer (+4 / −1)", defaultMarks: 4 }
             ],
             questionTypes: [
                 { value: "single-correct", label: "Single Correct Answer" },
@@ -1849,11 +1872,11 @@
         advance: {
             label: "JEE Advance",
             sections: [
-                { value: "Single Correct Answer", label: "Section 1 - Single Correct Answer", defaultMarks: 3 },
-                { value: "Multiple Correct Answer", label: "Section 2 - Multiple Correct Answer", defaultMarks: 4 },
-                { value: "Match Matrix", label: "Section 3 - Match Matrix", defaultMarks: 4 },
-                { value: "Passage based Questions", label: "Section 4 - Passage based Questions", defaultMarks: 4 },
-                { value: "Numerical Answer", label: "Section 5 - Numerical Answer", defaultMarks: 4 }
+                { value: "Single Correct Answer", label: "Section 1 - Single Correct Answer (+4 / −1)", defaultMarks: 4 },
+                { value: "Multiple Correct Answer", label: "Section 2 - Multiple Correct Answer (+4 / −1)", defaultMarks: 4 },
+                { value: "Match Matrix", label: "Section 3 - Match Matrix (+4 / −1)", defaultMarks: 4 },
+                { value: "Passage based Questions", label: "Section 4 - Passage based Questions (+4 / −1)", defaultMarks: 4 },
+                { value: "Numerical Answer", label: "Section 5 - Numerical Answer (+4 / −1)", defaultMarks: 4 }
             ],
             questionTypes: [
                 { value: "single-correct", label: "Single Correct Answer" },
@@ -4171,6 +4194,7 @@ modal.innerHTML = `
 
     // Also load folders on initial load
     if (token && role && (role.toLowerCase() === "admin" || role.toLowerCase() === "setter")) {
+        updateMarkingSchemeHint();
         loadExams(); loadResults();
         if(role.toLowerCase() === "setter") document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
         setTimeout(loadQBFolders, 100);

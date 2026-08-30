@@ -280,6 +280,11 @@ async def bulk_upload_zip(exam_id: str, files: List[UploadFile] = File(...), use
     data = doc.to_dict()
     questions = data.get("questions", [])
     
+    # JEE exams: missing Marks column defaults to 4 (matching the admin UI help text).
+    exam_type_str = str(data.get("examType", data.get("exam_type", "")) or "")
+    is_jee_exam = ("mains" in exam_type_str.lower()) or ("advance" in exam_type_str.lower())
+    default_marks = 4 if is_jee_exam else 1
+    
     total_added = 0
     file_results = []
 
@@ -410,10 +415,10 @@ async def bulk_upload_zip(exam_id: str, files: List[UploadFile] = File(...), use
 
                     marks_csv = get_val(row, ["Marks", "marks"])
                     try:
-                        marks_val = float(marks_csv) if marks_csv else 1
+                        marks_val = float(marks_csv) if marks_csv else default_marks
                         marks_val = int(marks_val) if marks_val == int(marks_val) else marks_val
                     except (ValueError, TypeError):
-                        marks_val = 1
+                        marks_val = default_marks
 
                     new_q = {
                         "subject": get_val(row, ["Subject", "subject"]) or "Physics",
@@ -655,6 +660,7 @@ def parse_jee_format_csv(csv_text, images_data=None):
             "optionImages": option_images,
             "correctAnswer": correct_ans,
             "correctAnswers": [correct_ans] if correct_ans else [],
+            "marks": 4,  # JEE scheme: +4 per objective question
             "hint": get_field(row, "Hint"),
             "solution": get_field(row, "Solution"),
             "solutionImage": get_image(row, "SolutionImage"),
@@ -793,8 +799,16 @@ async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), mode: str = Fo
                     if "integer" in section_val.lower() or "numerical" in section_val.lower():
                         correct_ans_list = [numerical_ans] if numerical_ans else []
 
+                    qb_exam_type = get_val(row, ["ExamType", "exam_type"]) or "Practice"
+                    marks_csv_qb = get_val(row, ["Marks", "marks"])
+                    try:
+                        marks_qb = float(marks_csv_qb) if marks_csv_qb else (4 if ("mains" in qb_exam_type.lower() or "advance" in qb_exam_type.lower()) else 1)
+                        marks_qb = int(marks_qb) if marks_qb == int(marks_qb) else marks_qb
+                    except (ValueError, TypeError):
+                        marks_qb = 4 if ("mains" in qb_exam_type.lower() or "advance" in qb_exam_type.lower()) else 1
+
                     new_q = {
-                        "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
+                        "exam_type": qb_exam_type,
                         "subject": get_val(row, ["Subject", "subject"]) or "Physics",
                         "section": section_val,
                         "questionType": question_type,
@@ -804,6 +818,7 @@ async def qb_bulk_upload_zip(files: List[UploadFile] = File(...), mode: str = Fo
                         "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
                         "correctAnswers": correct_ans_list,
                         "correctAnswer": opt_a_text,
+                        "marks": marks_qb,
                         "assertion": assertion_text if assertion_text else None,
                         "reason": reason_text if reason_text else None,
                         "casePassage": case_passage if case_passage else None,
@@ -1099,8 +1114,16 @@ async def ql_bulk_upload_zip(list_id: str, files: List[UploadFile] = File(...), 
                     if "integer" in section_val.lower() or "numerical" in section_val.lower():
                         correct_ans_list = [numerical_ans] if numerical_ans else []
 
+                    qlist_exam_type = get_val(row, ["ExamType", "exam_type"]) or "Practice"
+                    marks_csv_qlist = get_val(row, ["Marks", "marks"])
+                    try:
+                        marks_qlist = float(marks_csv_qlist) if marks_csv_qlist else (4 if ("mains" in qlist_exam_type.lower() or "advance" in qlist_exam_type.lower()) else 1)
+                        marks_qlist = int(marks_qlist) if marks_qlist == int(marks_qlist) else marks_qlist
+                    except (ValueError, TypeError):
+                        marks_qlist = 4 if ("mains" in qlist_exam_type.lower() or "advance" in qlist_exam_type.lower()) else 1
+
                     new_q = {
-                        "exam_type": get_val(row, ["ExamType", "exam_type"]) or "Practice",
+                        "exam_type": qlist_exam_type,
                         "subject": get_val(row, ["Subject", "subject"]) or "Physics",
                         "section": section_val,
                         "question": get_val(row, ["QuestionText", "Question", "question"]),
@@ -1108,6 +1131,7 @@ async def ql_bulk_upload_zip(list_id: str, files: List[UploadFile] = File(...), 
                         "options": [opt_a_text, opt_b_text, opt_c_text, opt_d_text] if not numerical_ans else [],
                         "optionImages": [img_a, img_b, img_c, img_d] if not numerical_ans else [],
                         "correctAnswers": correct_ans_list,
+                        "marks": marks_qlist,
                         "hint": get_val(row, ["Hint", "hint"]),
                         "solution": get_val(row, ["Solution", "solution"]),
                         "solutionImage": img_sol,
@@ -1255,7 +1279,10 @@ async def import_question_list_to_exam(exam_id: str, list_id: str, request: Requ
         if not exam_doc.exists:
             print(f"❌ Exam not found: {exam_id}")
             raise HTTPException(status_code=404, detail="Exam not found")
-        print(f"✅ Exam found: {exam_doc.to_dict().get('title', 'Unknown')}")
+        exam_doc_map = exam_doc.to_dict()
+        print(f"✅ Exam found: {exam_doc_map.get('title', 'Unknown')}")
+        
+        exam_type_str = str(exam_doc_map.get("examType", exam_doc_map.get("exam_type", "")) or "")
         
         # Get the question list with full data
         list_doc = db.collection("question_lists").document(list_id).get()
@@ -1300,7 +1327,8 @@ async def import_question_list_to_exam(exam_id: str, list_id: str, request: Requ
                     "correctAnswer": (q.get("correctAnswers") or [""])[0] if q.get("correctAnswers") else "",
                     "correctAnswers": q.get("correctAnswers", []),
                     "questionType": q.get("questionType", derived_type),
-                    "marks": q.get("marks", 1),
+                    # JEE exams store +4 by default (legacy marks<=1 fixed up too).
+                    "marks": effective_question_marks(q, exam_type_str),
                     "hint": q.get("hint", ""),
                     "solution": q.get("solution", ""),
                     "solutionImage": q.get("solutionImage", None),
@@ -1337,12 +1365,18 @@ async def get_public_exams():
     for doc in docs:
         data = doc.to_dict()
         q_count = len(data.get("questions", []))
+        exam_type_public = data.get("examType", data.get("exam_type", "Practice"))
+        total_marks = float(sum(effective_question_marks(q, exam_type_public) for q in data.get("questions", [])))
+        total_marks = round(total_marks, 1)
+        if total_marks == int(total_marks):
+            total_marks = int(total_marks)
         
         exams_list.append({
             "id": doc.id,
             "title": data.get("title", "Untitled Exam"),
             "questionCount": q_count,
-            "examType": data.get("examType", data.get("exam_type", "Practice"))
+            "totalMarks": total_marks,
+            "examType": exam_type_public
         })
         
     return exams_list
@@ -1612,6 +1646,30 @@ def _same_value(a, b):
         return False
 
 
+def effective_question_marks(q, exam_type=""):
+    """Return the marks a question is worth for scoring / display.
+
+    JEE (Mains / Advance) exams use the standard +4 / −1 scheme: every
+    auto-graded objective question is worth 4 marks by default. Legacy JEE
+    papers imported under the old CBSE-style default were stored with
+    ``marks = 1``, so any stored mark ``<= 1`` on a JEE exam is treated as the
+    4-mark JEE default. Explicit higher marks (e.g. 2/3/5/8 from the CSV
+    Marks column or the admin editor) are preserved.
+
+    Non-JEE exams keep the stored value (default 1).
+    """
+    exam_type = str(exam_type or "").lower()
+    raw = q.get("marks", 1) or 1
+    try:
+        marks = float(raw)
+    except (TypeError, ValueError):
+        marks = 1
+    is_jee = ("mains" in exam_type) or ("advance" in exam_type)
+    if is_jee and marks <= 1:
+        return 4
+    return marks
+
+
 def compute_exam_score(questions, student_answers, answer_images=None, exam_type=""):
     """
     Compute exam score from submitted answers.
@@ -1644,7 +1702,8 @@ def compute_exam_score(questions, student_answers, answer_images=None, exam_type
         correct_ans = q.get("correctAnswer", "")
         subject = q.get("subject", "Unknown")
         question_type = q.get("questionType", "mcq")
-        marks = q.get("marks", 1) or 1
+        # JEE scheme: +4 per correct objective question; legacy marks<=1 fixed up.
+        marks = effective_question_marks(q, exam_type)
         image_ans = answer_images.get(q_id)
 
         if subject not in subject_wise:
@@ -1792,7 +1851,7 @@ def compute_exam_score(questions, student_answers, answer_images=None, exam_type
 
     return {
         "totalScore": total_score,
-        "totalMarksPossible": float(sum(q.get("marks", 1) or 1 for q in questions)),
+        "totalMarksPossible": float(sum(effective_question_marks(q, exam_type) for q in questions)),
         "correctCount": correct_count,
         "incorrectCount": incorrect_count,
         "notAttemptedCount": not_attempted_count,
@@ -2053,7 +2112,8 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
             student_ans = student_answers.get(q_id)
             correct_ans = q.get("correctAnswer", "")
             question_type = q.get("questionType", "mcq")
-            marks = q.get("marks", 1) or 1
+            # Keep analysis marks in sync with the +4 JEE scheme used for scoring.
+            marks = effective_question_marks(q, exam_type)
             image_ans = answer_images.get(q_id)
             sub_questions_lst = q.get("subQuestions") or []
 

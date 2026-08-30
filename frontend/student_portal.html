@@ -681,7 +681,7 @@
                             </div>
                             <div class="exam-meta">
                                 <span><b>Questions:</b> ${qCount}</span>
-                                <span><b>Total Marks:</b> ${qCount * 4}</span>
+                                <span><b>Total Marks:</b> ${exam.totalMarks != null ? exam.totalMarks : (qCount * 4)}</span>
                             </div>
                             <button class="btn start-btn" style="background: #bbb; cursor: not-allowed;" disabled>⏳ Pending Admin Review</button>
                             <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">This exam was auto-submitted due to integrity violations. An admin must approve the resume before you can continue.</p>
@@ -701,7 +701,7 @@
                             </div>
                             <div class="exam-meta">
                                 <span><b>Questions:</b> ${qCount}</span>
-                                <span><b>Total Marks:</b> ${qCount * 4}</span>
+                                <span><b>Total Marks:</b> ${exam.totalMarks != null ? exam.totalMarks : (qCount * 4)}</span>
                             </div>
                             <button class="btn btn-success start-btn" onclick="resumeExam('${exam.id}')">🔄 Continue Exam</button>
                             <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">An admin has resumed your exam. Continue from where you left off.</p>
@@ -721,7 +721,7 @@
                             </div>
                             <div class="exam-meta">
                                 <span><b>Questions:</b> ${qCount}</span>
-                                <span><b>Total Marks:</b> ${qCount * 4}</span>
+                                <span><b>Total Marks:</b> ${exam.totalMarks != null ? exam.totalMarks : (qCount * 4)}</span>
                             </div>
                             <button class="btn btn-success start-btn" onclick="resumeExam('${exam.id}')">🔄 Resume Exam</button>
                             <p style="font-size: 11px; color: #888; margin-top: 8px; text-align: center;">Your previous session was interrupted. You can resume from where you left off.</p>
@@ -740,7 +740,7 @@
                     <div class="exam-title">${exam.title}</div>
                     <div class="exam-meta">
                         <span><b>Questions:</b> ${qCount}</span>
-                        <span><b>Total Marks:</b> ${qCount * 4}</span>
+                        <span><b>Total Marks:</b> ${exam.totalMarks != null ? exam.totalMarks : (qCount * 4)}</span>
                     </div>
                     <button class="btn ${btnClass}" ${btnAction}>${btnText}</button>
                 </div>
