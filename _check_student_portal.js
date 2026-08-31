@@ -307,6 +307,9 @@
                 `;
             });
 
+        // Render any LaTeX in exam titles once the results list is populated
+        reRenderMathJax();
+
         } catch (e) {
             console.error("Could not load past results:", e);
             loader.style.display = "none";
@@ -711,7 +714,7 @@
     function reRenderMathJax() {
         if (window.MathJax && window.MathJax.typesetPromise) {
             // Clear and typeset all main content areas
-            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #analysisContainer .question-analysis-card');
+            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #analysisContainer .question-analysis-card', '#pastResultsList');
             mainAreas.forEach(el => MathJax.typesetClear([el]));
             MathJax.typesetPromise(mainAreas).catch((err) => console.log('MathJax error:', err));
         }
@@ -722,6 +725,7 @@
         if (window.MathJax) {
             window.MathJax.startup.promise.then(() => {
                 console.log('MathJax initialized successfully');
+                reRenderMathJax();
             }).catch((err) => console.log('MathJax initialization error:', err));
         }
     }

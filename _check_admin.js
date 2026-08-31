@@ -40,7 +40,7 @@
     function reRenderMathJax() {
         if (window.MathJax && window.MathJax.typesetPromise) {
             // Clear and typeset all main content areas
-            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #adminAnalysisModal .question-analysis-card');
+            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #adminAnalysisModal .question-analysis-card', '#resultsList');
             mainAreas.forEach(el => MathJax.typesetClear([el]));
             MathJax.typesetPromise(mainAreas).catch((err) => console.log('MathJax error:', err));
         }
@@ -1606,6 +1606,7 @@
                         </div>`;
                     });
                     list.innerHTML = html;
+                    reRenderMathJax(); // Render any LaTeX text in the results list
                 }
             } else document.getElementById("resultsList").innerHTML = "<div>Cannot fetch results.</div>";
         } catch(e) { console.error("Could not load results:", e); }
@@ -3096,6 +3097,16 @@ modal.innerHTML = `
         if(role.toLowerCase() === "setter") document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
         setTimeout(loadQBFolders, 100);
     }
+
+    // Ensure MathJax renders LaTeX content once the library has loaded (results list, etc.)
+    function initMathJax() {
+        if (window.MathJax && window.MathJax.startup) {
+            window.MathJax.startup.promise.then(() => {
+                reRenderMathJax();
+            }).catch((err) => console.log('MathJax initialization error:', err));
+        }
+    }
+    window.addEventListener('load', initMathJax);
 
     // ================= ZOOM FUNCTIONS FOR ADMIN PORTAL =================
     let adminZoomLevel = 100;
