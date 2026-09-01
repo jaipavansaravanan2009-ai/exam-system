@@ -39,10 +39,19 @@
 
     function reRenderMathJax() {
         if (window.MathJax && window.MathJax.typesetPromise) {
-            // Clear and typeset all main content areas
-            const mainAreas = document.querySelectorAll('.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #adminAnalysisModal .question-analysis-card', '#resultsList');
+            // Clear and typeset all main content areas (MathJax v3 needs a real array, not a NodeList)
+            const selector = '.question-text, .options-list, .hint-display, .hint-box, .case-passage, .modal-body, .result-content, .answer-box, .solution-content, .question-analysis-body, .analysis-option-row, .analysis-sub-block, #qText, #optionsList, #hintContainer, #analysisContainer, #adminAnalysisModal, #resultAnalysisModal, #resultsList';
+            const mainAreas = Array.from(document.querySelectorAll(selector));
             mainAreas.forEach(el => MathJax.typesetClear([el]));
             MathJax.typesetPromise(mainAreas).catch((err) => console.log('MathJax error:', err));
+        }
+    }
+
+    function renderMathInElement(container) {
+        if (!container) return;
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            MathJax.typesetClear([container]);
+            MathJax.typesetPromise([container]).catch((err) => console.log('MathJax error:', err));
         }
     }
 
@@ -159,6 +168,27 @@
             if (res.ok) { alert("Exam created!"); document.getElementById("newExamTitle").value = ""; document.getElementById("newExamEnableHints").checked = false; loadExams(); } 
             else alert("Failed to create exam.");
         } catch (err) { console.error(err); }
+    }
+
+    function updateMarkingSchemeHint() {
+        const el = document.getElementById("markingSchemeHint");
+        if (!el) return;
+        const t = String((document.getElementById("newExamType") || {}).value || "").toLowerCase();
+        let html, bg, border, color;
+        if (t.includes('cbse')) {
+            html = "📋 Marking: Section A MCQ = +1 · wrong = 0 (NO negative marking) · Sections B–E subjective = manual evaluation";
+            bg = '#fef9e7'; border = '#f1c40f'; color = '#7d6608';
+        } else if (t.includes('mains') || t.includes('advance')) {
+            html = "🎯 Marking (JEE): Correct = +4 · Wrong = −1 · Unattempted = 0";
+            bg = '#eafaf1'; border = '#b8e6c8'; color = '#1e8449';
+        } else {
+            html = "📝 Marking (Practice): Correct = +1 · Wrong = −1 · Unattempted = 0";
+            bg = '#eaf2f8'; border = '#aed6f1'; color = '#21618c';
+        }
+        el.style.background = bg;
+        el.style.border = `1px solid ${border}`;
+        el.style.color = color;
+        el.innerHTML = html;
     }
 
     async function loadExams() {
@@ -759,8 +789,8 @@
         mains: {
             label: "JEE Mains",
             sections: [
-                { value: "Single Correct Answer", label: "Section A - Single Correct Answer", defaultMarks: 4 },
-                { value: "Numerical Answer", label: "Section B - Numerical Answer", defaultMarks: 4 }
+                { value: "Single Correct Answer", label: "Section A - Single Correct Answer (+4 / −1)", defaultMarks: 4 },
+                { value: "Numerical Answer", label: "Section B - Numerical Answer (+4 / −1)", defaultMarks: 4 }
             ],
             questionTypes: [
                 { value: "single-correct", label: "Single Correct Answer" },
@@ -770,11 +800,11 @@
         advance: {
             label: "JEE Advance",
             sections: [
-                { value: "Single Correct Answer", label: "Section 1 - Single Correct Answer", defaultMarks: 3 },
-                { value: "Multiple Correct Answer", label: "Section 2 - Multiple Correct Answer", defaultMarks: 4 },
-                { value: "Match Matrix", label: "Section 3 - Match Matrix", defaultMarks: 4 },
-                { value: "Passage based Questions", label: "Section 4 - Passage based Questions", defaultMarks: 4 },
-                { value: "Numerical Answer", label: "Section 5 - Numerical Answer", defaultMarks: 4 }
+                { value: "Single Correct Answer", label: "Section 1 - Single Correct Answer (+4 / −1)", defaultMarks: 4 },
+                { value: "Multiple Correct Answer", label: "Section 2 - Multiple Correct Answer (+4 / −1)", defaultMarks: 4 },
+                { value: "Match Matrix", label: "Section 3 - Match Matrix (+4 / −1)", defaultMarks: 4 },
+                { value: "Passage based Questions", label: "Section 4 - Passage based Questions (+4 / −1)", defaultMarks: 4 },
+                { value: "Numerical Answer", label: "Section 5 - Numerical Answer (+4 / −1)", defaultMarks: 4 }
             ],
             questionTypes: [
                 { value: "single-correct", label: "Single Correct Answer" },
@@ -1893,7 +1923,14 @@ async function viewAdminAnalysis(resultId) {
             let questionAnalysisHTML = '';
             if (analysisData.questionAnalysis && analysisData.questionAnalysis.length > 0) {
                 questionAnalysisHTML = `
-                    <h3 style="color: var(--primary); margin: 25px 0 15px 0; font-size: 16px;">📝 Question-wise Detailed Analysis</h3>
+                    <div class="analysis-section-head">
+                        <h3 style="color: var(--primary); margin: 0; font-size: 16px;">📝 Question-wise Detailed Analysis</h3>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" style="cursor:pointer; background:#eef3fa; border:1px solid #cfd8e3; border-radius:5px; padding:6px 12px; font-size:12px; font-weight:600; color:#1e3d59;" onclick="toggleAllQuestionAnalysis(true)">⬇ Expand All</button>
+                            <button type="button" style="cursor:pointer; background:#fff; border:1px solid #cfd8e3; border-radius:5px; padding:6px 12px; font-size:12px; font-weight:600; color:#1e3d59;" onclick="toggleAllQuestionAnalysis(false)">⬆ Collapse All</button>
+                        </div>
+                    </div>
+                    <p style="color:#888; font-size:13px; margin: 0 0 12px 0;">Click any question card to see the question text, the candidate's answer and the full solution.</p>
                 `;
 
                 analysisData.questionAnalysis.forEach((qa, index) => {
@@ -1929,9 +1966,10 @@ async function viewAdminAnalysis(resultId) {
                         timeDisplay = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
                     }
 
-                    let subColor = "var(--secondary)"; 
-                    if(qa.subject.toLowerCase().includes("chem")) subColor = "var(--success)"; 
-                    if(qa.subject.toLowerCase().includes("math")) subColor = "#8e44ad";
+                    let subColor = "var(--secondary)";
+                    const qSubjectLower = String(qa.subject || '').toLowerCase();
+                    if(qSubjectLower.includes("chem")) subColor = "var(--success)";
+                    if(qSubjectLower.includes("math")) subColor = "#8e44ad";
 
                     // Build options display with correct/incorrect highlighting
                     let optionsDisplay = '';
@@ -2027,23 +2065,23 @@ async function viewAdminAnalysis(resultId) {
                     const hintHtml = hintText ? `<div class="hint-box">${hintText}</div>` : '';
 questionAnalysisHTML += `
                         <div class="question-analysis-card">
-                            <div class="question-analysis-header ${statusBadgeClass}" onclick="toggleQuestionAnalysis(this)">
+                            <div class="question-analysis-header ${statusBadgeClass} qa-card-header" onclick="toggleQuestionAnalysis(this)" title="Click to expand question details & solution">
                                 <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                                     <span style="font-weight: bold; color: var(--primary);">Q${index + 1}</span>
-                                    <span style="font-size: 13px; padding: 2px 8px; border-radius: 12px; background: ${subColor}; color: white;">${qa.subject}</span>
-                                    ${qa.topics && qa.topics.length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${qa.topics.slice(0, 3).join(', ')}</span>` : ''}
+                                    <span style="font-size: 13px; padding: 2px 8px; border-radius: 12px; background: ${subColor}; color: white;">${qa.subject || 'General'}</span>
+                                    ${safeList(qa.topics).length ? `<span style="font-size: 12px; color: #f39c12;">🏷️ ${safeList(qa.topics).slice(0, 3).join(', ')}</span>` : ''}
                                     ${timeDisplay ? `<span style="font-size: 12px; color: #888;">${timeDisplay}</span>` : ''}
                                     ${qa.marks ? `<span style="font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #9b59b6; color: white;">${qa.marks} marks</span>` : ''}
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 10px;">
-                                    <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${marks}</span>
+                                    <span style="font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : (isManualQ ? '#e67e22' : 'var(--danger)')};">${marks}</span>
                                     <span class="status-badge ${statusBadgeClass}">${statusText}</span>
-                                    <span style="font-size: 18px; color: #999;">▼</span>
+                                    <span class="qa-arrow" style="font-size: 18px; color: #999;">▼</span>
                                 </div>
                             </div>
                             <div class="question-analysis-body">
                                 <div class="question-text">
-                                    <span style="color: #666; font-size: 13px;">${qa.subject} | Topics: ${qa.topics ? qa.topics.join(', ') : 'N/A'}</span><br><br>
+                                    <span style="color: #666; font-size: 13px;">${qa.subject || 'General'} | Topics: ${safeList(qa.topics).length ? safeList(qa.topics).join(', ') : 'N/A'}</span><br><br>
                                     ${qa.question}
                                     ${qImgHtml}
                                 </div>
@@ -2056,7 +2094,7 @@ questionAnalysisHTML += `
                                 <div class="answer-comparison">
                                     <div class="answer-box your-answer">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Student Answer</div>
-                                        <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : 'var(--danger)'};">${qa.isAttempted ? qa.studentAnswer : '<span style="color: #999;">Not Attempted</span>'}</div>
+                                        <div style="font-size: 16px; font-weight: bold; color: ${qa.isCorrect ? 'var(--success)' : (isManualQ ? '#e67e22' : 'var(--danger)')};">${qa.isAttempted ? (typeof qa.studentAnswer === 'object' && qa.studentAnswer ? (qa.studentAnswer.text || '') : qa.studentAnswer) : '<span style="color: #999;">Not Attempted</span>'}</div>
                                     </div>
                                     <div class="answer-box correct-answer">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold;">Correct Answer</div>
@@ -2183,6 +2221,7 @@ modal.innerHTML = `
             };
 
             // Render MathJax on the modal content
+            renderMathInElement(modal);
             reRenderMathJax();
             
         } catch(e) {
@@ -2191,28 +2230,100 @@ modal.innerHTML = `
         }
     }
 
-    // Helper function to enhance solution text with step/formula formatting
+    // Return a reliable list from topics/hints-like values (some CSV imports store a plain string)
+    function safeList(value) {
+        if (Array.isArray(value)) return value.filter(Boolean);
+        if (typeof value === 'string' && value.trim()) {
+            return value.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+        }
+        return [];
+    }
+
+    // Helper function to enhance solution text with step/formula formatting.
+    // Produces BALANCED HTML and preserves the $...$ / $$...$$ delimiters so
+    // MathJax renders the LaTeX cleanly instead of showing raw code.
     function enhanceSolutionText(solutionText) {
         if (!solutionText) return '';
-        let enhanced = solutionText;
-        enhanced = enhanced.replace(/<p>/gi, '<p style="padding: 10px; border-radius: 6px; background: #f8f9fa; border-left: 3px solid #dee2e6;">');
-        enhanced = enhanced.replace(/\$\$([^$]+)\$\$/g, '<div class="solution-formula">$$$1$$</div>');
-        enhanced = enhanced.replace(/\\\[([^\]]+)\\\]/g, '<div class="solution-formula">\\[$1\\]</div>');
-        enhanced = enhanced.replace(/\$([^$]+)\$/g, '<span style="background: #fffef5; padding: 2px 6px; border-radius: 3px; font-family: Courier New, monospace; font-weight: 600; color: #d68910;">$$$1$$</span>');
-        enhanced = enhanced.replace(/(Step\s+\d+[:：\s]+)/gi, '<div class="solution-step"><span class="solution-step-number">$1</span>');
-        enhanced = enhanced.replace(/(\d+\.\s+)/g, '<div class="solution-step"><span class="solution-step-number">$1</span>');
-        return enhanced;
+        let text = String(solutionText).replace(/\r\n?/g, '\n');
+
+        // 1) Protect math blocks so the step splitter below can never mangle them
+        const mathStore = [];
+        text = text.replace(/\$\$[\s\S]+?\$\$/g, (m) => {
+            mathStore.push(m);
+            return '\u0001M' + (mathStore.length - 1) + '\u0001';
+        });
+        text = text.replace(/\$(?!\d)[^$\n]+\$/g, (m) => {
+            mathStore.push(m);
+            return '\u0001M' + (mathStore.length - 1) + '\u0001';
+        });
+
+        // 2) Normalise paragraph / line boundaries
+        text = text.replace(/<\/p>/gi, '</p>\n').replace(/<br\s*\/?>/gi, '\n');
+
+        const lines = text.split('\n');
+        const parts = [];
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+            if (!trimmed) { parts.push(''); continue; }
+
+            // Detect step markers: "Step 1:", "1.", "2)" - either at the start of a
+            // line or after a short prefix such as "Solution: <p>Step 1: ...".
+            let stepMatch = trimmed.match(/Step\s+(\d+)\s*[:：.)]/i);
+            if (!stepMatch) {
+                stepMatch = trimmed.match(/^(?:<[^>]*>\s*)?(\d+)\s*[:：.)]\s+(?!\d)/);
+            }
+
+            if (stepMatch) {
+                const markerStart = stepMatch.index;
+                const num = stepMatch[1];
+                const markerLen = stepMatch[0].length;
+
+                // Any text before the marker stays in place (e.g. "Solution:")
+                let prefix = trimmed.slice(0, markerStart).trim();
+                if (/^<p\b/.test(prefix) && !/<\/p>\s*$/.test(prefix)) {
+                    prefix = prefix.replace(/^<p[^>]*>/i, '').trim();
+                }
+                if (/[：:]$/.test(prefix)) prefix = prefix.slice(0, -1);
+                if (prefix) parts.push(prefix);
+
+                const rest = trimmed.slice(markerStart + markerLen).trim().replace(/<\/p>\s*$/i, '');
+                const badge = '<span class="solution-step-label">Step ' + num + '</span>';
+                const body = /^<p\b/i.test(rest)
+                    ? '<p>' + rest.replace(/^<p[^>]*>/i, '') + '</p>'
+                    : '<div class="solution-step-text">' + rest + '</div>';
+                parts.push('<div class="solution-step">' + badge + body + '</div>');
+            } else {
+                parts.push(trimmed);
+            }
+        }
+        let html = parts.join('\n');
+
+        // 3) Restore the protected math
+        html = html.replace(/\u0001M(\d+)\u0001/g, (_, i) => mathStore[+i]);
+
+        // 4) Box display math ($$...$$ preserved so MathJax renders display mode)
+        html = html.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => '<div class="solution-formula">$$' + inner + '$$</div>');
+
+        // 5) Neat paragraph styling
+        html = html.replace(/<p>/gi, '<p class="solution-para">');
+
+        return html;
     }
 
     function toggleQuestionAnalysis(headerElement) {
         const body = headerElement.nextElementSibling;
+        if (!body) return;
         body.classList.toggle('show');
-        const arrow = headerElement.querySelector('span:last-child');
-        if (body.classList.contains('show')) {
-            arrow.innerText = '▲';
-        } else {
-            arrow.innerText = '▼';
-        }
+        const arrow = headerElement.querySelector('.qa-arrow');
+        if (arrow) arrow.innerText = body.classList.contains('show') ? '▲' : '▼';
+        if (body.classList.contains('show')) renderMathInElement(body);
+    }
+
+    function toggleAllQuestionAnalysis(expand) {
+        document.querySelectorAll('#adminAnalysisModal .question-analysis-body').forEach(b => b.classList.toggle('show', !!expand));
+        document.querySelectorAll('#adminAnalysisModal .qa-arrow').forEach(a => a.innerText = expand ? '▲' : '▼');
+        reRenderMathJax();
     }
 
     // ================= QUESTION LIST FUNCTIONS =================
@@ -3093,6 +3204,7 @@ modal.innerHTML = `
 
     // Also load folders on initial load
     if (token && role && (role.toLowerCase() === "admin" || role.toLowerCase() === "setter")) {
+        updateMarkingSchemeHint();
         loadExams(); loadResults();
         if(role.toLowerCase() === "setter") document.querySelectorAll('button[onclick="switchTab(\'view-users\', this)"]').forEach(el => el.style.display = 'none');
         setTimeout(loadQBFolders, 100);
