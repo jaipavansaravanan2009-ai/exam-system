@@ -2423,11 +2423,6 @@ async def resume_exam(result_id: str, user=Depends(authorize(["admin"]))):
         raise HTTPException(status_code=500, detail=f"Failed to resume exam: {str(e)}")
 
 # ==========================================
-# 📁 STATIC FILES SERVING
-# ==========================================
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
-
-# ==========================================
 # 📝 CBSE EXAM SUPPORT - MANUAL EVALUATION
 # ==========================================
 
@@ -2770,3 +2765,9 @@ async def get_exam_leaderboard(exam_id: str, user=Depends(authorize(["student", 
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch leaderboard: {str(e)}")
+
+
+# ==========================================
+# 📁 STATIC FILES SERVING (mounted LAST so all API routes take precedence)
+# ==========================================
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
