@@ -471,6 +471,7 @@
     <button class="nav-btn" onclick="switchTab('view-question-bank', this)">🗄️ Question Bank</button>
     <button class="nav-btn" onclick="switchTab('view-users', this)">👥 User Accounts</button>
     <button class="nav-btn" onclick="switchTab('view-results', this)">🏆 Exam Results</button>
+    <button class="nav-btn" onclick="switchTab('view-leaderboard', this)">🏅 Leaderboard</button>
     <button class="nav-btn logout-btn" onclick="logout()">Logout</button>
 </div>
 
@@ -660,6 +661,32 @@
             </div>
             
             <div id="resultsList" style="font-size: 15px;"></div>
+        </div>
+    </div>
+
+    <div id="view-leaderboard" class="view-section">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>🏅 Leaderboard — Select an Exam</h3>
+                <button class="btn btn-outline" onclick="loadLeaderboardExams()">🔄 Refresh List</button>
+            </div>
+
+            <!-- Level 1: Exam list -->
+            <div id="lbExamListView">
+                <div id="lbExamList" style="font-size: 15px;">
+                    <div style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic;">Fetching exams with leaderboards...</div>
+                </div>
+            </div>
+
+            <!-- Level 2: Specific exam leaderboard (clean, no highlights) -->
+            <div id="lbExamDetailView" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <button class="btn btn-outline" onclick="showLeaderboardExamList()">← All Exams</button>
+                    <button class="btn btn-outline" onclick="loadLeaderboardDetail()">🔄 Refresh Leaderboard</button>
+                </div>
+                <h3 id="lbExamTitle" style="margin-bottom: 20px;">—</h3>
+                <div id="lbTableWrap"></div>
+            </div>
         </div>
     </div>
 
@@ -4315,6 +4342,12 @@ modal.innerHTML = `
         if(tabId === 'view-question-lists') loadQuestionLists();
         if(tabId === 'view-exams') loadExams();
         if(tabId === 'view-results') loadResults();
+        if(tabId === 'view-leaderboard') {
+            startLbAutoRefresh();
+            loadLeaderboardExams();
+        } else {
+            stopLbAutoRefresh();
+        }
     };
 
     // Also load folders on initial load
@@ -4371,6 +4404,136 @@ modal.innerHTML = `
         img.style.maxWidth = "90%";
         img.style.maxHeight = "85vh";
         img.style.width = "auto";
+    }
+
+    // ============================================
+    // 🏅 LEADERBOARD TAB LOGIC (clean view)
+    // ============================================
+    let lbCurrentExamId = null;
+    let lbRefreshTimer = null;
+    const LB_REFRESH_MS = 20000;
+
+    function startLbAutoRefresh() {
+        stopLbAutoRefresh();
+        lbRefreshTimer = setInterval(() => {
+            const lbView = document.getElementById('view-leaderboard');
+            if (lbView && lbView.classList.contains('active')) {
+                if (lbCurrentExamId) {
+                    loadLeaderboardDetail(false);
+                } else {
+                    loadLeaderboardExams(false);
+                }
+            }
+        }, LB_REFRESH_MS);
+    }
+
+    function stopLbAutoRefresh() {
+        if (lbRefreshTimer) {
+            clearInterval(lbRefreshTimer);
+            lbRefreshTimer = null;
+        }
+    }
+
+    async function loadLeaderboardExams(showLoader) {
+        const listEl = document.getElementById("lbExamList");
+        if (showLoader !== false) {
+            listEl.innerHTML = '<div style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic;">Fetching exams with leaderboards...</div>';
+        }
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/leaderboard/exams`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error("Failed to fetch leaderboard exams");
+            const exams = await res.json();
+            listEl.innerHTML = "";
+            if (!exams || exams.length === 0) {
+                listEl.innerHTML = "<div style='padding: 25px; text-align: center; color: #7f8c8d; font-style: italic; background: white; border-radius: 6px; border: 1px solid #eee;'>No leaderboards available yet. Once students submit exams, leaderboards will appear here!</div>";
+                return;
+            }
+            exams.forEach(exam => {
+                listEl.innerHTML += `
+                    <div style="display: flex; padding: 14px 15px; border-bottom: 1px solid #eee; align-items: center; cursor: pointer;" onclick="openLeaderboardDetail('${exam.examId}', this)">
+                        <div style="flex: 3; font-weight: bold; color: var(--primary);">${exam.examTitle}</div>
+                        <div style="flex: 1; text-align: center; color: #777; font-size: 13px;">${exam.examType || '—'}</div>
+                        <div style="flex: 1; text-align: center; color: #777; font-size: 13px;">${exam.participants} students</div>
+                        <div style="flex: 1; text-align: center; color: #777; font-size: 13px;">${exam.totalMarksPossible} marks</div>
+                        <button class="btn btn-primary" style="padding: 7px 14px; font-size: 13px;">View Leaderboard 🏆</button>
+                    </div>`;
+            });
+        } catch (e) {
+            console.error("Could not load leaderboard exams:", e);
+            listEl.innerHTML = "<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboards. Please check your internet connection.</div>";
+        }
+    }
+
+    function openLeaderboardDetail(examId) {
+        lbCurrentExamId = examId;
+        document.getElementById("lbExamListView").style.display = "none";
+        document.getElementById("lbExamDetailView").style.display = "block";
+        loadLeaderboardDetail(true);
+    }
+
+    function showLeaderboardExamList() {
+        lbCurrentExamId = null;
+        document.getElementById("lbExamListView").style.display = "block";
+        document.getElementById("lbExamDetailView").style.display = "none";
+        loadLeaderboardExams(true);
+    }
+
+    async function loadLeaderboardDetail(showLoader) {
+        if (!lbCurrentExamId) return;
+        const wrap = document.getElementById("lbTableWrap");
+        if (showLoader !== false) {
+            wrap.innerHTML = '<div style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic;">Computing live leaderboard...</div>';
+        }
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/leaderboard/${lbCurrentExamId}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error("Failed to fetch leaderboard");
+            const data = await res.json();
+            document.getElementById("lbExamTitle").innerText = `📊 ${data.examTitle}`;
+
+            if (!data.leaderboard || data.leaderboard.length === 0) {
+                wrap.innerHTML = "<div style='padding: 25px; text-align: center; color: #7f8c8d; font-style: italic;'>No submissions yet for this exam.</div>";
+                return;
+            }
+
+            let html = `<div style="display: flex; padding: 12px 15px; background: var(--primary); color: white; border-radius: 6px 6px 0 0; font-weight: bold; font-size: 14px;">
+                <div style="width: 60px;">Rank</div>
+                <div style="flex: 2.5;">Student</div>
+                <div style="flex: 1; text-align: center;">Correct</div>
+                <div style="flex: 1; text-align: center;">Incorrect</div>
+                <div style="flex: 1; text-align: center;">Skipped</div>
+                <div style="flex: 1; text-align: center;">Pending</div>
+                <div style="flex: 1; text-align: center;">Attempts</div>
+                <div style="flex: 1; text-align: right;">Score</div>
+                <div style="flex: 1; text-align: right;">%</div>
+            </div>`;
+
+            data.leaderboard.forEach(row => {
+                const medal = row.rank === 1 ? '🥇 ' : (row.rank === 2 ? '🥈 ' : (row.rank === 3 ? '🥉 ' : ''));
+                const pendingBadge = row.pendingEvaluationCount > 0 ? '<span style="color: #f39c12;" title="Awaiting manual evaluation">⏳</span>' : '';
+                const scoreColor = row.score >= 0 ? 'var(--success)' : 'var(--danger)';
+
+                html += `
+                    <div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center;">
+                        <div style="width: 60px; font-weight: bold; color: var(--primary);">${medal}#${row.rank}</div>
+                        <div style="flex: 2.5; font-weight: bold; color: var(--primary);">${row.studentName}</div>
+                        <div style="flex: 1; text-align: center; color: var(--success);">${row.correctCount}</div>
+                        <div style="flex: 1; text-align: center; color: var(--danger);">${row.incorrectCount}</div>
+                        <div style="flex: 1; text-align: center; color: #888;">${row.notAttemptedCount}</div>
+                        <div style="flex: 1; text-align: center;">${pendingBadge}</div>
+                        <div style="flex: 1; text-align: center; color: #555;">${row.attempts}</div>
+                        <div style="flex: 1; text-align: right; font-weight: bold; color: ${scoreColor};">${row.score}/${row.totalMarksPossible}</div>
+                        <div style="flex: 1; text-align: right; font-weight: bold; color: #555;">${row.percentage}%</div>
+                    </div>`;
+            });
+            wrap.innerHTML = html;
+        } catch (e) {
+            console.error("Could not load leaderboard:", e);
+            wrap.innerHTML = "<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboard. Please check your internet connection.</div>";
+        }
     }
 </script>
 

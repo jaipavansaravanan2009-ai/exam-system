@@ -2578,3 +2578,195 @@ async def upload_answer_image(exam_id: str, request: Request, user = Depends(aut
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to upload answer image: {str(e)}")
+
+
+# ==========================================
+# 🏆 LEADERBOARD ROUTES
+# ==========================================
+# Live leaderboards are computed on every request directly from the "results"
+# collection, so they always reflect the latest scores (including admin manual
+# mark updates) with no extra writes and no impact on existing flows.
+
+@app.get("/api/leaderboard/exams")
+async def get_leaderboard_exams(user=Depends(authorize(["student", "admin", "setter"]))):
+    """List exams that have at least one submission, with participant counts, for browsing."""
+    try:
+        result_docs = db.collection("results").stream()
+
+        exam_stats = {}
+        for doc in result_docs:
+            data = doc.to_dict()
+            exam_id = data.get("examId")
+            if not exam_id:
+                continue
+            if exam_id not in exam_stats:
+                exam_stats[exam_id] = {
+                    "examId": exam_id,
+                    "examTitle": data.get("examTitle", "Untitled Exam"),
+                    "examType": data.get("examType", ""),
+                    "studentIds": set(),
+                    "submissions": 0,
+                    "totalMarksPossible": data.get("totalMarksPossible", 0) or 0
+                }
+            stats = exam_stats[exam_id]
+            stats["studentIds"].add(data.get("studentId") or data.get("studentName", "Unknown"))
+            stats["submissions"] += 1
+            if data.get("totalMarksPossible"):
+                stats["totalMarksPossible"] = data["totalMarksPossible"]
+
+        exams_list = []
+        for stats in exam_stats.values():
+            exams_list.append({
+                "examId": stats["examId"],
+                "examTitle": stats["examTitle"],
+                "examType": stats["examType"],
+                "participants": len(stats["studentIds"]),
+                "submissions": stats["submissions"],
+                "totalMarksPossible": stats["totalMarksPossible"],
+                "myAttempted": user.get("id") in stats["studentIds"]
+            })
+
+        exams_list.sort(key=lambda x: x["participants"], reverse=True)
+        return exams_list
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch leaderboard exams: {str(e)}")
+
+
+@app.get("/api/leaderboard/{exam_id}")
+async def get_exam_leaderboard(exam_id: str, user=Depends(authorize(["student", "admin", "setter"]))):
+    """Compute a live leaderboard for one exam.
+
+    One row per student (best attempt ranked first). Ties share a rank using
+    competition ranking (1, 2, 2, 4). Students additionally receive their own
+    rank/score so the UI can highlight their position; admin/setter get a clean view.
+    """
+    try:
+        exam_doc = db.collection("exams").document(exam_id).get()
+        exam_title = exam_doc.to_dict().get("title", "Untitled Exam") if exam_doc.exists else "Untitled Exam"
+
+        result_docs = db.collection("results").where("examId", "==", exam_id).stream()
+
+        students = {}
+        for doc in result_docs:
+            data = doc.to_dict()
+            key = data.get("studentId") or data.get("studentName")
+            if not key:
+                continue
+
+            score = float(data.get("totalScore", 0) or 0)
+            pending = int(data.get("pendingEvaluationCount", 0) or 0)
+            submitted_at = data.get("submittedAt")
+            submitted_ts = 0.0
+            if submitted_at is not None and hasattr(submitted_at, "timestamp"):
+                try:
+                    submitted_ts = float(submitted_at.timestamp())
+                except Exception:
+                    submitted_ts = 0.0
+
+            if key not in students:
+                students[key] = {
+                    "studentId": data.get("studentId", "") or "",
+                    "studentName": data.get("studentName", "Unknown"),
+                    "score": score,
+                    "totalMarksPossible": float(data.get("totalMarksPossible", 0) or 0),
+                    "correctCount": int(data.get("correctCount", 0) or 0),
+                    "incorrectCount": int(data.get("incorrectCount", 0) or 0),
+                    "notAttemptedCount": int(data.get("notAttemptedCount", 0) or 0),
+                    "pendingEvaluationCount": pending,
+                    "attempts": 1,
+                    "isAutoSubmitted": bool(data.get("autoSubmitted", False)),
+                    "submittedAt": submitted_at,
+                    "submittedTs": submitted_ts,
+                    "resultId": doc.id
+                }
+            else:
+                cur = students[key]
+                cur["attempts"] += 1
+                # Keep the best attempt: higher score -> fewer pending -> earlier submission
+                is_better = (
+                    score > cur["score"]
+                    or (score == cur["score"] and pending < cur["pendingEvaluationCount"])
+                    or (score == cur["score"] and pending == cur["pendingEvaluationCount"] and submitted_ts < cur["submittedTs"])
+                )
+                if is_better:
+                    cur.update({
+                        "score": score,
+                        "totalMarksPossible": float(data.get("totalMarksPossible", 0) or 0),
+                        "correctCount": int(data.get("correctCount", 0) or 0),
+                        "incorrectCount": int(data.get("incorrectCount", 0) or 0),
+                        "notAttemptedCount": int(data.get("notAttemptedCount", 0) or 0),
+                        "pendingEvaluationCount": pending,
+                        "isAutoSubmitted": bool(data.get("autoSubmitted", False)),
+                        "submittedAt": submitted_at,
+                        "submittedTs": submitted_ts,
+                        "resultId": doc.id
+                    })
+
+        ranked = sorted(
+            students.values(),
+            key=lambda s: (-s["score"], s["pendingEvaluationCount"], s["submittedTs"])
+        )
+
+        leaderboard = []
+        for idx, s in enumerate(ranked):
+            if idx == 0:
+                rank = 1
+            else:
+                prev = ranked[idx - 1]
+                if (s["score"] == prev["score"]
+                        and s["pendingEvaluationCount"] == prev["pendingEvaluationCount"]
+                        and s["submittedTs"] == prev["submittedTs"]):
+                    rank = leaderboard[-1]["rank"]
+                else:
+                    rank = idx + 1
+
+            total_possible = s["totalMarksPossible"]
+            percentage = round((s["score"] / total_possible) * 100, 1) if total_possible else 0
+
+            submitted_str = None
+            if s["submittedAt"] is not None:
+                if hasattr(s["submittedAt"], "isoformat"):
+                    submitted_str = s["submittedAt"].isoformat()
+                else:
+                    submitted_str = str(s["submittedAt"])
+
+            leaderboard.append({
+                "rank": rank,
+                "studentId": s["studentId"],
+                "studentName": s["studentName"],
+                "score": s["score"],
+                "totalMarksPossible": total_possible,
+                "percentage": percentage,
+                "correctCount": s["correctCount"],
+                "incorrectCount": s["incorrectCount"],
+                "notAttemptedCount": s["notAttemptedCount"],
+                "pendingEvaluationCount": s["pendingEvaluationCount"],
+                "attempts": s["attempts"],
+                "isAutoSubmitted": s["isAutoSubmitted"],
+                "submittedAt": submitted_str,
+                "resultId": s["resultId"]
+            })
+
+        response = {
+            "examId": exam_id,
+            "examTitle": exam_title,
+            "leaderboard": leaderboard,
+            "totalParticipants": len(leaderboard)
+        }
+
+        # Students receive their own rank/score so the UI can highlight their position.
+        # Admin/setter get the same data without any highlight info (clean view).
+        if user.get("role") == "student":
+            my_id = user.get("id")
+            my_row = next((row for row in leaderboard if row["studentId"] == my_id), None)
+            response["myRank"] = my_row["rank"] if my_row else None
+            response["myScore"] = my_row["score"] if my_row else None
+            response["myStudentId"] = my_id
+
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch leaderboard: {str(e)}")

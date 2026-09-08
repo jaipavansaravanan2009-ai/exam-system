@@ -504,6 +504,7 @@
     <h2>🚀 JEE Portal</h2>
     <button class="nav-btn active" onclick="switchTab('view-exams', this)">📚 My Available Exams</button>
     <button class="nav-btn" onclick="switchTab('view-past-results', this)">🏆 My Past Results</button>
+    <button class="nav-btn" onclick="switchTab('view-leaderboard', this)">🏅 Leaderboard</button>
     <button class="nav-btn logout-btn" onclick="logout()">Logout</button>
 </div>
 
@@ -539,6 +540,33 @@
             
             <div id="resultsLoader" style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic; display: none;">Fetching your past results...</div>
             <div id="pastResultsList" style="font-size: 15px;"></div>
+        </div>
+    </div>
+
+    <div id="view-leaderboard" class="view-section">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>🏅 Leaderboard — Select an Exam</h3>
+                <button class="btn btn-outline" onclick="loadLeaderboardExams()">🔄 Refresh List</button>
+            </div>
+
+            <!-- Level 1: Exam list -->
+            <div id="lbExamListView">
+                <div id="lbExamList" style="font-size: 15px;">
+                    <div style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic;">Fetching exams with leaderboards...</div>
+                </div>
+            </div>
+
+            <!-- Level 2: Specific exam leaderboard -->
+            <div id="lbExamDetailView" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <button class="btn btn-outline" onclick="showLeaderboardExamList()">← All Exams</button>
+                    <button class="btn btn-outline" onclick="loadLeaderboardDetail()">🔄 Refresh Leaderboard</button>
+                </div>
+                <h3 id="lbExamTitle" style="margin-bottom: 20px;">—</h3>
+                <div id="lbYourPosition"></div>
+                <div id="lbTableWrap"></div>
+            </div>
         </div>
     </div>
 
@@ -621,6 +649,11 @@
             loadAvailableExams();
         } else if (tabId === 'view-past-results') {
             loadPastResults();
+        } else if (tabId === 'view-leaderboard') {
+            startLbAutoRefresh();
+            loadLeaderboardExams();
+        } else {
+            stopLbAutoRefresh();
         }
     }
 
@@ -1435,6 +1468,162 @@
     function logout() {
         localStorage.clear();
         window.location.href = "login.html";
+    }
+
+    // ============================================
+    // 🏅 LEADERBOARD TAB LOGIC (auto-refreshing)
+    // ============================================
+    let lbCurrentExamId = null;
+    let lbRefreshTimer = null;
+    const LB_REFRESH_MS = 20000;
+
+    function startLbAutoRefresh() {
+        stopLbAutoRefresh();
+        lbRefreshTimer = setInterval(() => {
+            const lbView = document.getElementById('view-leaderboard');
+            if (lbView && lbView.classList.contains('active')) {
+                if (lbCurrentExamId) {
+                    loadLeaderboardDetail(false);
+                } else {
+                    loadLeaderboardExams(false);
+                }
+            }
+        }, LB_REFRESH_MS);
+    }
+
+    function stopLbAutoRefresh() {
+        if (lbRefreshTimer) {
+            clearInterval(lbRefreshTimer);
+            lbRefreshTimer = null;
+        }
+    }
+
+    async function loadLeaderboardExams(showLoader) {
+        const listEl = document.getElementById("lbExamList");
+        if (showLoader !== false) {
+            listEl.innerHTML = '<div style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic;">Fetching exams with leaderboards...</div>';
+        }
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/leaderboard/exams`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error("Failed to fetch leaderboard exams");
+            const exams = await res.json();
+            listEl.innerHTML = "";
+            if (!exams || exams.length === 0) {
+                listEl.innerHTML = "<div style='padding: 25px; text-align: center; color: #7f8c8d; font-style: italic; background: white; border-radius: 6px; border: 1px solid #eee;'>No leaderboards available yet. Once students submit exams, leaderboards will appear here!</div>";
+                return;
+            }
+            exams.forEach(exam => {
+                const attemptedBadge = exam.myAttempted ? `<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px; font-weight: bold;">✓ ATTEMPTED</span>` : '';
+                listEl.innerHTML += `
+                    <div style="display: flex; padding: 14px 15px; border-bottom: 1px solid #eee; align-items: center; cursor: pointer;" onclick="openLeaderboardDetail('${exam.examId}', this)">
+                        <div style="flex: 3; font-weight: bold; color: var(--primary);">${exam.examTitle}${attemptedBadge}</div>
+                        <div style="flex: 1; text-align: center; color: #777; font-size: 13px;">${exam.examType || '—'}</div>
+                        <div style="flex: 1; text-align: center; color: #777; font-size: 13px;">${exam.participants} students</div>
+                        <div style="flex: 1; text-align: center; color: #777; font-size: 13px;">${exam.totalMarksPossible} marks</div>
+                        <button class="btn btn-primary" style="padding: 7px 14px; font-size: 13px;">View Leaderboard 🏆</button>
+                    </div>`;
+            });
+        } catch (e) {
+            console.error("Could not load leaderboard exams:", e);
+            listEl.innerHTML = "<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboards. Please check your internet connection.</div>";
+        }
+    }
+
+    function openLeaderboardDetail(examId) {
+        lbCurrentExamId = examId;
+        document.getElementById("lbExamListView").style.display = "none";
+        document.getElementById("lbExamDetailView").style.display = "block";
+        loadLeaderboardDetail(true);
+    }
+
+    function showLeaderboardExamList() {
+        lbCurrentExamId = null;
+        document.getElementById("lbExamListView").style.display = "block";
+        document.getElementById("lbExamDetailView").style.display = "none";
+        loadLeaderboardExams(true);
+    }
+
+    async function loadLeaderboardDetail(showLoader) {
+        if (!lbCurrentExamId) return;
+        const wrap = document.getElementById("lbTableWrap");
+        const pos = document.getElementById("lbYourPosition");
+        if (showLoader !== false) {
+            wrap.innerHTML = '<div style="text-align: center; padding: 30px; color: #7f8c8d; font-style: italic;">Computing live leaderboard...</div>';
+            pos.innerHTML = "";
+        }
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/leaderboard/${lbCurrentExamId}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error("Failed to fetch leaderboard");
+            const data = await res.json();
+            document.getElementById("lbExamTitle").innerText = `📊 ${data.examTitle}`;
+
+            // Highlight card: the student's position in this exam
+            if (data.myRank != null) {
+                pos.innerHTML = `
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <div style="flex: 1; min-width: 180px; background: linear-gradient(135deg, var(--secondary), #1a5276); color: white; border-radius: 10px; padding: 18px; text-align: center;">
+                            <div style="font-size: 12px; opacity: 0.85; text-transform: uppercase; letter-spacing: 1px;">Your Position</div>
+                            <div style="font-size: 34px; font-weight: bold; margin: 6px 0;">#${data.myRank}</div>
+                            <div style="font-size: 13px; opacity: 0.9;">out of ${data.totalParticipants} students</div>
+                        </div>
+                        <div style="flex: 1; min-width: 180px; background: white; border: 1px solid #eee; border-radius: 10px; padding: 18px; text-align: center;">
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px;">Your Best Score</div>
+                            <div style="font-size: 34px; font-weight: bold; color: var(--success); margin: 6px 0;">${data.myScore}</div>
+                            <div style="font-size: 13px; color: #888;">best attempt</div>
+                        </div>
+                    </div>`;
+            } else {
+                pos.innerHTML = `<div style="background: #f4f7f6; padding: 14px 16px; border-radius: 8px; margin-bottom: 20px; color: #555; font-size: 14px; border: 1px solid #ddd;">
+                    You haven't attempted this exam yet. Attempt it to see your position highlighted here! 📈
+                </div>`;
+            }
+
+            if (!data.leaderboard || data.leaderboard.length === 0) {
+                wrap.innerHTML = "<div style='padding: 25px; text-align: center; color: #7f8c8d; font-style: italic;'>No submissions yet for this exam.</div>";
+                return;
+            }
+            let html = `<div style="display: flex; padding: 12px 15px; background: var(--primary); color: white; border-radius: 6px 6px 0 0; font-weight: bold; font-size: 14px;">
+                <div style="width: 60px;">Rank</div>
+                <div style="flex: 2.5;">Student</div>
+                <div style="flex: 1; text-align: center;">Correct</div>
+                <div style="flex: 1; text-align: center;">Incorrect</div>
+                <div style="flex: 1; text-align: center;">Skipped</div>
+                <div style="flex: 1; text-align: center;">Pending</div>
+                <div style="flex: 1; text-align: center;">Attempts</div>
+                <div style="flex: 1; text-align: right;">Score</div>
+                <div style="flex: 1; text-align: right;">%</div>
+            </div>`;
+
+            data.leaderboard.forEach(row => {
+                const isMe = data.myStudentId && row.studentId && row.studentId === data.myStudentId;
+                const medal = row.rank === 1 ? '🥇 ' : (row.rank === 2 ? '🥈 ' : (row.rank === 3 ? '🥉 ' : ''));
+                const youBadge = isMe ? `<span style="background: #f39c12; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 6px; font-weight: bold;">YOU</span>` : '';
+                const pendingBadge = row.pendingEvaluationCount > 0 ? '<span style="color: #f39c12;" title="Awaiting manual evaluation">⏳</span>' : '';
+                const rowStyle = isMe ? 'background: #fff8e1; border-left: 4px solid #f39c12; font-weight: bold;' : '';
+                const scoreColor = row.score >= 0 ? 'var(--success)' : 'var(--danger)';
+
+                html += `
+                    <div style="display: flex; padding: 12px 15px; border-bottom: 1px solid #eee; align-items: center; ${rowStyle}">
+                        <div style="width: 60px; font-weight: bold; color: var(--primary);">${medal}#${row.rank}</div>
+                        <div style="flex: 2.5; font-weight: bold; color: var(--primary);">${row.studentName}${youBadge}</div>
+                        <div style="flex: 1; text-align: center; color: var(--success);">${row.correctCount}</div>
+                        <div style="flex: 1; text-align: center; color: var(--danger);">${row.incorrectCount}</div>
+                        <div style="flex: 1; text-align: center; color: #888;">${row.notAttemptedCount}</div>
+                        <div style="flex: 1; text-align: center;">${pendingBadge}</div>
+                        <div style="flex: 1; text-align: center; color: #555;">${row.attempts}</div>
+                        <div style="flex: 1; text-align: right; font-weight: bold; color: ${scoreColor};">${row.score}/${row.totalMarksPossible}</div>
+                        <div style="flex: 1; text-align: right; font-weight: bold; color: #555;">${row.percentage}%</div>
+                    </div>`;
+            });
+            wrap.innerHTML = html;
+        } catch (e) {
+            console.error("Could not load leaderboard:", e);
+            wrap.innerHTML = "<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboard. Please check your internet connection.</div>";
+        }
     }
 
     // 🔥 FIX: Check `token` here at the bottom to load the exams properly on start
