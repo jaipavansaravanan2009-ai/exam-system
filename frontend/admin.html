@@ -2965,12 +2965,15 @@ async function viewAdminAnalysis(resultId) {
             }
 
             // ===== EXAM INTEGRITY REPORT =====
-            const violationData = analysisData.cheatingViolations || [];
+            const violationDataAll = analysisData.cheatingViolations || [];
+            // Ignore the synthetic 'auto-submit' record (older results stored it),
+            // so the detail count always agrees with the real violation total.
+            const violationData = violationDataAll.filter(v => v && v.type !== 'auto-submit');
             const totalViolations = analysisData.totalViolations || 0;
             const awayTime = analysisData.totalAwayTime || 0;
             const autoSubmitted = analysisData.autoSubmitted || false;
             const autoSubmitReason = analysisData.autoSubmitReason || '';
-            const violationCount = violationData.length || totalViolations;
+            const violationCount = totalViolations > 0 ? totalViolations : violationData.length;
 
             let violationHTML = '';
             if (totalViolations > 0 || awayTime > 0) {
@@ -4443,7 +4446,11 @@ modal.innerHTML = `
             const res = await fetch(`${BACKEND_URL}/api/leaderboard/exams`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
-            if (!res.ok) throw new Error("Failed to fetch leaderboard exams");
+            if (!res.ok) {
+                let errDetail = `Server returned ${res.status}`;
+                try { const errBody = await res.json(); if (errBody && errBody.detail) errDetail = errBody.detail; } catch (_) {}
+                throw new Error(errDetail);
+            }
             const exams = await res.json();
             listEl.innerHTML = "";
             if (!exams || exams.length === 0) {
@@ -4462,7 +4469,7 @@ modal.innerHTML = `
             });
         } catch (e) {
             console.error("Could not load leaderboard exams:", e);
-            listEl.innerHTML = "<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboards. Please check your internet connection.</div>";
+            listEl.innerHTML = `<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboards. ${e.message || 'Please check your network connection and try again.'}<br><span style='font-size: 12px; opacity: 0.8;'>If this keeps happening, please contact support.</span></div>`;
         }
     }
 
@@ -4490,7 +4497,11 @@ modal.innerHTML = `
             const res = await fetch(`${BACKEND_URL}/api/leaderboard/${lbCurrentExamId}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
-            if (!res.ok) throw new Error("Failed to fetch leaderboard");
+            if (!res.ok) {
+                let errDetail = `Server returned ${res.status}`;
+                try { const errBody = await res.json(); if (errBody && errBody.detail) errDetail = errBody.detail; } catch (_) {}
+                throw new Error(errDetail);
+            }
             const data = await res.json();
             document.getElementById("lbExamTitle").innerText = `📊 ${data.examTitle}`;
 
@@ -4532,7 +4543,7 @@ modal.innerHTML = `
             wrap.innerHTML = html;
         } catch (e) {
             console.error("Could not load leaderboard:", e);
-            wrap.innerHTML = "<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboard. Please check your internet connection.</div>";
+            wrap.innerHTML = `<div style='padding: 20px; color: #c0392b; background: #fdedec; border-radius: 6px; text-align: center;'>Unable to load leaderboard. ${e.message || 'Please check your network connection and try again.'}<br><span style='font-size: 12px; opacity: 0.8;'>If this keeps happening, please contact support.</span></div>`;
         }
     }
 </script>

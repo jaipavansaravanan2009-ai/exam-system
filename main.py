@@ -1425,11 +1425,14 @@ async def get_my_results(user = Depends(authorize(["student"]))):
                 if violation_count >= 3 or total_away_time >= 300:
                     is_auto_submitted = True
             
-            # Fallback: if violationCount is 0 but cheatingViolations array has entries, use its length
+            # Fallback: if violationCount is 0 but cheatingViolations array has entries,
+            # use its length excluding the synthetic 'auto-submit' record (older versions
+            # appended one, which used to inflate the count by one).
             violation_count = data.get("violationCount", data.get("totalViolations", 0))
             cheating_violations = data.get("cheatingViolations", [])
             if violation_count == 0 and isinstance(cheating_violations, list) and len(cheating_violations) > 0:
-                violation_count = len(cheating_violations)
+                real_violations = [v for v in cheating_violations if not (isinstance(v, dict) and v.get("type") == "auto-submit")]
+                violation_count = len(real_violations) if real_violations else len(cheating_violations)
                 if violation_count >= 3:
                     is_auto_submitted = True
 
@@ -1998,11 +2001,14 @@ async def get_result_analysis(result_id: str, user = Depends(authorize(["admin",
             if violation_count >= 3 or total_away_time >= 300:
                 is_auto_submitted = True
         
-        # Fallback: if violationCount is 0 but cheatingViolations array has entries, use its length
+        # Fallback: if violationCount is 0 but cheatingViolations array has entries,
+        # use its length excluding the synthetic 'auto-submit' record (older versions
+        # appended one, which used to inflate the count by one).
         violation_count = result_data.get("violationCount", result_data.get("totalViolations", 0))
         cheating_violations = result_data.get("cheatingViolations", [])
         if violation_count == 0 and isinstance(cheating_violations, list) and len(cheating_violations) > 0:
-            violation_count = len(cheating_violations)
+            real_violations = [v for v in cheating_violations if not (isinstance(v, dict) and v.get("type") == "auto-submit")]
+            violation_count = len(real_violations) if real_violations else len(cheating_violations)
             if violation_count >= 3:
                 is_auto_submitted = True
         

@@ -489,6 +489,8 @@
     let autoSubmitTriggered = false; // Prevent multiple auto-submissions
     let isTabHidden = false;       // Track if tab was hidden via visibilitychange (used to deduplicate blur)
     let suppressLossOfFocus = false; // Armed while the in-exam image-upload file-picker is open (legit action, not a cheat)
+    let blurViolationHandled = false; // True when a blur event already recorded a violation while the tab stayed visible (dedup vs visibilitychange)
+    let autoSubmitReasonText = '';    // Auto-submit reason stored separately so the violation count stays accurate
 
     // Show a blocking overlay when a major violation occurs (tab switch, window blur)
     function showCheatOverlay(reason) {
@@ -604,13 +606,9 @@
         if (autoSubmitTriggered) return;
         autoSubmitTriggered = true;
         
-        // Add the auto-submit reason to violations
-        cheatingViolations.push({
-            type: 'auto-submit',
-            details: reason,
-            timestamp: new Date().toISOString(),
-            violationNumber: violationCount + 1
-        });
+        // Remember the auto-submit reason WITHOUT adding a synthetic 'auto-submit'
+        // entry to cheatingViolations (that entry used to inflate the violation count).
+        autoSubmitReasonText = reason;
         
         // Hide overlay if showing
         document.getElementById('cheatOverlay').classList.remove('show');
@@ -655,8 +653,15 @@
             isTabHidden = true;
             // User left the tab
             showCheatOverlay('You switched to another tab or application!');
-            recordViolation('tab-switch', 'User switched away from exam tab');
-            showViolationToast('Tab switch detected! Violation recorded.');
+            // If a blur event already recorded this while the tab was still visible,
+            // don't double-count it here.
+            if (blurViolationHandled) {
+                blurViolationHandled = false;
+                showViolationToast('Tab switch detected! Violation recorded.');
+            } else {
+                recordViolation('tab-switch', 'User switched away from exam tab');
+                showViolationToast('Tab switch detected! Violation recorded.');
+            }
         } else {
             isTabHidden = false;
             // User returned - dismiss overlay handled by button click
@@ -675,16 +680,25 @@
     window.addEventListener('blur', function() {
         if (!examActive || autoSubmitTriggered) return;
         if (suppressLossOfFocus) return;
-        // Only show overlay if tab is NOT already hidden (prevents double overlay from tab switch)
-        if (!isTabHidden && !document.getElementById('cheatOverlay').classList.contains('show')) {
-            showCheatOverlay('You clicked outside the exam window!');
-            // NO recordViolation here — only visibilitychange counts violations
-        }
+        // If the tab is hidden/hiding, the visibilitychange handler records the
+        // violation — don't double-count it here.
+        if (document.hidden || isTabHidden) return;
+        if (document.getElementById('cheatOverlay').classList.contains('show')) return;
+
+        // Clicking outside the exam window (Alt+Tab, taskbar, another app) does NOT
+        // fire visibilitychange while the tab stays visible, so count it here:
+        blurViolationHandled = true;
+        showCheatOverlay('You clicked outside the exam window!');
+        recordViolation('window-blur', 'User clicked outside the exam window');
+        showViolationToast('Left the exam window! Violation recorded.');
     });
 
     // Detect window focus return
     // Reset suppressLossOfFocus when window regains focus (file picker closed)
     window.addEventListener('focus', function() {
+        // Reset the blur-dedup flag: the student is back, so the next blur event
+        // is a fresh departure that should count as a new violation.
+        blurViolationHandled = false;
         // If overlay is showing, keep it until they press return button
         // The away time tracking continues
         if (suppressLossOfFocus) suppressLossOfFocus = false;
@@ -1761,10 +1775,11 @@
             subjectTimes: subjectTimes,
             // ANTI-CHEAT DATA
             cheatingViolations: cheatingViolations,
+            violationCount: violationCount,
             totalViolations: violationCount,
             totalAwayTime: totalAwayTime,
             autoSubmitted: autoSubmitTriggered,
-            autoSubmitReason: autoSubmitTriggered ? (cheatingViolations.find(v => v.type === 'auto-submit')?.details || 'Unknown') : null
+            autoSubmitReason: autoSubmitTriggered ? (autoSubmitReasonText || 'Unknown') : null
         };
         
         try {
