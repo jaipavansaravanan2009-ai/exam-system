@@ -7,7 +7,7 @@ import jwt
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import firebase_admin
 from firebase_admin import credentials, firestore
 from dotenv import load_dotenv
@@ -56,6 +56,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 🧯 GLOBAL EXCEPTION HANDLER
+# Without this, unhandled exceptions return a plain-text "Internal Server Error"
+# body (uvicorn production mode), which the frontend cannot parse as JSON. This
+# keeps the full traceback in the logs and always returns parseable JSON.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    traceback.print_exc()
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 # 🏠 ROOT ROUTE - Redirect to login page
 @app.get("/")

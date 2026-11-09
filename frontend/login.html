@@ -168,6 +168,11 @@
         btn.innerText = "Verifying...";
         btn.disabled = true;
 
+        // Give Render's free-tier cold start time to wake up before aborting.
+        const controller = new AbortController();
+        const timeoutMs = 65000;
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
         try {
             console.log("Attempting login for:", username, "as", role);
 
@@ -176,10 +181,23 @@
                 headers: { 
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ username, password, role })
+                body: JSON.stringify({ username, password, role }),
+                signal: controller.signal
             });
 
-            const data = await res.json();
+            // Parse the body safely. The server can return a NON-JSON body for
+            // unhandled exceptions (e.g. uvicorn's plain-text "Internal Server
+            // Error"), which would make res.json() throw a SyntaxError and land
+            // in the network catch block below with a misleading message.
+            let data = {};
+            const rawText = await res.text();
+            if (rawText) {
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    data = { detail: rawText };
+                }
+            }
 
             if (res.ok && data.token) {
                 // --- SUCCESS ---
@@ -198,14 +216,22 @@
             } else {
                 // --- ERROR HANDLING FIX ---
                 // Python FastAPI uses 'detail', Node.js used 'message'
-                const errorMsg = data.detail || data.message || "Invalid Credentials";
-                alert("Login Failed: " + errorMsg);
+                const errorMsg = data.detail || data.message || res.statusText || "Invalid Credentials";
+                alert(`Login Failed (HTTP ${res.status}): ${errorMsg}`);
                 resetBtn(); // Brings the button back to "Sign In"
             }
         } catch (err) {
-            console.error("Fetch error:", err);
-            alert("Connection Failed. Make sure your Render server is awake.");
+            console.error("Login error:", err);
+            if (err.name === "AbortError") {
+                alert("The server took too long to respond. Render's free tier sleeps when idle, so the first request can take up to a minute to wake up. Please wait a moment and try again.");
+            } else if (err instanceof TypeError && /fetch/i.test(err.message)) {
+                alert("Could not reach the server. Make sure your Render server is awake (free tier sleeps when idle) and that you're online.");
+            } else {
+                alert("Login failed unexpectedly: " + err.message);
+            }
             resetBtn(); // Ensures the button is never stuck if the network fails
+        } finally {
+            clearTimeout(timer);
         }
     }
 
