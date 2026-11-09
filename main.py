@@ -1366,6 +1366,32 @@ async def import_question_list_to_exam(exam_id: str, list_id: str, request: Requ
 # ==========================================
 # 🏆 PUBLIC ROUTES (FOR STUDENTS)
 # ==========================================
+# 🩺 DIAGNOSTIC HEALTH CHECK
+# Opens in the browser: https://jee-mock-portal.onrender.com/api/public/health
+# Reports the REAL Firestore error (auth/revoked key/permissions) instead of
+# the generic "Internal Server Error" that the global handler produces.
+@app.get("/api/public/health")
+async def health_check():
+    sa_email = service_account.get("client_email", "unknown")
+    sa_project = service_account.get("project_id", "unknown")
+    try:
+        docs = list(db.collection("exams").limit(1).stream())
+        return {
+            "status": "ok",
+            "firestore": True,
+            "serviceAccountEmail": sa_email,
+            "projectId": sa_project,
+            "sampleExams": len(docs),
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={
+            "status": "degraded",
+            "firestore": False,
+            "serviceAccountEmail": sa_email,
+            "projectId": sa_project,
+            "error": f"{type(e).__name__}: {e}",
+        })
+
 @app.get("/api/public/exams")
 async def get_public_exams():
     docs = db.collection("exams").stream()
