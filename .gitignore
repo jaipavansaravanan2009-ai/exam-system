@@ -1,0 +1,11 @@
+*exam-system-87aa3-firebase-adminsdk-fbsvc-d8763f01b7*.json
+
+# Credentials (do not commit)
+.env
+serviceAccountKey.json
+*_accountKey.json
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+*exam-system-87aa3-firebase-adminsdk-fbsvc-d8763f01b7*.json

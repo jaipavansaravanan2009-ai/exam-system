@@ -38,25 +38,37 @@ from fastapi.responses import RedirectResponse
 # Load Environment Variables
 load_dotenv()
 
-# 1. Firebase Setup
+# 1. Firebase Setup - GOOGLE_APPLICATION_CREDENTIALS approach
+# =====================================================================
+# Set the environment variable to point to your service account JSON file:
+#   export GOOGLE_APPLICATION_CREDENTIALS="d:/path/to/serviceAccountKey.json"
+# =====================================================================
 print("Checking Environment Variables...")
-base64_key = os.environ.get("FIREBASE_BASE64")
-if not base64_key:
-    print("❌ ERROR: FIREBASE_BASE64 is missing from environment variables!")
-    exit(1)
+
+# Priority 1: Use GOOGLE_APPLICATION_CREDENTIALS env var (recommended)
+service_account_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+
+# Priority 2: Fallback to default filename in project root
+if not service_account_path:
+    service_account_path = "serviceAccountKey.json"
+    print("⚠️  GOOGLE_APPLICATION_CREDENTIALS not set, using default path: serviceAccountKey.json")
 
 try:
-    decoded_key = base64.b64decode(base64_key).decode('utf-8')
-    service_account = json.loads(decoded_key)
-    print("✅ Firebase Key decoded and parsed successfully.")
-except Exception as e:
-    print(f"❌ ERROR: Failed to parse decoded key! {e}")
+    with open(service_account_path, 'r') as f:
+        service_account = json.load(f)
+    print(f"✅ Firebase service account loaded from: {service_account_path}")
+except FileNotFoundError:
+    print(f"❌ ERROR: Service account file not found at: {service_account_path}")
+    print('   Solution: export GOOGLE_APPLICATION_CREDENTIALS="d:/path/to/serviceAccountKey.json"')
+    exit(1)
+except json.JSONDecodeError as e:
+    print(f"❌ ERROR: Invalid JSON in service account file: {e}")
     exit(1)
 
 if not firebase_admin._apps:
     cred = credentials.Certificate(service_account)
     firebase_admin.initialize_app(cred)
-    
+
 db = firestore.client()
 JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-key")
 
